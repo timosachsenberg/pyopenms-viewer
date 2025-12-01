@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fast mzML Peak Map Viewer using NiceGUI + Datashader + pyOpenMS
+pyopenms-viewer: Fast mzML viewer using NiceGUI + Datashader + pyOpenMS
 
 Designed to handle 50+ million peaks with smooth zooming and panning.
 Uses datashader for server-side rendering of massive datasets.
@@ -402,6 +402,7 @@ class MzMLViewer:
         self.show_spectrum_marker = True  # Always show RT/m/z marker for selected spectrum
         self.colormap = 'jet'  # Default colormap
         self.rt_in_minutes = False  # Display RT in minutes instead of seconds
+        self.spectrum_intensity_percent = True  # Display spectrum intensity as percentage (vs absolute)
 
         # Colors
         self.centroid_color = (0, 255, 100, 255)
@@ -990,9 +991,19 @@ class MzMLViewer:
 
         if matching_id_idx is None:
             # Regular spectrum display (no annotation)
-            # Normalize intensities
-            max_int = int_array.max() if len(int_array) > 0 else 1
-            int_norm = (int_array / max_int) * 100
+            max_int = float(int_array.max()) if len(int_array) > 0 else 1.0
+
+            # Choose intensity values based on display mode
+            if self.spectrum_intensity_percent:
+                int_display = (int_array / max_int) * 100
+                y_title = "Relative Intensity (%)"
+                hover_fmt = 'm/z: %{x:.4f}<br>Intensity: %{y:.1f}%<extra></extra>'
+                y_range = [0, 105]
+            else:
+                int_display = int_array
+                y_title = "Intensity"
+                hover_fmt = 'm/z: %{x:.4f}<br>Intensity: %{y:.2e}<extra></extra>'
+                y_range = [0, max_int * 1.05]
 
             # Create figure
             fig = go.Figure()
@@ -1004,7 +1015,7 @@ class MzMLViewer:
             # Create x, y arrays for stem plot: each peak is [mz, mz, None], [0, intensity, None]
             x_stems = []
             y_stems = []
-            for mz, intensity in zip(mz_array, int_norm):
+            for mz, intensity in zip(mz_array, int_display):
                 x_stems.extend([mz, mz, None])
                 y_stems.extend([0, intensity, None])
 
@@ -1019,10 +1030,10 @@ class MzMLViewer:
             # Add hover points at peak tops
             fig.add_trace(go.Scatter(
                 x=mz_array,
-                y=int_norm,
+                y=int_display,
                 mode='markers',
                 marker=dict(color=color, size=3),
-                hovertemplate='m/z: %{x:.4f}<br>Intensity: %{y:.1f}%<extra></extra>'
+                hovertemplate=hover_fmt
             ))
 
             # Title with spectrum info
@@ -1040,14 +1051,14 @@ class MzMLViewer:
             fig.update_layout(
                 title=dict(text=title, font=dict(size=14)),
                 xaxis_title="m/z",
-                yaxis_title="Relative Intensity (%)",
+                yaxis_title=y_title,
                 template="plotly_dark",
                 height=350,
                 margin=dict(l=60, r=20, t=50, b=50),
                 showlegend=False
             )
 
-            fig.update_yaxes(range=[0, 105])
+            fig.update_yaxes(range=y_range)
 
             # Update info label
             if self.spectrum_browser_info is not None:
@@ -2894,8 +2905,8 @@ def create_ui():
     ui.dark_mode().enable()
 
     with ui.column().classes('w-full items-center p-4'):
-        ui.label('mzML Peak Map Viewer').classes('text-3xl font-bold mb-2')
-        ui.label('High-performance visualization with Datashader + pyOpenMS').classes('text-gray-400 mb-4')
+        ui.label('pyopenms-viewer').classes('text-3xl font-bold mb-2')
+        ui.label('Fast mzML viewer using NiceGUI + Datashader + pyOpenMS').classes('text-gray-400 mb-4')
 
         # File loading section (local filesystem paths)
         with ui.card().classes('w-full max-w-6xl mb-4'):
@@ -3402,6 +3413,14 @@ def create_ui():
 
                     ui.element('div').classes('flex-grow')  # Spacer
 
+                    # Intensity display toggle
+                    ui.label('Intensity:').classes('text-xs text-gray-400')
+                    ui.toggle(['%', 'abs'], value='%', on_change=lambda e: (
+                        setattr(viewer, 'spectrum_intensity_percent', e.value == '%'),
+                        viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx) if viewer.selected_spectrum_idx is not None else None
+                    )).props('dense size=sm color=grey').tooltip('Toggle between relative (%) and absolute intensity')
+
+                    ui.label('|').classes('mx-1 text-gray-600')
                     viewer.spectrum_browser_info = ui.label('Click TIC or use spectrum table to select').classes('text-xs text-gray-500')
 
                 # Spectrum plot
@@ -3850,7 +3869,7 @@ def main(files, port, host, open, native):
 
     # NiceGUI 3.x: Use root parameter for cleaner single-page app structure
     ui.run(
-        title='mzML Peak Map Viewer',
+        title='pyopenms-viewer',
         host=host,
         port=port,
         reload=False,
