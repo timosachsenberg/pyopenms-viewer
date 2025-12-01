@@ -546,11 +546,31 @@ class MzMLViewer:
 
         return None
 
-    def load_mzml_sync(self, filepath: str) -> bool:
-        """Load mzML file synchronously without UI updates (for background thread)."""
+    def parse_mzml_file(self, filepath: str) -> bool:
+        """Parse mzML file using pyOpenMS (blocking C++ call).
+
+        This is the first phase of loading - just parses the file.
+        Returns True if successful and file has spectra.
+        """
         try:
             self.exp = MSExperiment()
             MzMLFile().load(filepath, self.exp)
+            return self.exp.size() > 0
+        except Exception as e:
+            print(f"Error parsing mzML: {e}")
+            return False
+
+    def process_mzml_data(self, filepath: str, progress_callback=None) -> bool:
+        """Process parsed mzML data to extract peaks and create DataFrame.
+
+        This is the second phase of loading - processes spectra with progress updates.
+        Args:
+            filepath: Path to the mzML file (for storing reference)
+            progress_callback: Optional callback(message, progress) for progress updates
+        """
+        try:
+            if self.exp is None:
+                return False
 
             n_spectra = self.exp.size()
             total_peaks = sum(spec.size() for spec in self.exp)
@@ -559,6 +579,9 @@ class MzMLViewer:
                 return False
 
             # First pass: detect FAIMS CVs
+            if progress_callback:
+                progress_callback("Detecting FAIMS CVs...", 0.05)
+
             cv_set = set()
             for spec in self.exp:
                 if spec.getMSLevel() == 1:
@@ -580,10 +603,23 @@ class MzMLViewer:
             tic_intensities = []
             faims_tic_data = {cv: {'rt': [], 'int': []} for cv in self.faims_cvs} if self.has_faims else {}
 
+            if progress_callback:
+                progress_callback("Extracting peaks...", 0.1)
+
             idx = 0
+            ms1_count = 0
+            total_ms1 = sum(1 for spec in self.exp if spec.getMSLevel() == 1)
+
             for spec in self.exp:
                 if spec.getMSLevel() != 1:
                     continue
+
+                ms1_count += 1
+                # Update progress every 100 spectra
+                if progress_callback and ms1_count % 100 == 0:
+                    progress = 0.1 + 0.6 * (ms1_count / max(total_ms1, 1))
+                    progress_callback(f"Extracting peaks... {ms1_count:,}/{total_ms1:,}", progress)
+
                 rt = spec.getRT()
                 mz_array, int_array = spec.get_peaks()
                 n = len(mz_array)
@@ -614,6 +650,9 @@ class MzMLViewer:
             if self.has_faims:
                 cvs = cvs[:idx]
 
+            if progress_callback:
+                progress_callback("Building TIC...", 0.75)
+
             # Store TIC data
             self.tic_rt = np.array(tic_rts, dtype=np.float32)
             self.tic_intensity = np.array(tic_intensities, dtype=np.float32)
@@ -626,8 +665,14 @@ class MzMLViewer:
                     np.array(faims_tic_data[cv]['int'], dtype=np.float32)
                 )
 
+            if progress_callback:
+                progress_callback("Extracting spectrum metadata...", 0.8)
+
             # Extract spectrum metadata for browser
             self.spectrum_data = self._extract_spectrum_data()
+
+            if progress_callback:
+                progress_callback("Creating DataFrame...", 0.85)
 
             # Create main DataFrame
             self.df = pd.DataFrame({
@@ -638,6 +683,9 @@ class MzMLViewer:
             if self.has_faims:
                 self.df['cv'] = cvs
             self.df['log_intensity'] = np.log1p(self.df['intensity'])
+
+            if progress_callback:
+                progress_callback("Finalizing...", 0.95)
 
             # Create per-CV DataFrames for FAIMS view
             self.faims_data = {}
@@ -660,8 +708,17 @@ class MzMLViewer:
             return True
 
         except Exception as e:
-            print(f"Error loading mzML: {e}")
+            print(f"Error processing mzML: {e}")
             return False
+
+    def load_mzml_sync(self, filepath: str) -> bool:
+        """Load mzML file synchronously without UI updates (for background thread).
+
+        This is a convenience method that calls both parse and process phases.
+        """
+        if not self.parse_mzml_file(filepath):
+            return False
+        return self.process_mzml_data(filepath)
 
     def load_mzml(self, filepath: str) -> bool:
         """Load mzML file and extract peak data (with UI updates)."""
@@ -909,9 +966,10 @@ class MzMLViewer:
             ms_level = spec.getMSLevel()
             n_peaks = spec.size()
 
-            # Get peaks for TIC calculation
+            # Get peaks for TIC and BPI calculation
             mz_array, int_array = spec.get_peaks()
             tic = float(np.sum(int_array)) if len(int_array) > 0 else 0
+            bpi = float(np.max(int_array)) if len(int_array) > 0 else 0
 
             # Get m/z range
             mz_min = float(mz_array.min()) if len(mz_array) > 0 else 0
@@ -933,6 +991,7 @@ class MzMLViewer:
                 'ms_level': ms_level,
                 'n_peaks': n_peaks,
                 'tic': f"{tic:.2e}",
+                'bpi': f"{bpi:.2e}",
                 'mz_range': f"{mz_min:.1f}-{mz_max:.1f}" if n_peaks > 0 else '-',
                 'precursor_mz': precursor_mz,
                 'precursor_z': precursor_charge,
@@ -1895,8 +1954,14 @@ class MzMLViewer:
             self.hover_id_idx = None
             self.update_plot()
 
-    def set_loading(self, loading: bool, message: str = "Loading..."):
-        """Set loading state and update indicator."""
+    def set_loading(self, loading: bool, message: str = "Loading...", indeterminate: bool = False):
+        """Set loading state and update indicator.
+
+        Args:
+            loading: Whether loading is in progress
+            message: Status message to display
+            indeterminate: If True, show indeterminate progress bar (for blocking operations)
+        """
         self.is_loading = loading
         if self.loading_indicator:
             if loading:
@@ -1904,10 +1969,15 @@ class MzMLViewer:
                 if self.loading_label:
                     self.loading_label.set_text(message)
                 if self.loading_progress_bar:
-                    self.loading_progress_bar.value = 0
+                    if indeterminate:
+                        self.loading_progress_bar.props('indeterminate')
+                    else:
+                        self.loading_progress_bar.props(remove='indeterminate')
+                        self.loading_progress_bar.value = 0
             else:
                 self.loading_indicator.style('display: none;')
                 if self.loading_progress_bar:
+                    self.loading_progress_bar.props(remove='indeterminate')
                     self.loading_progress_bar.value = 1.0
 
     def update_loading_progress(self, message: str, progress: float = None):
@@ -2904,6 +2974,16 @@ def create_ui():
 
     ui.dark_mode().enable()
 
+    # Fullscreen button in top-right corner
+    with ui.element('div').classes('fixed top-2 right-2 z-50'):
+        fullscreen_btn = ui.button(icon='fullscreen', on_click=lambda: ui.run_javascript('''
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        ''')).props('flat round dense color=grey').tooltip('Toggle fullscreen (F11)')
+
     with ui.column().classes('w-full items-center p-4'):
         ui.label('pyopenms-viewer').classes('text-3xl font-bold mb-2')
         ui.label('Fast mzML viewer using NiceGUI + Datashader + pyOpenMS').classes('text-gray-400 mb-4')
@@ -2927,33 +3007,48 @@ def create_ui():
 
                 try:
                     if filename.endswith('.mzml'):
-                        viewer.set_loading(True, f"Loading {original_name}...")
-                        success = await run.io_bound(viewer.load_mzml_sync, tmp_path)
-                        if success:
-                            viewer.update_plot()
-                            viewer.update_tic_plot()
-                            # Show first spectrum in 1D browser
-                            if viewer.exp and viewer.exp.size() > 0:
-                                viewer.show_spectrum_in_browser(0)
-                            info_text = f"Loaded: {original_name} | Spectra: {viewer.exp.size():,} | Peaks: {len(viewer.df):,}"
-                            if viewer.has_faims:
-                                info_text += f" | FAIMS: {len(viewer.faims_cvs)} CVs"
-                            if viewer.info_label:
-                                viewer.info_label.set_text(info_text)
-                            if viewer.spectrum_table is not None:
-                                viewer.spectrum_table.rows = viewer.spectrum_data
-                            if viewer.has_faims:
-                                if viewer.faims_info_label:
-                                    cv_str = ", ".join([f"{cv:.1f}V" for cv in viewer.faims_cvs])
-                                    viewer.faims_info_label.set_text(f"FAIMS CVs: {cv_str}")
-                                    viewer.faims_info_label.set_visibility(True)
-                                if viewer.faims_toggle:
-                                    viewer.faims_toggle.set_visibility(True)
-                            ui.notify(f"Loaded {len(viewer.df):,} peaks from {original_name}", type="positive")
+                        # Phase 1: Parse mzML file (blocking pyOpenMS call)
+                        viewer.set_loading(True, f"Parsing {original_name}...", indeterminate=True)
+                        parse_success = await run.io_bound(viewer.parse_mzml_file, tmp_path)
+
+                        if parse_success:
+                            # Phase 2: Process data with progress updates
+                            viewer.set_loading(True, f"Processing spectra...", indeterminate=False)
+
+                            # Progress callback that updates UI
+                            def update_progress(message, progress):
+                                viewer.update_loading_progress(message, progress)
+
+                            success = await run.io_bound(viewer.process_mzml_data, tmp_path, update_progress)
+
+                            if success:
+                                viewer.update_loading_progress("Rendering...", 0.98)
+                                viewer.update_plot()
+                                viewer.update_tic_plot()
+                                # Show first spectrum in 1D browser
+                                if viewer.exp and viewer.exp.size() > 0:
+                                    viewer.show_spectrum_in_browser(0)
+                                info_text = f"Loaded: {original_name} | Spectra: {viewer.exp.size():,} | Peaks: {len(viewer.df):,}"
+                                if viewer.has_faims:
+                                    info_text += f" | FAIMS: {len(viewer.faims_cvs)} CVs"
+                                if viewer.info_label:
+                                    viewer.info_label.set_text(info_text)
+                                if viewer.spectrum_table is not None:
+                                    viewer.spectrum_table.rows = viewer.spectrum_data
+                                if viewer.has_faims:
+                                    if viewer.faims_info_label:
+                                        cv_str = ", ".join([f"{cv:.1f}V" for cv in viewer.faims_cvs])
+                                        viewer.faims_info_label.set_text(f"FAIMS CVs: {cv_str}")
+                                        viewer.faims_info_label.set_visibility(True)
+                                    if viewer.faims_toggle:
+                                        viewer.faims_toggle.set_visibility(True)
+                                ui.notify(f"Loaded {len(viewer.df):,} peaks from {original_name}", type="positive")
+                        else:
+                            ui.notify(f"Failed to parse {original_name}", type="negative")
                         viewer.set_loading(False)
 
                     elif filename.endswith('.featurexml') or (filename.endswith('.xml') and 'feature' in filename):
-                        viewer.set_loading(True, f"Loading features...")
+                        viewer.set_loading(True, f"Loading features...", indeterminate=True)
                         success = await run.io_bound(viewer.load_featuremap_sync, tmp_path)
                         if success:
                             viewer.update_plot()
@@ -2965,7 +3060,7 @@ def create_ui():
                         viewer.set_loading(False)
 
                     elif filename.endswith('.idxml') or (filename.endswith('.xml') and 'id' in filename):
-                        viewer.set_loading(True, f"Loading identifications...")
+                        viewer.set_loading(True, f"Loading identifications...", indeterminate=True)
                         success = await run.io_bound(viewer.load_idxml_sync, tmp_path)
                         if success:
                             viewer.update_plot()
@@ -3024,65 +3119,6 @@ def create_ui():
         with ui.row().classes('w-full justify-center gap-8 mb-2'):
             viewer.rt_range_label = ui.label('RT: -- - -- s').classes('text-blue-300')
             viewer.mz_range_label = ui.label('m/z: -- - --').classes('text-blue-300')
-
-        # Search and Go To section
-        with ui.card().classes('w-full max-w-4xl mb-2 p-2'):
-            with ui.row().classes('w-full items-center gap-4'):
-                # Global search
-                with ui.column().classes('flex-grow'):
-                    ui.label('Search').classes('text-xs text-gray-400')
-                    search_input = ui.input(placeholder='Peptide sequence, m/z, RT, or spectrum #...').classes('w-full').props('dense outlined')
-
-                    # Search results container
-                    search_results_container = ui.column().classes('w-full')
-                    search_results_container.set_visibility(False)
-
-                    def on_search(e):
-                        query = search_input.value
-                        search_results_container.clear()
-                        if not query or len(query) < 1:
-                            search_results_container.set_visibility(False)
-                            return
-
-                        results = viewer.search_global(query)
-                        if results:
-                            search_results_container.set_visibility(True)
-                            with search_results_container:
-                                with ui.card().classes('w-full p-1 mt-1').style('max-height: 200px; overflow-y: auto;'):
-                                    for result in results:
-                                        def make_click_handler(action):
-                                            def handler():
-                                                action()
-                                                search_results_container.set_visibility(False)
-                                                search_input.value = ''
-                                            return handler
-
-                                        with ui.row().classes('w-full items-center p-1 hover:bg-gray-700 cursor-pointer rounded').on('click', make_click_handler(result['action'])):
-                                            ui.icon(result['icon'], size='xs').classes('text-gray-400 mr-2')
-                                            ui.label(result['label']).classes('text-sm')
-                        else:
-                            search_results_container.set_visibility(False)
-
-                    search_input.on('keyup', on_search)
-
-                # Divider
-                ui.label('|').classes('text-gray-600')
-
-                # Go To controls
-                with ui.row().classes('items-end gap-2'):
-                    goto_rt = ui.number(label='RT (s)', format='%.1f').props('dense outlined').classes('w-24')
-                    goto_mz = ui.number(label='m/z', format='%.2f').props('dense outlined').classes('w-24')
-                    goto_spec = ui.number(label='Spectrum #', format='%.0f').props('dense outlined').classes('w-24')
-
-                    def do_goto():
-                        rt = goto_rt.value if goto_rt.value else None
-                        mz = goto_mz.value if goto_mz.value else None
-                        spec = int(goto_spec.value) if goto_spec.value else None
-                        if rt is not None or mz is not None or spec is not None:
-                            viewer.go_to_location(rt=rt, mz=mz, spectrum_idx=spec)
-                            ui.notify(f"Navigated to location", type="info")
-
-                    ui.button('Go', on_click=do_goto).props('dense color=primary')
 
         # FAIMS toggle (hidden by default, shown when FAIMS data is detected)
         with ui.row().classes('w-full justify-center gap-4 mb-2'):
@@ -3540,6 +3576,7 @@ def create_ui():
                 {'name': 'ms_level', 'label': 'MS', 'field': 'ms_level', 'sortable': True, 'align': 'center'},
                 {'name': 'n_peaks', 'label': 'Peaks', 'field': 'n_peaks', 'sortable': True, 'align': 'right'},
                 {'name': 'tic', 'label': 'TIC', 'field': 'tic', 'sortable': True, 'align': 'right'},
+                {'name': 'bpi', 'label': 'BPI', 'field': 'bpi', 'sortable': True, 'align': 'right'},
                 {'name': 'mz_range', 'label': 'm/z Range', 'field': 'mz_range', 'sortable': False, 'align': 'center'},
                 {'name': 'precursor_mz', 'label': 'Prec m/z', 'field': 'precursor_mz', 'sortable': True, 'align': 'right'},
                 {'name': 'precursor_z', 'label': 'Prec Z', 'field': 'precursor_z', 'sortable': True, 'align': 'center'},
