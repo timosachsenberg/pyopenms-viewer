@@ -2963,24 +2963,25 @@ def create_ui():
 
             async def handle_upload(e):
                 """Handle uploaded file - detect type and load appropriately."""
-                file = e.files[0] if hasattr(e, 'files') else e
+                # NiceGUI 3.x: UploadEventArguments has .file attribute (FileUpload object)
+                # FileUpload has: .name, .content_type, async .read(), async .save(path)
+                file = e.file
                 filename = file.name.lower()
-                content = file.read()
+                original_name = file.name
 
-                # Save to temp file
+                # Save to temp file using FileUpload.save()
                 suffix = Path(filename).suffix
-                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                    tmp.write(content)
-                    tmp_path = tmp.name
+                tmp_path = tempfile.mktemp(suffix=suffix)
+                await file.save(tmp_path)
 
                 try:
                     if filename.endswith('.mzml'):
-                        viewer.set_loading(True, f"Loading {file.name}...")
+                        viewer.set_loading(True, f"Loading {original_name}...")
                         success = await run.io_bound(viewer.load_mzml_sync, tmp_path)
                         if success:
                             viewer.update_plot()
                             viewer.update_tic_plot()
-                            info_text = f"Loaded: {file.name} | Spectra: {viewer.exp.size():,} | Peaks: {len(viewer.df):,}"
+                            info_text = f"Loaded: {original_name} | Spectra: {viewer.exp.size():,} | Peaks: {len(viewer.df):,}"
                             if viewer.has_faims:
                                 info_text += f" | FAIMS: {len(viewer.faims_cvs)} CVs"
                             if viewer.info_label:
@@ -2994,7 +2995,7 @@ def create_ui():
                                     viewer.faims_info_label.set_visibility(True)
                                 if viewer.faims_toggle:
                                     viewer.faims_toggle.set_visibility(True)
-                            ui.notify(f"Loaded {len(viewer.df):,} peaks from {file.name}", type="positive")
+                            ui.notify(f"Loaded {len(viewer.df):,} peaks from {original_name}", type="positive")
                         viewer.set_loading(False)
 
                     elif filename.endswith('.featurexml') or (filename.endswith('.xml') and 'feature' in filename):
@@ -3006,7 +3007,7 @@ def create_ui():
                                 viewer.feature_info_label.set_text(f"Features: {viewer.feature_map.size():,}")
                             if viewer.feature_table is not None:
                                 viewer.feature_table.rows = viewer.feature_data
-                            ui.notify(f"Loaded {viewer.feature_map.size():,} features from {file.name}", type="positive")
+                            ui.notify(f"Loaded {viewer.feature_map.size():,} features from {original_name}", type="positive")
                         viewer.set_loading(False)
 
                     elif filename.endswith('.idxml') or (filename.endswith('.xml') and 'id' in filename):
@@ -3018,14 +3019,14 @@ def create_ui():
                                 viewer.id_info_label.set_text(f"IDs: {len(viewer.peptide_ids):,}")
                             if viewer.id_table is not None:
                                 viewer.id_table.rows = viewer.id_data
-                            ui.notify(f"Loaded {len(viewer.peptide_ids):,} IDs from {file.name}", type="positive")
+                            ui.notify(f"Loaded {len(viewer.peptide_ids):,} IDs from {original_name}", type="positive")
                         viewer.set_loading(False)
 
                     else:
-                        ui.notify(f"Unknown file type: {file.name}. Supported: .mzML, .featureXML, .idXML", type="warning")
+                        ui.notify(f"Unknown file type: {original_name}. Supported: .mzML, .featureXML, .idXML", type="warning")
 
                 except Exception as ex:
-                    ui.notify(f"Error loading {file.name}: {ex}", type="negative")
+                    ui.notify(f"Error loading {original_name}: {ex}", type="negative")
                     viewer.set_loading(False)
 
                 finally:

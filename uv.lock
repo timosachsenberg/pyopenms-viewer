@@ -1484,53 +1484,6 @@ wheels = [
 ]
 
 [[package]]
-name = "mzml-viewer"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "click" },
-    { name = "colorcet" },
-    { name = "datashader" },
-    { name = "nicegui" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "pandas" },
-    { name = "pillow" },
-    { name = "plotly" },
-    { name = "pyopenms" },
-    { name = "pyopenms-viz" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
-native = [
-    { name = "pywebview" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "click", specifier = ">=8.0.0" },
-    { name = "colorcet", specifier = ">=3.0.0" },
-    { name = "datashader", specifier = ">=0.18.2" },
-    { name = "nicegui", specifier = ">=3.3.1" },
-    { name = "numpy", specifier = ">=1.24.0" },
-    { name = "pandas", specifier = ">=2.0.0" },
-    { name = "pillow", specifier = ">=10.0.0" },
-    { name = "plotly", specifier = ">=5.0.0" },
-    { name = "pyopenms", specifier = ">=3.4.0" },
-    { name = "pyopenms-viz", specifier = ">=0.1.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
-    { name = "pywebview", marker = "extra == 'native'", specifier = ">=4.0.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
-]
-provides-extras = ["native", "dev"]
-
-[[package]]
 name = "narwhals"
 version = "2.13.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2448,6 +2401,53 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/3c/a1/93fd8499aa65dfa0aeec9c1d2adc92011cdc65cc3e7f01e2eb02b64f52ba/pyopenms-3.4.0-cp313-cp313-manylinux_2_34_x86_64.whl", hash = "sha256:e7e9e57e5507feceeb71a83cb60b751b0d2c79d68e70c39f34946efd80cdf8a8", size = 59801193, upload-time = "2025-05-09T11:17:42.134Z" },
     { url = "https://files.pythonhosted.org/packages/27/50/71ca8a7e8ebdbfb6b419619a2aa625313f6cda95d635b5cc14612c40b397/pyopenms-3.4.0-cp313-cp313-win_amd64.whl", hash = "sha256:c8c6148d7fe2447394d4aa1c1d022fc91d2bd991646fb2f65912b2bd78c5b83f", size = 30325616, upload-time = "2025-05-09T11:18:28.281Z" },
 ]
+
+[[package]]
+name = "pyopenms-viewer"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "click" },
+    { name = "colorcet" },
+    { name = "datashader" },
+    { name = "nicegui" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "pandas" },
+    { name = "pillow" },
+    { name = "plotly" },
+    { name = "pyopenms" },
+    { name = "pyopenms-viz" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+native = [
+    { name = "pywebview" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8.0.0" },
+    { name = "colorcet", specifier = ">=3.0.0" },
+    { name = "datashader", specifier = ">=0.18.2" },
+    { name = "nicegui", specifier = ">=3.3.1" },
+    { name = "numpy", specifier = ">=1.24.0" },
+    { name = "pandas", specifier = ">=2.0.0" },
+    { name = "pillow", specifier = ">=10.0.0" },
+    { name = "plotly", specifier = ">=5.0.0" },
+    { name = "pyopenms", specifier = ">=3.4.0" },
+    { name = "pyopenms-viz", specifier = ">=0.1.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
+    { name = "pywebview", marker = "extra == 'native'", specifier = ">=4.0.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
+]
+provides-extras = ["native", "dev"]
 
 [[package]]
 name = "pyopenms-viz"
