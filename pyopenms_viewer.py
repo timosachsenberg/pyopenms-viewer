@@ -56,101 +56,6 @@ from nicegui.events import GenericEventArguments
 _cli_files = {'mzml': None, 'featurexml': None, 'idxml': None}
 
 
-async def file_picker_dialog(title: str = "Select File",
-                             start_path: str = None,
-                             extensions: List[str] = None) -> Optional[str]:
-    """Show a server-side file picker dialog and return the selected file path.
-
-    NiceGUI 3.x: Uses scroll_area for better scrolling behavior.
-    """
-    import os
-
-    if start_path is None:
-        start_path = os.getcwd()
-
-    current_path = start_path
-    selected_file = None
-
-    # NiceGUI 3.x: Use persistent prop to prevent accidental closing
-    with ui.dialog().props('persistent') as dialog, ui.card().classes('w-96'):
-        ui.label(title).classes('text-lg font-bold mb-2')
-
-        # Current path display
-        path_label = ui.label(current_path).classes('text-xs text-gray-400 mb-2 break-all')
-
-        # NiceGUI 3.x: Use scroll_area for better scrolling behavior
-        # Tailwind 4: Use explicit border color for compatibility
-        with ui.scroll_area().classes('w-full h-80 border border-gray-600 rounded') as file_list:
-            file_container = ui.column().classes('w-full p-2')
-
-        # Selected file display
-        selected_label = ui.label('No file selected').classes('text-sm text-cyan-400 mt-2')
-
-        def refresh_file_list():
-            nonlocal current_path
-            file_container.clear()
-            path_label.text = current_path  # NiceGUI 3.x: direct property access
-
-            try:
-                entries = sorted(os.listdir(current_path))
-            except PermissionError:
-                with file_container:
-                    ui.label('Permission denied').classes('text-red-400')
-                return
-
-            with file_container:
-                # Parent directory
-                if current_path != '/':
-                    def go_up():
-                        nonlocal current_path
-                        current_path = str(Path(current_path).parent)
-                        refresh_file_list()
-
-                    ui.button('📁 ..', on_click=go_up).props('flat dense align=left').classes('w-full justify-start text-yellow-400')
-
-                # Directories first
-                for entry in entries:
-                    if entry.startswith('.'):
-                        continue
-                    full_path = os.path.join(current_path, entry)
-
-                    if os.path.isdir(full_path):
-                        def enter_dir(p=full_path):
-                            nonlocal current_path
-                            current_path = p
-                            refresh_file_list()
-
-                        ui.button(f'📁 {entry}', on_click=enter_dir).props('flat dense align=left').classes('w-full justify-start text-yellow-400')
-
-                # Then files
-                for entry in entries:
-                    if entry.startswith('.'):
-                        continue
-                    full_path = os.path.join(current_path, entry)
-
-                    if os.path.isfile(full_path):
-                        # Filter by extension if specified
-                        if extensions:
-                            ext = Path(entry).suffix.lower()
-                            if ext not in [e.lower() for e in extensions]:
-                                continue
-
-                        def select_file(p=full_path, name=entry):
-                            nonlocal selected_file
-                            selected_file = p
-                            selected_label.text = f'Selected: {name}'  # NiceGUI 3.x: direct property
-
-                        ui.button(f'📄 {entry}', on_click=select_file).props('flat dense align=left').classes('w-full justify-start text-gray-300 hover:text-white')
-
-        refresh_file_list()
-
-        with ui.row().classes('w-full justify-end gap-2 mt-4'):
-            ui.button('Cancel', on_click=lambda: dialog.submit(None)).props('flat')
-            ui.button('Open', on_click=lambda: dialog.submit(selected_file)).props('color=primary')
-
-    result = await dialog
-    return result
-
 # Ion type colors for spectrum annotation
 ION_COLORS = {
     'b': '#1f77b4',  # Blue
@@ -2958,9 +2863,6 @@ def create_ui():
         with ui.card().classes('w-full max-w-6xl mb-4'):
             ui.label('Load Data').classes('text-xl font-semibold mb-2')
 
-            # Drag & Drop upload zone
-            ui.label('Drag & drop files here, or use the inputs below').classes('text-sm text-gray-500 mb-2')
-
             async def handle_upload(e):
                 """Handle uploaded file - detect type and load appropriately."""
                 # NiceGUI 3.x: UploadEventArguments has .file attribute (FileUpload object)
@@ -3036,181 +2938,26 @@ def create_ui():
                     except Exception:
                         pass
 
-            with ui.row().classes('w-full mb-4'):
+            with ui.row().classes('w-full items-center gap-4'):
                 ui.upload(
                     label='Drop mzML, featureXML, or idXML files here',
                     on_upload=handle_upload,
                     auto_upload=True,
                     multiple=True,
-                ).classes('w-full').props('accept=".mzML,.mzml,.featureXML,.featurexml,.idXML,.idxml,.xml" flat bordered')
+                ).classes('flex-grow').props('accept=".mzML,.mzml,.featureXML,.featurexml,.idXML,.idxml,.xml" flat bordered')
 
-            ui.separator().classes('mb-2')
-            ui.label('Or specify file paths:').classes('text-sm text-gray-500 mb-2')
+                # Clear buttons
+                with ui.column().classes('gap-1'):
+                    def clear_features():
+                        viewer.clear_features()
+                        viewer.update_plot()
 
-            with ui.row().classes('w-full items-end gap-4 flex-wrap'):
-                # mzML
-                with ui.column().classes('flex-1 min-w-64'):
-                    ui.label('mzML File (Peak Data)').classes('text-sm text-gray-400')
-                    with ui.row().classes('w-full items-end gap-2'):
-                        mzml_input = ui.input(placeholder='/path/to/file.mzML').classes('flex-1')
+                    def clear_ids():
+                        viewer.clear_ids()
+                        viewer.update_plot()
 
-                        async def browse_mzml():
-                            path = await file_picker_dialog(
-                                title="Select mzML File",
-                                extensions=['.mzml', '.mzML']
-                            )
-                            if path:
-                                mzml_input.value = path
-
-                        ui.button('Browse', on_click=browse_mzml).props('dense outline')
-
-                        async def load_mzml_path():
-                            path = mzml_input.value
-                            if not path:
-                                ui.notify("Please enter a file path", type="warning")
-                                return
-                            if not Path(path).exists():
-                                ui.notify("File not found", type="warning")
-                                return
-
-                            # Show loading state
-                            viewer.set_loading(True, f"Loading {Path(path).name}...")
-                            if viewer.status_label:
-                                viewer.status_label.set_text(f"Loading {Path(path).name}...")
-
-                            try:
-                                # Run heavy I/O in background thread to keep UI responsive
-                                success = await run.io_bound(viewer.load_mzml_sync, path)
-                                if success:
-                                    # Update all UI elements after successful load
-                                    viewer.update_plot()
-                                    viewer.update_tic_plot()
-
-                                    # Update info labels
-                                    info_text = f"Loaded: {Path(path).name} | Spectra: {viewer.exp.size():,} | Peaks: {len(viewer.df):,}"
-                                    if viewer.has_faims:
-                                        info_text += f" | FAIMS: {len(viewer.faims_cvs)} CVs"
-                                    if viewer.info_label:
-                                        viewer.info_label.set_text(info_text)
-
-                                    # Update spectrum table
-                                    if viewer.spectrum_table is not None:
-                                        viewer.spectrum_table.rows = viewer.spectrum_data
-
-                                    # Update FAIMS UI
-                                    if viewer.has_faims:
-                                        if viewer.faims_info_label:
-                                            cv_str = ", ".join([f"{cv:.1f}V" for cv in viewer.faims_cvs])
-                                            viewer.faims_info_label.set_text(f"FAIMS CVs: {cv_str}")
-                                            viewer.faims_info_label.set_visibility(True)
-                                        if viewer.faims_toggle:
-                                            viewer.faims_toggle.set_visibility(True)
-
-                                    ui.notify(f"Loaded {len(viewer.df):,} peaks", type="positive")
-                                else:
-                                    ui.notify("No peaks found in file", type="warning")
-                            except Exception as ex:
-                                ui.notify(f"Error loading file: {ex}", type="negative")
-                            finally:
-                                viewer.set_loading(False)
-                                if viewer.status_label:
-                                    viewer.status_label.set_text("Ready")
-
-                        ui.button('Load', on_click=load_mzml_path).props('color=primary dense')
-
-                # FeatureXML
-                with ui.column().classes('flex-1 min-w-64'):
-                    ui.label('FeatureXML (Features)').classes('text-sm text-gray-400')
-                    with ui.row().classes('w-full items-end gap-2'):
-                        feature_input = ui.input(placeholder='/path/to/features.featureXML').classes('flex-1')
-
-                        async def browse_feature():
-                            path = await file_picker_dialog(
-                                title="Select FeatureXML File",
-                                extensions=['.featurexml', '.featureXML', '.xml']
-                            )
-                            if path:
-                                feature_input.value = path
-
-                        ui.button('Browse', on_click=browse_feature).props('dense outline')
-
-                        async def load_feature_path():
-                            path = feature_input.value
-                            if not path or not Path(path).exists():
-                                ui.notify("File not found", type="warning")
-                                return
-
-                            viewer.set_loading(True, f"Loading features...")
-                            try:
-                                success = await run.io_bound(viewer.load_featuremap_sync, path)
-                                if success:
-                                    viewer.update_plot()
-                                    if viewer.feature_info_label:
-                                        viewer.feature_info_label.set_text(f"Features: {viewer.feature_map.size():,}")
-                                    if viewer.feature_table is not None:
-                                        viewer.feature_table.rows = viewer.feature_data
-                                    ui.notify(f"Loaded {viewer.feature_map.size():,} features", type="positive")
-                            except Exception as ex:
-                                ui.notify(f"Error loading features: {ex}", type="negative")
-                            finally:
-                                viewer.set_loading(False)
-                                if viewer.status_label:
-                                    viewer.status_label.set_text("Ready")
-
-                        ui.button('Load', on_click=load_feature_path).props('color=primary dense')
-
-                        def clear_features():
-                            viewer.clear_features()
-                            viewer.update_plot()
-
-                        ui.button('Clear', on_click=clear_features).props('color=negative dense')
-
-                # idXML
-                with ui.column().classes('flex-1 min-w-64'):
-                    ui.label('idXML (Identifications)').classes('text-sm text-gray-400')
-                    with ui.row().classes('w-full items-end gap-2'):
-                        id_input = ui.input(placeholder='/path/to/ids.idXML').classes('flex-1')
-
-                        async def browse_id():
-                            path = await file_picker_dialog(
-                                title="Select idXML File",
-                                extensions=['.idxml', '.idXML', '.xml']
-                            )
-                            if path:
-                                id_input.value = path
-
-                        ui.button('Browse', on_click=browse_id).props('dense outline')
-
-                        async def load_id_path():
-                            path = id_input.value
-                            if not path or not Path(path).exists():
-                                ui.notify("File not found", type="warning")
-                                return
-
-                            viewer.set_loading(True, f"Loading identifications...")
-                            try:
-                                success = await run.io_bound(viewer.load_idxml_sync, path)
-                                if success:
-                                    viewer.update_plot()
-                                    if viewer.id_info_label:
-                                        viewer.id_info_label.set_text(f"IDs: {len(viewer.peptide_ids):,}")
-                                    if viewer.id_table is not None:
-                                        viewer.id_table.rows = viewer.id_data
-                                    ui.notify(f"Loaded {len(viewer.peptide_ids):,} peptide IDs", type="positive")
-                            except Exception as ex:
-                                ui.notify(f"Error loading IDs: {ex}", type="negative")
-                            finally:
-                                viewer.set_loading(False)
-                                if viewer.status_label:
-                                    viewer.status_label.set_text("Ready")
-
-                        ui.button('Load', on_click=load_id_path).props('color=primary dense')
-
-                        def clear_ids():
-                            viewer.clear_ids()
-                            viewer.update_plot()
-
-                        ui.button('Clear', on_click=clear_ids).props('color=negative dense')
+                    ui.button('Clear Features', on_click=clear_features).props('dense outline color=grey').classes('text-xs')
+                    ui.button('Clear IDs', on_click=clear_ids).props('dense outline color=grey').classes('text-xs')
 
         # Info bar
         with ui.row().classes('w-full justify-center gap-6 mb-2 flex-wrap'):
