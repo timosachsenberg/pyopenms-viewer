@@ -3367,24 +3367,6 @@ def create_ui():
                 spectrum_marker_cb = ui.checkbox('Marker', value=True, on_change=toggle_spectrum_marker).props('dense').classes('text-cyan-400')
                 ui.tooltip('Show/hide the spectrum position marker (crosshair) on the 2D peakmap.')
 
-                # 3D View button
-                ui.label('|').classes('text-gray-600 mx-2')
-
-                def toggle_3d_view():
-                    viewer.show_3d_view = not viewer.show_3d_view
-                    if viewer.scene_3d_container:
-                        viewer.scene_3d_container.set_visibility(viewer.show_3d_view)
-                    if viewer.show_3d_view and viewer.df is not None:
-                        viewer.update_3d_view()
-                    # Update button appearance
-                    if viewer.show_3d_view:
-                        view_3d_btn.props('color=purple')
-                    else:
-                        view_3d_btn.props('color=grey')
-
-                view_3d_btn = ui.button('3D Peak View', on_click=toggle_3d_view).props('dense color=grey').classes('text-sm')
-                ui.label('(RT<120s, m/z<50)').classes('text-xs text-gray-500')
-
             # Breadcrumb trail and coordinate display row
             with ui.row().classes('w-full items-center justify-between mb-1'):
                 with ui.row().classes('items-center gap-2'):
@@ -3521,6 +3503,21 @@ def create_ui():
                     viewer.image_element.on('mousemove', on_mousemove)
                     viewer.image_element.on('dblclick', on_dblclick)
 
+                    # 3D View Container (below 2D peakmap, hidden by default)
+                    viewer.scene_3d_container = ui.column().classes('w-full mt-1')
+                    viewer.scene_3d_container.set_visibility(False)
+                    with viewer.scene_3d_container:
+                        viewer.view_3d_status = ui.label('').classes('text-xs text-yellow-400')
+                        # Create empty plotly figure for 3D view
+                        empty_fig = go.Figure()
+                        empty_fig.update_layout(
+                            paper_bgcolor='#1a1a1f',
+                            plot_bgcolor='#1a1a1f',
+                            height=400,
+                            margin=dict(l=0, r=0, t=0, b=0)
+                        )
+                        viewer.plot_3d = ui.plotly(empty_fig).style(f'width: {viewer.canvas_width}px;')
+
                 # Minimap panel (to the right of peak map)
                 with ui.column().classes('flex-none'):
                     ui.label('Overview').classes('text-xs text-gray-400 mb-1')
@@ -3542,12 +3539,26 @@ def create_ui():
 
                     viewer.minimap_image.on('click', on_minimap_click)
 
-                    # Back button for zoom history
+                    # Back and 3D View buttons in same row
                     def go_back():
                         if len(viewer.zoom_history) > 1:
                             viewer.go_to_zoom_history(len(viewer.zoom_history) - 2)
 
-                    ui.button('← Back', on_click=go_back).props('dense size=sm color=grey').classes('mt-1').tooltip('Go to previous view')
+                    def toggle_3d_view():
+                        viewer.show_3d_view = not viewer.show_3d_view
+                        if viewer.scene_3d_container:
+                            viewer.scene_3d_container.set_visibility(viewer.show_3d_view)
+                        if viewer.show_3d_view and viewer.df is not None:
+                            viewer.update_3d_view()
+                        # Update button appearance
+                        if viewer.show_3d_view:
+                            view_3d_btn.props('color=purple')
+                        else:
+                            view_3d_btn.props('color=grey')
+
+                    with ui.row().classes('mt-1 gap-1'):
+                        ui.button('← Back', on_click=go_back).props('dense size=sm color=grey').tooltip('Go to previous view')
+                        view_3d_btn = ui.button('3D', on_click=toggle_3d_view).props('dense size=sm color=grey').tooltip('Toggle 3D peak view')
 
         # 1D Spectrum Browser (collapsible panel, starts collapsed until file is loaded)
         viewer.spectrum_expansion = ui.expansion('1D Spectrum', icon='show_chart', value=False).classes('w-full max-w-[1700px]')
@@ -3582,7 +3593,7 @@ def create_ui():
                     viewer.spectrum_browser_info = ui.label('Click TIC or use spectrum table to select').classes('text-xs text-gray-500')
 
                 # Spectrum plot
-                viewer.spectrum_browser_plot = ui.plotly(go.Figure()).classes('w-full').style(f'max-width: {viewer.canvas_width}px;')
+                viewer.spectrum_browser_plot = ui.plotly(go.Figure()).classes('w-full')
 
         # FAIMS Multi-CV Peak Maps (hidden by default)
         faims_container = ui.card().classes('w-full max-w-6xl mt-2 p-2')
@@ -3622,27 +3633,6 @@ def create_ui():
 
             # Store the function reference for later use
             viewer._create_faims_images = create_faims_images
-
-        # 3D View Container (hidden by default, shown when toggle enabled) - centered
-        viewer.scene_3d_container = ui.column().classes('w-full max-w-6xl mt-2 mx-auto')
-        viewer.scene_3d_container.set_visibility(False)
-        with viewer.scene_3d_container:
-            with ui.card().classes('w-full').style('background: #1a1a1f; padding: 0.5rem;'):
-                with ui.row().classes('w-full items-center justify-between'):
-                    with ui.row().classes('items-center gap-2'):
-                        ui.label('3D Peak View').classes('text-sm font-semibold text-purple-400')
-                        ui.label('(pyopenms-viz)').classes('text-xs text-gray-600')
-                    viewer.view_3d_status = ui.label('').classes('text-xs text-yellow-400')
-
-                # Create empty plotly figure for 3D view
-                empty_fig = go.Figure()
-                empty_fig.update_layout(
-                    paper_bgcolor='#1a1a1f',
-                    plot_bgcolor='#1a1a1f',
-                    height=500,
-                    margin=dict(l=0, r=0, t=0, b=0)
-                )
-                viewer.plot_3d = ui.plotly(empty_fig).classes('w-full').style('margin-top: -10px;')
 
         # Spectrum Table (moved up for better visibility)
         viewer.spectrum_table_expansion = ui.expansion('Spectrum Table', icon='list', value=False).classes('w-full max-w-[1700px]')
