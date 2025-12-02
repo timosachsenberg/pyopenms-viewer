@@ -547,7 +547,6 @@ class MzMLViewer:
         self.rt_range_label = None
         self.mz_range_label = None
         self.feature_table = None
-        self.id_table = None
         self.tic_plot = None
         self.tic_expansion = None  # Collapsible panel for TIC
 
@@ -1100,7 +1099,11 @@ class MzMLViewer:
         return data
 
     def _extract_spectrum_data(self) -> List[Dict[str, Any]]:
-        """Extract spectrum metadata for the spectrum browser table."""
+        """Extract spectrum metadata for the unified spectrum table.
+
+        Includes fields for ID info (sequence, score) which are populated
+        when IDs are loaded via _link_ids_to_spectra().
+        """
         if self.exp is None:
             return []
 
@@ -1140,9 +1143,81 @@ class MzMLViewer:
                 'mz_range': f"{mz_min:.1f}-{mz_max:.1f}" if n_peaks > 0 else '-',
                 'precursor_mz': precursor_mz,
                 'precursor_z': precursor_charge,
+                # ID fields - populated by _link_ids_to_spectra()
+                'sequence': '-',
+                'full_sequence': '',
+                'score': '-',
+                'id_idx': None,  # Index into peptide_ids list
             })
 
         return data
+
+    def _link_ids_to_spectra(self, rt_tolerance: float = 5.0, mz_tolerance: float = 0.5) -> None:
+        """Link peptide IDs to spectra by matching RT and precursor m/z.
+
+        Updates spectrum_data with ID info (sequence, score) for matching MS2 spectra.
+        """
+        if not self.peptide_ids or not self.spectrum_data:
+            return
+
+        # Build lookup of spectrum indices by approximate RT for faster matching
+        for spec_row in self.spectrum_data:
+            # Clear any existing ID info
+            spec_row['sequence'] = '-'
+            spec_row['full_sequence'] = ''
+            spec_row['score'] = '-'
+            spec_row['id_idx'] = None
+
+        # For each ID, find matching spectrum
+        for id_idx, pep_id in enumerate(self.peptide_ids):
+            id_rt = pep_id.getRT()
+            id_mz = pep_id.getMZ()
+
+            hits = pep_id.getHits()
+            if not hits:
+                continue
+
+            best_hit = hits[0]
+            sequence = best_hit.getSequence().toString()
+            score = best_hit.getScore()
+            charge = best_hit.getCharge()
+
+            # Find best matching MS2 spectrum
+            best_spec_idx = None
+            best_rt_diff = float('inf')
+
+            for spec_row in self.spectrum_data:
+                if spec_row['ms_level'] != 2:
+                    continue
+
+                spec_rt = spec_row['rt']
+                spec_prec_mz = spec_row['precursor_mz']
+
+                if spec_prec_mz == '-':
+                    continue
+
+                if abs(spec_rt - id_rt) <= rt_tolerance and abs(spec_prec_mz - id_mz) <= mz_tolerance:
+                    rt_diff = abs(spec_rt - id_rt)
+                    if rt_diff < best_rt_diff:
+                        best_rt_diff = rt_diff
+                        best_spec_idx = spec_row['idx']
+
+            # Update spectrum row with ID info
+            if best_spec_idx is not None:
+                for spec_row in self.spectrum_data:
+                    if spec_row['idx'] == best_spec_idx:
+                        # Only update if this is a better match (closer RT) or no existing match
+                        if spec_row['id_idx'] is None or best_rt_diff < spec_row.get('_rt_diff', float('inf')):
+                            seq_display = sequence[:25] + "..." if len(sequence) > 25 else sequence
+                            spec_row['sequence'] = seq_display
+                            spec_row['full_sequence'] = sequence
+                            spec_row['score'] = round(score, 4) if score != 0 else '-'
+                            spec_row['id_idx'] = id_idx
+                            spec_row['_rt_diff'] = best_rt_diff
+                            # Also update charge from ID if precursor charge is missing
+                            if spec_row['precursor_z'] == '-' and charge > 0:
+                                spec_row['precursor_z'] = charge
+                        break
 
     def show_spectrum_in_browser(self, spectrum_idx: int):
         """Display a spectrum in the 1D browser view. Shows annotations if matching ID exists."""
@@ -1450,6 +1525,8 @@ class MzMLViewer:
             self.id_file = filepath
             self.selected_id_idx = None
             self.id_data = self._extract_id_data()
+            # Link IDs to spectra for unified table
+            self._link_ids_to_spectra()
             return True
         except Exception as e:
             print(f"Error loading IDs: {e}")
@@ -1471,15 +1548,20 @@ class MzMLViewer:
             self.selected_id_idx = None
             self.id_data = self._extract_id_data()
 
+            # Link IDs to spectra for unified table
+            self._link_ids_to_spectra()
+
             n_ids = len(self.peptide_ids)
+            n_linked = sum(1 for s in self.spectrum_data if s.get('id_idx') is not None)
             if self.id_info_label:
-                self.id_info_label.set_text(f"IDs: {n_ids:,}")
+                self.id_info_label.set_text(f"IDs: {n_ids:,} ({n_linked} linked)")
             if self.status_label:
                 self.status_label.set_text("Ready")
-            ui.notify(f"Loaded {n_ids:,} peptide IDs", type="positive")
+            ui.notify(f"Loaded {n_ids:,} peptide IDs ({n_linked} linked to spectra)", type="positive")
 
-            if self.id_table is not None:
-                self.id_table.rows = self.id_data
+            # Update unified spectrum table
+            if self.spectrum_table is not None:
+                self.spectrum_table.rows = self.spectrum_data
 
             self.set_loading(False)
             # NiceGUI 3.x: Emit event for state management
@@ -1500,10 +1582,17 @@ class MzMLViewer:
         self.id_file = None
         self.id_data = []
         self.selected_id_idx = None
+        # Clear ID info from unified spectrum data
+        for spec_row in self.spectrum_data:
+            spec_row['sequence'] = '-'
+            spec_row['full_sequence'] = ''
+            spec_row['score'] = '-'
+            spec_row['id_idx'] = None
         if self.id_info_label:
             self.id_info_label.set_text("IDs: None")
-        if self.id_table is not None:
-            self.id_table.rows = []
+        # Update unified spectrum table
+        if self.spectrum_table is not None:
+            self.spectrum_table.rows = self.spectrum_data
         ui.notify("Identifications cleared", type="info")
 
     def find_ms2_spectrum(self, rt: float, precursor_mz: float, rt_tolerance: float = 5.0, mz_tolerance: float = 0.5) -> Optional[MSSpectrum]:
@@ -3319,11 +3408,13 @@ def create_ui():
                         success = await run.io_bound(viewer.load_idxml_sync, tmp_path)
                         if success:
                             viewer.update_plot()
+                            n_linked = sum(1 for s in viewer.spectrum_data if s.get('id_idx') is not None)
                             if viewer.id_info_label:
-                                viewer.id_info_label.set_text(f"IDs: {len(viewer.peptide_ids):,}")
-                            if viewer.id_table is not None:
-                                viewer.id_table.rows = viewer.id_data
-                            ui.notify(f"Loaded {len(viewer.peptide_ids):,} IDs from {original_name}", type="positive")
+                                viewer.id_info_label.set_text(f"IDs: {len(viewer.peptide_ids):,} ({n_linked} linked)")
+                            # Update unified spectrum table with ID info
+                            if viewer.spectrum_table is not None:
+                                viewer.spectrum_table.rows = viewer.spectrum_data
+                            ui.notify(f"Loaded {len(viewer.peptide_ids):,} IDs ({n_linked} linked) from {original_name}", type="positive")
 
                     else:
                         ui.notify(f"Unknown file type: {original_name}. Supported: .mzML, .featureXML, .idXML", type="warning")
@@ -3787,56 +3878,147 @@ def create_ui():
             # Store the function reference for later use
             viewer._create_faims_images = create_faims_images
 
-        # Spectrum Table (moved up for better visibility)
-        viewer.spectrum_table_expansion = ui.expansion('Spectrum Table', icon='list', value=False).classes('w-full max-w-[1700px]')
+        # Unified Spectra Table (combines spectrum metadata + ID info)
+        viewer.spectrum_table_expansion = ui.expansion('Spectra', icon='list', value=False).classes('w-full max-w-[1700px]')
         with viewer.spectrum_table_expansion:
-            ui.label('Click a row to view the spectrum in the 1D viewer above').classes('text-sm text-gray-400 mb-2')
+            ui.label('Click a row to view spectrum. Identified spectra show sequence and score.').classes('text-sm text-gray-400 mb-2')
 
-            # Filters row
+            # View mode and column toggles
+            with ui.row().classes('w-full items-center gap-4 mb-2'):
+                # View filter: All, MS2 Only, Identified Only
+                view_mode = ui.toggle(
+                    ['All', 'MS2', 'Identified'],
+                    value='All',
+                ).props('dense size=sm').classes('text-xs')
+
+                # Advanced columns toggle
+                show_advanced = ui.checkbox('Advanced', value=False).props('dense').classes('text-xs text-gray-400')
+                ui.tooltip('Show additional columns: Peaks, TIC, BPI, m/z Range')
+
+            # Additional filters row
             with ui.row().classes('w-full items-end gap-2 mb-2 flex-wrap'):
                 ui.label('Filter:').classes('text-xs text-gray-400')
-                spec_ms_filter = ui.select(['All', 'MS1', 'MS2'], value='All', label='MS Level').props('dense outlined').classes('w-20')
                 spec_rt_min = ui.number(label='RT Min', format='%.0f').props('dense outlined').classes('w-20')
                 spec_rt_max = ui.number(label='RT Max', format='%.0f').props('dense outlined').classes('w-20')
-                spec_min_peaks = ui.number(label='Min Peaks', format='%.0f').props('dense outlined').classes('w-24')
+                spec_seq_pattern = ui.input(label='Sequence', placeholder='e.g. PEPTIDE').props('dense outlined').classes('w-28')
+                spec_min_score = ui.number(label='Min Score', format='%.2f').props('dense outlined').classes('w-24')
 
-                def apply_spectrum_filter():
-                    ms_level = None
-                    if spec_ms_filter.value == 'MS1':
-                        ms_level = 1
-                    elif spec_ms_filter.value == 'MS2':
-                        ms_level = 2
+                # Annotation settings
+                def toggle_annotate_peaks():
+                    viewer.annotate_peaks = annotate_peaks_cb.value
+                    if viewer.selected_spectrum_idx is not None:
+                        viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
 
-                    filtered = viewer.filter_spectrum_data(
-                        ms_level=ms_level,
-                        rt_min=spec_rt_min.value if spec_rt_min.value else None,
-                        rt_max=spec_rt_max.value if spec_rt_max.value else None,
-                        min_peaks=int(spec_min_peaks.value) if spec_min_peaks.value else None
-                    )
-                    viewer.spectrum_table.rows = filtered
-                    ui.notify(f"Showing {len(filtered)} spectra", type="info")
+                def update_tolerance():
+                    if tolerance_input.value is not None and tolerance_input.value > 0:
+                        viewer.annotation_tolerance_da = tolerance_input.value
+                        if viewer.selected_spectrum_idx is not None and viewer.annotate_peaks:
+                            viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
 
-                def reset_spectrum_filter():
-                    spec_ms_filter.value = 'All'
-                    spec_rt_min.value = None
-                    spec_rt_max.value = None
-                    spec_min_peaks.value = None
-                    viewer.spectrum_table.rows = viewer.spectrum_data
+                annotate_peaks_cb = ui.checkbox(
+                    'Annotate',
+                    value=viewer.annotate_peaks,
+                    on_change=toggle_annotate_peaks
+                ).props('dense').classes('text-blue-400')
 
-                ui.button('Apply', on_click=apply_spectrum_filter).props('dense size=sm color=primary')
-                ui.button('Reset', on_click=reset_spectrum_filter).props('dense size=sm color=grey')
+                tolerance_input = ui.number(
+                    label='Tol (Da)',
+                    value=viewer.annotation_tolerance_da,
+                    format='%.2f',
+                    on_change=update_tolerance
+                ).props('dense outlined').classes('w-20')
+                ui.tooltip('Mass tolerance for matching peaks to theoretical ions (Da)')
 
-            spectrum_columns = [
+            # Define all columns - basic and advanced
+            basic_columns = [
                 {'name': 'idx', 'label': '#', 'field': 'idx', 'sortable': True, 'align': 'left'},
                 {'name': 'rt', 'label': 'RT (s)', 'field': 'rt', 'sortable': True, 'align': 'right'},
                 {'name': 'ms_level', 'label': 'MS', 'field': 'ms_level', 'sortable': True, 'align': 'center'},
+                {'name': 'precursor_mz', 'label': 'Prec m/z', 'field': 'precursor_mz', 'sortable': True, 'align': 'right'},
+                {'name': 'precursor_z', 'label': 'Z', 'field': 'precursor_z', 'sortable': True, 'align': 'center'},
+                {'name': 'sequence', 'label': 'Sequence', 'field': 'sequence', 'sortable': True, 'align': 'left'},
+                {'name': 'score', 'label': 'Score', 'field': 'score', 'sortable': True, 'align': 'right'},
+            ]
+
+            advanced_columns = [
                 {'name': 'n_peaks', 'label': 'Peaks', 'field': 'n_peaks', 'sortable': True, 'align': 'right'},
                 {'name': 'tic', 'label': 'TIC', 'field': 'tic', 'sortable': True, 'align': 'right'},
                 {'name': 'bpi', 'label': 'BPI', 'field': 'bpi', 'sortable': True, 'align': 'right'},
                 {'name': 'mz_range', 'label': 'm/z Range', 'field': 'mz_range', 'sortable': False, 'align': 'center'},
-                {'name': 'precursor_mz', 'label': 'Prec m/z', 'field': 'precursor_mz', 'sortable': True, 'align': 'right'},
-                {'name': 'precursor_z', 'label': 'Prec Z', 'field': 'precursor_z', 'sortable': True, 'align': 'center'},
             ]
+
+            def get_filtered_data():
+                """Filter spectrum data based on view mode and filters."""
+                data = viewer.spectrum_data
+
+                # Apply view mode filter
+                mode = view_mode.value
+                if mode == 'MS2':
+                    data = [s for s in data if s['ms_level'] == 2]
+                elif mode == 'Identified':
+                    data = [s for s in data if s.get('id_idx') is not None]
+
+                # Apply RT filter
+                if spec_rt_min.value is not None:
+                    data = [s for s in data if s['rt'] >= spec_rt_min.value]
+                if spec_rt_max.value is not None:
+                    data = [s for s in data if s['rt'] <= spec_rt_max.value]
+
+                # Apply sequence filter
+                if spec_seq_pattern.value:
+                    pattern = spec_seq_pattern.value.upper()
+                    data = [s for s in data if pattern in s.get('full_sequence', '').upper()]
+
+                # Apply score filter
+                if spec_min_score.value is not None:
+                    data = [s for s in data if s.get('score') != '-' and
+                            isinstance(s.get('score'), (int, float)) and s['score'] >= spec_min_score.value]
+
+                return data
+
+            def update_table():
+                """Update table with current filters and column visibility."""
+                filtered = get_filtered_data()
+                viewer.spectrum_table.rows = filtered
+
+                # Update columns based on advanced toggle
+                if show_advanced.value:
+                    # Insert advanced columns after ms_level
+                    cols = basic_columns[:3] + advanced_columns + basic_columns[3:]
+                else:
+                    cols = basic_columns
+
+                viewer.spectrum_table.columns = cols
+                ui.notify(f"Showing {len(filtered)} spectra", type="info")
+
+            def on_view_mode_change(e):
+                update_table()
+
+            def on_advanced_change(e):
+                # Update columns based on advanced toggle
+                if show_advanced.value:
+                    cols = basic_columns[:3] + advanced_columns + basic_columns[3:]
+                else:
+                    cols = basic_columns
+                viewer.spectrum_table.columns = cols
+
+            view_mode.on('update:model-value', on_view_mode_change)
+            show_advanced.on('update:model-value', on_advanced_change)
+
+            # Filter buttons
+            with ui.row().classes('gap-2 mb-2'):
+                ui.button('Apply', on_click=update_table).props('dense size=sm color=primary')
+
+                def reset_filters():
+                    view_mode.value = 'All'
+                    spec_rt_min.value = None
+                    spec_rt_max.value = None
+                    spec_seq_pattern.value = ''
+                    spec_min_score.value = None
+                    viewer.spectrum_table.rows = viewer.spectrum_data
+                    viewer.spectrum_table.columns = basic_columns
+
+                ui.button('Reset', on_click=reset_filters).props('dense size=sm color=grey')
 
             def on_spectrum_click(e):
                 row = e.args[1]
@@ -3844,7 +4026,7 @@ def create_ui():
                     viewer.show_spectrum_in_browser(row['idx'])
 
             viewer.spectrum_table = ui.table(
-                columns=spectrum_columns, rows=viewer.spectrum_data, row_key='idx',
+                columns=basic_columns, rows=viewer.spectrum_data, row_key='idx',
                 pagination={'rowsPerPage': 10, 'sortBy': 'idx', 'descending': False},
                 selection='single',
                 on_select=lambda e: viewer.show_spectrum_in_browser(e.selection[0]['idx']) if e.selection else None
@@ -3920,100 +4102,6 @@ def create_ui():
             ).classes('w-full hover-highlight').on('rowClick', on_feature_click)
             viewer.feature_table.on('row-dblclick', on_feature_hover)  # Use dblclick as hover proxy
             viewer.feature_table.props('dark flat bordered dense')
-
-        # ID Table
-        with ui.expansion('Identifications', icon='biotech').classes('w-full max-w-[1700px] mt-2'):
-            ui.label('Click a row to zoom and view annotated spectrum').classes('text-sm text-gray-400 mb-2')
-
-            # ID filters row
-            with ui.row().classes('w-full items-end gap-2 mb-2 flex-wrap'):
-                ui.label('Filter:').classes('text-xs text-gray-400')
-                id_seq_pattern = ui.input(label='Sequence', placeholder='e.g. PEPTIDE').props('dense outlined').classes('w-32')
-                id_min_score = ui.number(label='Min Score', format='%.2f').props('dense outlined').classes('w-24')
-                id_charge = ui.select(['All', '1', '2', '3', '4', '5+'], value='All', label='Charge').props('dense outlined').classes('w-20')
-
-                # Annotate peaks checkbox and tolerance
-                def toggle_annotate_peaks():
-                    viewer.annotate_peaks = annotate_peaks_cb.value
-                    # Refresh spectrum view if one is displayed
-                    if viewer.selected_spectrum_idx is not None:
-                        viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
-
-                def update_tolerance():
-                    if tolerance_input.value is not None and tolerance_input.value > 0:
-                        viewer.annotation_tolerance_da = tolerance_input.value
-                        # Refresh spectrum view if one is displayed
-                        if viewer.selected_spectrum_idx is not None and viewer.annotate_peaks:
-                            viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
-
-                annotate_peaks_cb = ui.checkbox(
-                    'Annotate Peaks',
-                    value=viewer.annotate_peaks,
-                    on_change=toggle_annotate_peaks
-                ).props('dense').classes('text-blue-400')
-
-                tolerance_input = ui.number(
-                    label='Tol (Da)',
-                    value=viewer.annotation_tolerance_da,
-                    format='%.2f',
-                    on_change=update_tolerance
-                ).props('dense outlined').classes('w-24')
-                ui.tooltip('Mass tolerance for matching peaks to theoretical ions (Da)')
-
-                def apply_id_filter():
-                    charge_val = None
-                    if id_charge.value and id_charge.value != 'All':
-                        if id_charge.value == '5+':
-                            charge_val = 5  # Will match 5 or greater
-                        else:
-                            charge_val = int(id_charge.value)
-
-                    filtered = viewer.filter_id_data(
-                        sequence_pattern=id_seq_pattern.value if id_seq_pattern.value else None,
-                        min_score=id_min_score.value if id_min_score.value else None,
-                        charge=charge_val
-                    )
-                    viewer.id_table.rows = filtered
-                    ui.notify(f"Showing {len(filtered)} identifications", type="info")
-
-                def reset_id_filter():
-                    id_seq_pattern.value = ''
-                    id_min_score.value = None
-                    id_charge.value = 'All'
-                    viewer.id_table.rows = viewer.id_data
-
-                ui.button('Apply', on_click=apply_id_filter).props('dense size=sm color=primary')
-                ui.button('Reset', on_click=reset_id_filter).props('dense size=sm color=grey')
-
-            id_columns = [
-                {'name': 'idx', 'label': '#', 'field': 'idx', 'sortable': True, 'align': 'left'},
-                {'name': 'rt', 'label': 'RT (s)', 'field': 'rt', 'sortable': True, 'align': 'right'},
-                {'name': 'mz', 'label': 'm/z', 'field': 'mz', 'sortable': True, 'align': 'right'},
-                {'name': 'sequence', 'label': 'Sequence', 'field': 'sequence', 'sortable': True, 'align': 'left'},
-                {'name': 'charge', 'label': 'Z', 'field': 'charge', 'sortable': True, 'align': 'center'},
-                {'name': 'score', 'label': 'Score', 'field': 'score', 'sortable': True, 'align': 'right'},
-            ]
-
-            def on_id_click(e):
-                row = e.args[1]
-                if row and 'idx' in row:
-                    viewer.zoom_to_id(row['idx'])
-
-            def on_id_hover(e):
-                """Handle ID row hover for visual feedback."""
-                try:
-                    row = e.args[1] if len(e.args) > 1 else None
-                    if row and 'idx' in row:
-                        viewer.set_hover_id(row['idx'])
-                except Exception:
-                    pass
-
-            viewer.id_table = ui.table(
-                columns=id_columns, rows=[], row_key='idx',
-                pagination={'rowsPerPage': 8, 'sortBy': 'score', 'descending': True}
-            ).classes('w-full hover-highlight').on('rowClick', on_id_click)
-            viewer.id_table.on('row-dblclick', on_id_hover)  # Use dblclick as preview
-            viewer.id_table.props('dark flat bordered dense')
 
         # Custom range
         with ui.expansion('Custom Range', icon='tune').classes('w-full max-w-[1700px] mt-4'):
