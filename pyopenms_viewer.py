@@ -49,7 +49,7 @@ from pyopenms import (
     FeatureMap, FeatureXMLFile,
     IdXMLFile, PeptideIdentification, ProteinIdentification,
     TheoreticalSpectrumGenerator, AASequence, Param,
-    MSSpectrum
+    MSSpectrum, SpectrumAnnotator, SpectrumAlignment
 )
 
 # NiceGUI for the web interface
@@ -159,15 +159,119 @@ def generate_theoretical_spectrum(sequence: AASequence, charge: int) -> Dict[str
     return ions
 
 
+def annotate_spectrum_with_id(
+    spectrum: MSSpectrum,
+    peptide_hit,
+    tolerance_da: float = 0.05
+) -> List[Tuple[int, str, str]]:
+    """Annotate a spectrum using SpectrumAnnotator.
+
+    Returns list of (peak_index, ion_name, ion_type) tuples for matched peaks.
+    Uses TheoreticalSpectrumGenerator and SpectrumAnnotator to generate annotations.
+    Annotations are stored in the spectrum's string data array "IonNames".
+
+    Args:
+        spectrum: The experimental MS2 spectrum
+        peptide_hit: PeptideHit with sequence information
+        tolerance_da: Mass tolerance in Da for matching (default 0.05 Da)
+
+    Returns:
+        List of (peak_index, ion_name, ion_type) for annotated peaks
+    """
+    annotations = []
+
+    try:
+        # Create copy to avoid modifying original
+        spec_copy = MSSpectrum(spectrum)
+
+        # Setup TheoreticalSpectrumGenerator
+        tsg = TheoreticalSpectrumGenerator()
+        params = tsg.getParameters()
+        params.setValue("add_b_ions", "true")
+        params.setValue("add_y_ions", "true")
+        params.setValue("add_a_ions", "true")
+        params.setValue("add_c_ions", "false")
+        params.setValue("add_x_ions", "false")
+        params.setValue("add_z_ions", "false")
+        params.setValue("add_metainfo", "true")
+        tsg.setParameters(params)
+
+        # Setup SpectrumAlignment with absolute tolerance in Da
+        sa = SpectrumAlignment()
+        sa_params = sa.getParameters()
+        sa_params.setValue("tolerance", tolerance_da)
+        sa_params.setValue("is_relative_tolerance", "false")
+        sa.setParameters(sa_params)
+
+        # Setup SpectrumAnnotator
+        annotator = SpectrumAnnotator()
+
+        # Annotate the spectrum - this adds "IonNames" string data array
+        annotator.annotateMatches(spec_copy, peptide_hit, tsg, sa)
+
+        # Read annotations from spectrum's string data arrays
+        sda = spec_copy.getStringDataArrays()
+        for arr in sda:
+            arr_name = arr.getName()
+            # Handle both bytes and string for array name
+            if arr_name == "IonNames" or arr_name == b"IonNames":
+                for peak_idx, ann_str in enumerate(arr):
+                    if ann_str:
+                        # Handle bytes or string annotation
+                        if isinstance(ann_str, bytes):
+                            ann_str = ann_str.decode('utf-8', errors='ignore')
+
+                        # Clean up the annotation
+                        ion_name = ann_str.strip("'\"")
+
+                        # Determine ion type from the cleaned name
+                        if ion_name.startswith('y'):
+                            ion_type = 'y'
+                        elif ion_name.startswith('b'):
+                            ion_type = 'b'
+                        elif ion_name.startswith('a'):
+                            ion_type = 'a'
+                        elif ion_name.startswith('c'):
+                            ion_type = 'c'
+                        elif ion_name.startswith('x'):
+                            ion_type = 'x'
+                        elif ion_name.startswith('z'):
+                            ion_type = 'z'
+                        else:
+                            ion_type = 'unknown'
+
+                        annotations.append((peak_idx, ion_name, ion_type))
+                break
+
+    except Exception as e:
+        # If annotation fails, return empty list
+        print(f"SpectrumAnnotator error: {e}")
+
+    return annotations
+
+
 def create_annotated_spectrum_plot(
     exp_mz: np.ndarray,
     exp_int: np.ndarray,
     sequence_str: str,
     charge: int,
     precursor_mz: float,
-    tolerance_da: float = 0.5
+    tolerance_da: float = 0.5,
+    peak_annotations: Optional[List[Tuple[int, str, str]]] = None,
+    annotate: bool = True
 ) -> go.Figure:
-    """Create an annotated spectrum plot using Plotly."""
+    """Create an annotated spectrum plot using Plotly.
+
+    Args:
+        exp_mz: Experimental m/z values
+        exp_int: Experimental intensity values
+        sequence_str: Peptide sequence string
+        charge: Precursor charge
+        precursor_mz: Precursor m/z value
+        tolerance_da: Mass tolerance in Da for matching (used if no peak_annotations)
+        peak_annotations: Optional list of (peak_index, ion_name, ion_type) from SpectrumAnnotator
+        annotate: Whether to show annotations (if False, shows raw spectrum)
+    """
 
     # Normalize intensities to percentage
     max_int = exp_int.max() if len(exp_int) > 0 else 1
@@ -203,26 +307,39 @@ def create_annotated_spectrum_plot(
         hovertemplate='m/z: %{x:.4f}<br>Intensity: %{y:.1f}%<extra></extra>'
     ))
 
-    # Try to generate theoretical spectrum for annotation
-    try:
-        seq = AASequence.fromString(sequence_str)
-        theo_ions = generate_theoretical_spectrum(seq, charge)
+    # Add annotations if enabled
+    if annotate:
+        matched_peaks = {'b': [], 'y': [], 'a': [], 'c': [], 'x': [], 'z': [], 'unknown': []}
 
-        # Match theoretical to experimental and annotate
-        matched_peaks = {'b': [], 'y': []}  # Group by ion type
+        if peak_annotations:
+            # Use provided peak annotations from SpectrumAnnotator
+            for peak_idx, ion_name, ion_type in peak_annotations:
+                if peak_idx < len(exp_mz):
+                    matched_peaks[ion_type].append({
+                        'mz': exp_mz[peak_idx],
+                        'intensity': exp_int_norm[peak_idx],
+                        'label': ion_name
+                    })
+        else:
+            # Fall back to generating theoretical spectrum for annotation
+            try:
+                seq = AASequence.fromString(sequence_str)
+                theo_ions = generate_theoretical_spectrum(seq, charge)
 
-        for ion_type, ions in [('b', theo_ions['b']), ('y', theo_ions['y'])]:
-            for theo_mz, ion_name in ions:
-                # Find closest experimental peak
-                if len(exp_mz) > 0:
-                    diffs = np.abs(exp_mz - theo_mz)
-                    min_idx = np.argmin(diffs)
-                    if diffs[min_idx] <= tolerance_da:
-                        matched_peaks[ion_type].append({
-                            'mz': exp_mz[min_idx],
-                            'intensity': exp_int_norm[min_idx],
-                            'label': ion_name
-                        })
+                for ion_type, ions in [('b', theo_ions['b']), ('y', theo_ions['y'])]:
+                    for theo_mz, ion_name in ions:
+                        # Find closest experimental peak
+                        if len(exp_mz) > 0:
+                            diffs = np.abs(exp_mz - theo_mz)
+                            min_idx = np.argmin(diffs)
+                            if diffs[min_idx] <= tolerance_da:
+                                matched_peaks[ion_type].append({
+                                    'mz': exp_mz[min_idx],
+                                    'intensity': exp_int_norm[min_idx],
+                                    'label': ion_name
+                                })
+            except Exception:
+                pass
 
         # Add matched peaks as colored lines grouped by ion type
         for ion_type, peaks in matched_peaks.items():
@@ -266,10 +383,6 @@ def create_annotated_spectrum_plot(
                     font=dict(size=9, color=color),
                     textangle=-45
                 )
-
-    except Exception as e:
-        # If annotation fails, just show the raw spectrum
-        pass
 
     # Add precursor marker
     fig.add_vline(x=precursor_mz, line_dash="dash", line_color="orange",
@@ -409,6 +522,8 @@ class MzMLViewer:
         self.colormap = 'jet'  # Default colormap
         self.rt_in_minutes = False  # Display RT in minutes instead of seconds
         self.spectrum_intensity_percent = True  # Display spectrum intensity as percentage (vs absolute)
+        self.annotate_peaks = True  # Annotate peaks in spectrum view when ID is selected
+        self.annotation_tolerance_da = 0.05  # Mass tolerance for peak annotation in Da
 
         # Colors
         self.centroid_color = (0, 255, 100, 255)
@@ -1059,10 +1174,19 @@ class MzMLViewer:
                 precursors = spec.getPrecursors()
                 prec_mz = precursors[0].getMZ() if precursors else pep_id.getMZ()
 
+                # Get peak annotations if enabled
+                peak_annotations = None
+                if self.annotate_peaks:
+                    peak_annotations = annotate_spectrum_with_id(
+                        spec, best_hit, tolerance_da=self.annotation_tolerance_da
+                    )
+
                 # Create annotated spectrum plot
                 fig = create_annotated_spectrum_plot(
                     mz_array, int_array,
-                    sequence_str, charge, prec_mz
+                    sequence_str, charge, prec_mz,
+                    peak_annotations=peak_annotations,
+                    annotate=self.annotate_peaks
                 )
 
                 # Update title to include spectrum index
@@ -3807,6 +3931,34 @@ def create_ui():
                 id_seq_pattern = ui.input(label='Sequence', placeholder='e.g. PEPTIDE').props('dense outlined').classes('w-32')
                 id_min_score = ui.number(label='Min Score', format='%.2f').props('dense outlined').classes('w-24')
                 id_charge = ui.select(['All', '1', '2', '3', '4', '5+'], value='All', label='Charge').props('dense outlined').classes('w-20')
+
+                # Annotate peaks checkbox and tolerance
+                def toggle_annotate_peaks():
+                    viewer.annotate_peaks = annotate_peaks_cb.value
+                    # Refresh spectrum view if one is displayed
+                    if viewer.selected_spectrum_idx is not None:
+                        viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
+
+                def update_tolerance():
+                    if tolerance_input.value is not None and tolerance_input.value > 0:
+                        viewer.annotation_tolerance_da = tolerance_input.value
+                        # Refresh spectrum view if one is displayed
+                        if viewer.selected_spectrum_idx is not None and viewer.annotate_peaks:
+                            viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
+
+                annotate_peaks_cb = ui.checkbox(
+                    'Annotate Peaks',
+                    value=viewer.annotate_peaks,
+                    on_change=toggle_annotate_peaks
+                ).props('dense').classes('text-blue-400')
+
+                tolerance_input = ui.number(
+                    label='Tol (Da)',
+                    value=viewer.annotation_tolerance_da,
+                    format='%.2f',
+                    on_change=update_tolerance
+                ).props('dense outlined').classes('w-24')
+                ui.tooltip('Mass tolerance for matching peaks to theoretical ions (Da)')
 
                 def apply_id_filter():
                     charge_val = None
