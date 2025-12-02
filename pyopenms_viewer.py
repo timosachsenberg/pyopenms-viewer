@@ -521,6 +521,29 @@ class MzMLViewer:
             except Exception:
                 pass
 
+    def set_loading(self, is_loading: bool, message: str = "") -> None:
+        """Set the loading state and optionally display a message.
+
+        Args:
+            is_loading: Whether loading is in progress
+            message: Optional message to display in status label
+        """
+        if self.status_label:
+            if is_loading and message:
+                self.status_label.set_text(message)
+            elif not is_loading:
+                self.status_label.set_text("Ready")
+
+    def update_loading_progress(self, message: str, progress: float = 0.0) -> None:
+        """Update the loading progress message.
+
+        Args:
+            message: Progress message to display
+            progress: Optional progress value (0.0 to 1.0), currently unused
+        """
+        if self.status_label:
+            self.status_label.set_text(message)
+
     def _get_cv_from_spectrum(self, spec) -> Optional[float]:
         """Extract FAIMS compensation voltage from spectrum metadata."""
         # Try common CV metadata names
