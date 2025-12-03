@@ -557,6 +557,11 @@ class MzMLViewer:
         self.spectrum_nav_label = None
         self.spectrum_expansion = None  # Collapsible panel for 1D Spectrum
 
+        # Spectrum measurement tool state
+        self.spectrum_measure_mode = False  # Whether measurement mode is active
+        self.spectrum_measure_start = None  # (mz, intensity) of first measurement point, or None
+        self.spectrum_measurements = {}  # Dict: spectrum_idx -> list of (mz1, int1, mz2, int2) tuples
+
         # FAIMS UI elements
         self.faims_container = None  # Container for multiple peak maps
         self.faims_images = {}  # Dict: CV -> image element
@@ -1421,6 +1426,9 @@ class MzMLViewer:
                     f"RT: {rt:.2f}s | MS Level: {ms_level} | Peaks: {len(mz_array):,} | TIC: {tic:.2e} | m/z: {mz_range}"
                 )
 
+        # Add any stored measurements for this spectrum
+        self.add_spectrum_measurements_to_figure(fig, spectrum_idx, mz_array, int_array)
+
         # Update plot
         if self.spectrum_browser_plot is not None:
             self.spectrum_browser_plot.update_figure(fig)
@@ -1459,6 +1467,99 @@ class MzMLViewer:
         # Clamp to valid range
         new_idx = max(0, min(self.exp.size() - 1, new_idx))
         self.show_spectrum_in_browser(new_idx)
+
+    # ==================== Spectrum Measurement Methods ====================
+
+    def snap_to_peak(self, target_mz: float, mz_array: np.ndarray, int_array: np.ndarray) -> tuple[float, float] | None:
+        """Snap to the nearest peak within a tolerance window. Returns (mz, intensity) or None."""
+        if len(mz_array) == 0:
+            return None
+
+        # Find the closest peak by m/z
+        idx = np.abs(mz_array - target_mz).argmin()
+        snapped_mz = float(mz_array[idx])
+        snapped_int = float(int_array[idx])
+
+        # Only snap if within a reasonable tolerance (0.5% of m/z range or 1 Da, whichever is larger)
+        mz_range = mz_array.max() - mz_array.min() if len(mz_array) > 1 else 100.0
+        tolerance = max(1.0, mz_range * 0.01)
+
+        if abs(snapped_mz - target_mz) > tolerance:
+            return None
+
+        return (snapped_mz, snapped_int)
+
+    def add_spectrum_measurements_to_figure(
+        self, fig: go.Figure, spectrum_idx: int, mz_array: np.ndarray, int_array: np.ndarray
+    ):
+        """Add stored measurements for this spectrum to the figure."""
+        if spectrum_idx not in self.spectrum_measurements:
+            return
+
+        max_int = float(int_array.max()) if len(int_array) > 0 else 1.0
+
+        for mz1, int1, mz2, int2 in self.spectrum_measurements[spectrum_idx]:
+            # Convert to display intensities (percentage if enabled)
+            if self.spectrum_intensity_percent:
+                y1 = (int1 / max_int) * 100
+                y2 = (int2 / max_int) * 100
+            else:
+                y1, y2 = int1, int2
+
+            # Draw horizontal bracket at height slightly above the higher peak
+            bracket_y = max(y1, y2) * 1.1
+
+            # Horizontal line between the two m/z values
+            fig.add_shape(
+                type="line",
+                x0=mz1,
+                y0=bracket_y,
+                x1=mz2,
+                y1=bracket_y,
+                line={"color": "yellow", "width": 2},
+            )
+
+            # Vertical lines down to each peak
+            fig.add_shape(
+                type="line",
+                x0=mz1,
+                y0=y1,
+                x1=mz1,
+                y1=bracket_y,
+                line={"color": "yellow", "width": 1, "dash": "dot"},
+            )
+            fig.add_shape(
+                type="line",
+                x0=mz2,
+                y0=y2,
+                x1=mz2,
+                y1=bracket_y,
+                line={"color": "yellow", "width": 1, "dash": "dot"},
+            )
+
+            # Calculate delta m/z
+            delta_mz = abs(mz2 - mz1)
+            mid_mz = (mz1 + mz2) / 2
+
+            # Add annotation with delta m/z
+            fig.add_annotation(
+                x=mid_mz,
+                y=bracket_y,
+                text=f"Δ{delta_mz:.4f}",
+                showarrow=False,
+                yshift=12,
+                font={"color": "yellow", "size": 11},
+                bgcolor="rgba(0,0,0,0.7)",
+                borderpad=2,
+            )
+
+    def clear_spectrum_measurement(self, spectrum_idx: int | None = None):
+        """Clear measurement(s) for spectrum. If spectrum_idx is None, clear for current spectrum."""
+        idx = spectrum_idx if spectrum_idx is not None else self.selected_spectrum_idx
+        if idx is not None and idx in self.spectrum_measurements:
+            del self.spectrum_measurements[idx]
+            # Refresh display
+            self.show_spectrum_in_browser(idx)
 
     def navigate_spectrum_by_ms_level(self, direction: int, ms_level: int):
         """Navigate to prev/next spectrum of specific MS level."""
@@ -4162,12 +4263,99 @@ def create_ui():
                     ).props("dense size=sm color=grey").tooltip("Toggle between relative (%) and absolute intensity")
 
                     ui.label("|").classes("mx-1 text-gray-600")
-                    viewer.spectrum_browser_info = ui.label("Click TIC or use spectrum table to select").classes(
+
+                    # Measurement mode toggle
+                    def toggle_measure_mode():
+                        viewer.spectrum_measure_mode = not viewer.spectrum_measure_mode
+                        viewer.spectrum_measure_start = None  # Reset any pending measurement
+                        measure_btn.props(f"color={'yellow' if viewer.spectrum_measure_mode else 'grey'}")
+                        if viewer.spectrum_measure_mode:
+                            ui.notify("Measure mode ON - click two peaks to measure Δm/z", type="info")
+                        else:
+                            ui.notify("Measure mode OFF", type="info")
+
+                    measure_btn = ui.button("📏 Measure", on_click=toggle_measure_mode).props(
+                        "dense size=sm color=grey"
+                    ).tooltip("Toggle measurement mode - click two peaks to measure Δm/z")
+
+                    ui.button(
+                        "Clear Δ",
+                        on_click=lambda: viewer.clear_spectrum_measurement(),
+                    ).props("dense size=sm color=grey").tooltip("Clear measurements for this spectrum")
+
+                    ui.label("|").classes("mx-1 text-gray-600")
+                    viewer.spectrum_browser_info = ui.label("Click TIC to select spectrum").classes(
                         "text-xs text-gray-500"
                     )
 
                 # Spectrum plot
                 viewer.spectrum_browser_plot = ui.plotly(go.Figure()).classes("w-full")
+
+                # Spectrum measurement click handler (when measurement mode is active)
+                def on_spectrum_click(e):
+                    """Handle clicks on spectrum for peak measurement when in measure mode."""
+                    try:
+                        # Only handle clicks when measurement mode is active
+                        if not viewer.spectrum_measure_mode:
+                            return
+
+                        if not e.args:
+                            return
+
+                        # Get clicked point
+                        points = e.args.get("points", [])
+                        if not points:
+                            return
+
+                        clicked_mz = points[0].get("x")
+                        if clicked_mz is None:
+                            return
+
+                        # Get current spectrum data
+                        if viewer.selected_spectrum_idx is None or viewer.exp is None:
+                            return
+
+                        spec = viewer.exp[viewer.selected_spectrum_idx]
+                        mz_array, int_array = spec.get_peaks()
+
+                        if len(mz_array) == 0:
+                            return
+
+                        # Snap to nearest peak
+                        snapped = viewer.snap_to_peak(clicked_mz, mz_array, int_array)
+                        if snapped is None:
+                            ui.notify("No peak found near click position", type="warning")
+                            return
+
+                        snapped_mz, snapped_int = snapped
+
+                        if viewer.spectrum_measure_start is None:
+                            # First click - set start point
+                            viewer.spectrum_measure_start = (snapped_mz, snapped_int)
+                            ui.notify(f"Start: m/z {snapped_mz:.4f} - click second peak", type="info")
+                        else:
+                            # Second click - complete measurement
+                            start_mz, start_int = viewer.spectrum_measure_start
+                            viewer.spectrum_measure_start = None
+
+                            # Store the measurement
+                            spectrum_idx = viewer.selected_spectrum_idx
+                            if spectrum_idx not in viewer.spectrum_measurements:
+                                viewer.spectrum_measurements[spectrum_idx] = []
+                            viewer.spectrum_measurements[spectrum_idx].append(
+                                (start_mz, start_int, snapped_mz, snapped_int)
+                            )
+
+                            delta_mz = abs(snapped_mz - start_mz)
+                            ui.notify(f"Δm/z = {delta_mz:.4f}", type="positive")
+
+                            # Refresh display to show the measurement
+                            viewer.show_spectrum_in_browser(spectrum_idx)
+
+                    except Exception:
+                        pass
+
+                viewer.spectrum_browser_plot.on("plotly_click", on_spectrum_click)
 
         # FAIMS Multi-CV Peak Maps (hidden by default)
         faims_container = ui.card().classes("w-full max-w-6xl mt-2 p-2")
