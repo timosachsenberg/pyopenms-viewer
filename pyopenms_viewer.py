@@ -4787,9 +4787,6 @@ def create_ui():
                 # Spectrum plot
                 viewer.spectrum_browser_plot = ui.plotly(go.Figure()).classes("w-full")
 
-                # Note: Hover preview disabled to preserve zoom state during measurement
-                # The two-click workflow still works: click first peak, click second peak
-
                 # Spectrum measurement click handler
                 def on_spectrum_click(e):
                     """Handle clicks on spectrum for peak measurement and selection."""
@@ -4876,6 +4873,52 @@ def create_ui():
                         pass
 
                 viewer.spectrum_browser_plot.on("plotly_click", on_spectrum_click)
+
+                # Hover handler for live preview line during measurement
+                def on_spectrum_hover(e):
+                    """Show live preview line from first peak to hovered peak."""
+                    try:
+                        # Only show preview when we have a start point selected
+                        if not viewer.spectrum_measure_mode or viewer.spectrum_measure_start is None:
+                            return
+
+                        if not e.args:
+                            return
+
+                        points = e.args.get("points", [])
+                        if not points:
+                            return
+
+                        hovered_mz = points[0].get("x")
+                        if hovered_mz is None:
+                            return
+
+                        if viewer.selected_spectrum_idx is None or viewer.exp is None:
+                            return
+
+                        spec = viewer.exp[viewer.selected_spectrum_idx]
+                        mz_array, int_array = spec.get_peaks()
+
+                        if len(mz_array) == 0:
+                            return
+
+                        # Snap to nearest peak
+                        snapped = viewer.snap_to_peak(hovered_mz, mz_array, int_array)
+                        if snapped is None:
+                            return
+
+                        # Only refresh if the hovered peak actually changed (optimization)
+                        if viewer.spectrum_hover_peak == snapped:
+                            return
+
+                        viewer.spectrum_hover_peak = snapped
+                        # Refresh to show preview - zoom will be preserved by the fix
+                        viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
+
+                    except Exception:
+                        pass
+
+                viewer.spectrum_browser_plot.on("plotly_hover", on_spectrum_hover)
 
                 # Track zoom changes to preserve during measurement workflow
                 def on_spectrum_relayout(e):
