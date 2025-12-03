@@ -1887,7 +1887,13 @@ class MzMLViewer:
         fig = go.Figure()
 
         if self.tic_rt is None or len(self.tic_rt) == 0:
-            fig.update_layout(title="TIC - No data loaded", template="plotly_dark", height=200)
+            fig.update_layout(
+                title={"text": "TIC - No data loaded", "font": {"color": "#888"}},
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font={"color": "#888"},
+                height=200,
+            )
             return fig
 
         # Convert RT to display units
@@ -1938,15 +1944,21 @@ class MzMLViewer:
             )
 
         fig.update_layout(
-            title={"text": "Total Ion Chromatogram (TIC) - Click to select spectrum", "font": {"size": 14}},
+            title={"text": "Total Ion Chromatogram (TIC) - Click to select spectrum", "font": {"size": 14, "color": "#888"}},
             xaxis_title=f"RT ({rt_unit})",
             yaxis_title="Total Intensity",
-            template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font={"color": "#888"},
             height=200,
             margin={"l": 60, "r": 20, "t": 40, "b": 40},
             showlegend=False,
             hovermode="x unified",
         )
+
+        # Style axes for light/dark mode compatibility
+        fig.update_xaxes(showgrid=False, linecolor="#888", tickcolor="#888")
+        fig.update_yaxes(showgrid=False, linecolor="#888", tickcolor="#888")
 
         # Set x-axis range to match data
         if len(self.tic_rt) > 0:
@@ -3078,16 +3090,16 @@ class MzMLViewer:
             # Get the plotly figure
             fig = plot.fig
 
-            # Update layout for dark theme - maximize space usage
+            # Update layout for light/dark mode compatibility - maximize space usage
             fig.update_layout(
-                paper_bgcolor="#1a1a1f",
-                plot_bgcolor="#1a1a1f",
-                font={"color": "#cccccc"},
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font={"color": "#888"},
                 scene={
-                    "xaxis": {"title": "RT (s)", "backgroundcolor": "#1a1a1f", "gridcolor": "#333333"},
-                    "yaxis": {"title": "m/z", "backgroundcolor": "#1a1a1f", "gridcolor": "#333333"},
-                    "zaxis": {"title": "Intensity", "backgroundcolor": "#1a1a1f", "gridcolor": "#333333"},
-                    "bgcolor": "#1a1a1f",
+                    "xaxis": {"title": "RT (s)", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": "#888"},
+                    "yaxis": {"title": "m/z", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": "#888"},
+                    "zaxis": {"title": "Intensity", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": "#888"},
+                    "bgcolor": "rgba(0,0,0,0)",
                     "aspectmode": "manual",
                     "aspectratio": {"x": 1.5, "y": 1, "z": 0.8},
                 },
@@ -3096,7 +3108,7 @@ class MzMLViewer:
                 height=500,
                 autosize=False,
                 showlegend=True,
-                legend={"x": 0, "y": 1, "bgcolor": "rgba(26,26,31,0.8)"},
+                legend={"x": 0, "y": 1, "bgcolor": "rgba(128,128,128,0.3)"},
                 modebar={"orientation": "v", "bgcolor": "rgba(0,0,0,0)"},
             )
 
@@ -4170,8 +4182,9 @@ def create_ui():
                         # Create empty plotly figure for 3D view
                         empty_fig = go.Figure()
                         empty_fig.update_layout(
-                            paper_bgcolor="#1a1a1f",
-                            plot_bgcolor="#1a1a1f",
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            font={"color": "#888"},
                             width=viewer.canvas_width,
                             height=500,
                             autosize=False,
@@ -4693,7 +4706,7 @@ def create_ui():
                 .classes("w-full")
                 .on("rowClick", on_spectrum_click)
             )
-            viewer.spectrum_table.props("dark flat bordered dense")
+            viewer.spectrum_table.props("flat bordered dense")
 
         # Feature Table
         with ui.expansion("Features", icon="scatter_plot").classes("w-full max-w-[1700px]"):
@@ -4775,7 +4788,7 @@ def create_ui():
                 .on("rowClick", on_feature_click)
             )
             viewer.feature_table.on("row-dblclick", on_feature_hover)  # Use dblclick as hover proxy
-            viewer.feature_table.props("dark flat bordered dense")
+            viewer.feature_table.props("flat bordered dense")
 
         # Custom range
         with ui.expansion("Custom Range", icon="tune").classes("w-full max-w-[1700px] mt-4"):
