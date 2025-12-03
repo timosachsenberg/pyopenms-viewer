@@ -4124,11 +4124,18 @@ def create_ui():
                             if 0 <= plot_x <= viewer.plot_width and 0 <= plot_y <= viewer.plot_height:
                                 drag_state["dragging"] = True
                                 drag_state["measuring"] = e.shift  # Shift+drag = measurement mode
-                                drag_state["panning"] = e.ctrl  # Ctrl+drag = panning mode
+                                # Ctrl+drag = panning mode, but only if zoomed in (not at full view)
+                                is_zoomed_in = (
+                                    viewer.view_rt_min > viewer.rt_min + 0.01
+                                    or viewer.view_rt_max < viewer.rt_max - 0.01
+                                    or viewer.view_mz_min > viewer.mz_min + 0.01
+                                    or viewer.view_mz_max < viewer.mz_max - 0.01
+                                )
+                                drag_state["panning"] = e.ctrl and is_zoomed_in
                                 drag_state["start_x"] = e.image_x
                                 drag_state["start_y"] = e.image_y
                                 # Store initial view bounds for panning
-                                if e.ctrl:
+                                if e.ctrl and is_zoomed_in:
                                     drag_state["pan_rt_min"] = viewer.view_rt_min
                                     drag_state["pan_rt_max"] = viewer.view_rt_max
                                     drag_state["pan_mz_min"] = viewer.view_mz_min
@@ -5006,6 +5013,13 @@ def create_ui():
                 if row and "idx" in row:
                     viewer.zoom_to_feature(row["idx"])
 
+            def on_feature_select(e):
+                """Handle feature row selection (checkbox)."""
+                if e.selection:
+                    row = e.selection[0]
+                    if row and "idx" in row:
+                        viewer.zoom_to_feature(row["idx"])
+
             def on_feature_hover(e):
                 """Handle feature row hover for visual feedback."""
                 try:
@@ -5025,6 +5039,8 @@ def create_ui():
                     rows=[],
                     row_key="idx",
                     pagination={"rowsPerPage": 8, "sortBy": "intensity", "descending": True},
+                    selection="single",
+                    on_select=on_feature_select,
                 )
                 .classes("w-full hover-highlight")
                 .on("rowClick", on_feature_click)
