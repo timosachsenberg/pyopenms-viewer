@@ -4918,6 +4918,16 @@ def create_ui():
 
                 viewer.spectrum_browser_plot.on("plotly_hover", on_spectrum_hover)
 
+                # Clear hover highlight when mouse leaves the plot
+                def on_spectrum_unhover(e):
+                    """Clear hover highlight when mouse leaves data points."""
+                    if viewer.spectrum_hover_peak is not None:
+                        viewer.spectrum_hover_peak = None
+                        if viewer.selected_spectrum_idx is not None:
+                            viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
+
+                viewer.spectrum_browser_plot.on("plotly_unhover", on_spectrum_unhover)
+
                 # Track zoom changes to preserve during measurement workflow
                 def on_spectrum_relayout(e):
                     """Track zoom/pan changes on spectrum plot."""
