@@ -2750,20 +2750,25 @@ class MzMLViewer:
                 if img_data:
                     self.faims_images[cv].set_source(f"data:image/png;base64,{img_data}")
 
-    def update_plot(self):
-        """Update displayed plot."""
+    def update_plot(self, lightweight: bool = False):
+        """Update displayed plot.
+
+        Args:
+            lightweight: If True, only update the main peakmap image and range labels.
+                        Skip minimap, TIC, 3D view, and breadcrumb updates (for panning).
+        """
         if self.df is None:
             return
 
-        if self.status_label:
+        if self.status_label and not lightweight:
             self.status_label.set_text("Rendering...")
 
         img_data = self.render_image()
         if img_data and self.image_element:
             self.image_element.set_source(f"data:image/png;base64,{img_data}")
 
-        # Update FAIMS plots if enabled
-        if self.has_faims and self.show_faims_view:
+        # Update FAIMS plots if enabled (skip during lightweight update)
+        if not lightweight and self.has_faims and self.show_faims_view:
             self.update_faims_plots()
 
         if self.rt_range_label:
@@ -2771,24 +2776,26 @@ class MzMLViewer:
         if self.mz_range_label:
             self.mz_range_label.set_text(f"m/z: {self.view_mz_min:.2f} - {self.view_mz_max:.2f}")
 
-        # Update TIC plot (shows current view range)
-        self.update_tic_plot()
+        # Skip updates during lightweight mode (panning) to avoid flicker
+        if not lightweight:
+            # Update TIC plot (shows current view range)
+            self.update_tic_plot()
 
-        if self.status_label:
-            self.status_label.set_text("Ready")
+            if self.status_label:
+                self.status_label.set_text("Ready")
 
-        # Update minimap
-        self.update_minimap()
+            # Update minimap
+            self.update_minimap()
 
-        # Update breadcrumb
-        self.update_breadcrumb()
+            # Update breadcrumb
+            self.update_breadcrumb()
 
-        # Update 3D view if enabled
-        if self.show_3d_view:
-            self.update_3d_view()
+            # Update 3D view if enabled
+            if self.show_3d_view:
+                self.update_3d_view()
 
-        # NiceGUI 3.x: Emit view change event
-        self._emit_view_changed()
+            # NiceGUI 3.x: Emit view change event
+            self._emit_view_changed()
 
     def render_minimap(self) -> Optional[str]:
         """Render the minimap showing full data extent with view rectangle overlay."""
@@ -4195,8 +4202,8 @@ def create_ui():
                                     viewer.view_mz_min = new_mz_min
                                     viewer.view_mz_max = new_mz_max
 
-                                    # Update plot (redraw peakmap)
-                                    viewer.update_plot()
+                                    # Update plot (lightweight mode - only peakmap and labels)
+                                    viewer.update_plot(lightweight=True)
 
                                     # Show panning cursor indicator
                                     cx, cy = e.image_x, e.image_y
@@ -4233,6 +4240,11 @@ def create_ui():
 
                                 # Skip zoom if we were measuring or panning
                                 if was_measuring or was_panning:
+                                    # Do full UI update after panning finishes
+                                    if was_panning:
+                                        viewer.update_minimap()
+                                        viewer.update_tic_plot()
+                                        viewer.update_breadcrumb()
                                     return
 
                                 end_x = e.image_x
