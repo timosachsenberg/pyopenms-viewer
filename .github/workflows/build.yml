@@ -44,6 +44,7 @@ jobs:
           uv pip install --system pyinstaller
 
       - name: Build with PyInstaller
+        shell: bash
         run: |
           pyinstaller --onefile --name pyopenms-viewer --noconsole \
             --collect-all numpy \
