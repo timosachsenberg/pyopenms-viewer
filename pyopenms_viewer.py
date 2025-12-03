@@ -577,6 +577,9 @@ class MzMLViewer:
         self.spectrum_measure_mode = False  # Whether measurement mode is active
         self.spectrum_measure_start = None  # (mz, intensity) of first measurement point, or None
         self.spectrum_measurements = {}  # Dict: spectrum_idx -> list of (mz1, int1, mz2, int2) tuples
+        self.spectrum_hover_peak = None  # Currently highlighted peak (mz, intensity) during hover
+        self.spectrum_selected_measurement_idx = None  # Index of selected measurement for deletion/repositioning
+        self.spectrum_dragging = False  # Whether we're in drag mode for creating/repositioning
 
         # FAIMS UI elements
         self.faims_container = None  # Container for multiple peak maps
@@ -1462,6 +1465,9 @@ class MzMLViewer:
         # Add any stored measurements for this spectrum
         self.add_spectrum_measurements_to_figure(fig, spectrum_idx, mz_array, int_array)
 
+        # Add hover highlights and measurement preview
+        self.add_spectrum_highlight_to_figure(fig, mz_array, int_array)
+
         # Update plot
         if self.spectrum_browser_plot is not None:
             self.spectrum_browser_plot.update_figure(fig)
@@ -1536,11 +1542,13 @@ class MzMLViewer:
             if self.spectrum_intensity_percent:
                 y1 = (int1 / max_int) * 100
                 y2 = (int2 / max_int) * 100
+                max_bracket = 90  # Cap at 90% to stay in visible area
             else:
                 y1, y2 = int1, int2
+                max_bracket = max_int * 0.9
 
-            # Draw horizontal bracket at height slightly above the higher peak
-            bracket_y = max(y1, y2) * 1.1
+            # Draw horizontal bracket at height slightly above the higher peak, capped at 90%
+            bracket_y = min(max(y1, y2) * 1.1, max_bracket)
 
             # Horizontal line between the two m/z values
             fig.add_shape(
@@ -1593,6 +1601,193 @@ class MzMLViewer:
             del self.spectrum_measurements[idx]
             # Refresh display
             self.show_spectrum_in_browser(idx)
+
+    def delete_selected_measurement(self):
+        """Delete the currently selected measurement."""
+        if self.selected_spectrum_idx is None:
+            return
+        if self.spectrum_selected_measurement_idx is None:
+            return
+        if self.selected_spectrum_idx not in self.spectrum_measurements:
+            return
+
+        measurements = self.spectrum_measurements[self.selected_spectrum_idx]
+        if 0 <= self.spectrum_selected_measurement_idx < len(measurements):
+            measurements.pop(self.spectrum_selected_measurement_idx)
+            if len(measurements) == 0:
+                del self.spectrum_measurements[self.selected_spectrum_idx]
+            self.spectrum_selected_measurement_idx = None
+            self.show_spectrum_in_browser(self.selected_spectrum_idx)
+            ui.notify("Measurement deleted", type="info")
+
+    def find_measurement_at_position(self, mz: float, y: float) -> int | None:
+        """Find if a click position is near an existing measurement line. Returns measurement index or None."""
+        if self.selected_spectrum_idx is None:
+            return None
+        if self.selected_spectrum_idx not in self.spectrum_measurements:
+            return None
+
+        spec = self.exp[self.selected_spectrum_idx]
+        mz_array, int_array = spec.get_peaks()
+        if len(mz_array) == 0:
+            return None
+
+        max_int = float(int_array.max())
+        mz_range = float(mz_array.max() - mz_array.min())
+        mz_tolerance = mz_range * 0.02  # 2% of m/z range
+
+        measurements = self.spectrum_measurements[self.selected_spectrum_idx]
+        for i, (mz1, int1, mz2, int2) in enumerate(measurements):
+            # Convert to display intensities
+            if self.spectrum_intensity_percent:
+                y1 = (int1 / max_int) * 100
+                y2 = (int2 / max_int) * 100
+            else:
+                y1, y2 = int1, int2
+
+            bracket_y = max(y1, y2) * 1.1
+
+            # Check if click is near the horizontal bracket line
+            if min(mz1, mz2) - mz_tolerance <= mz <= max(mz1, mz2) + mz_tolerance:
+                y_tolerance = bracket_y * 0.1
+                if abs(y - bracket_y) < y_tolerance:
+                    return i
+
+            # Check if click is near the vertical connector lines
+            if abs(mz - mz1) < mz_tolerance and min(y1, bracket_y) <= y <= max(y1, bracket_y):
+                return i
+            if abs(mz - mz2) < mz_tolerance and min(y2, bracket_y) <= y <= max(y2, bracket_y):
+                return i
+
+        return None
+
+    def add_spectrum_highlight_to_figure(self, fig: go.Figure, mz_array: np.ndarray, int_array: np.ndarray):
+        """Add hover highlight marker and measurement preview to figure."""
+        if len(mz_array) == 0:
+            return
+
+        max_int = float(int_array.max()) if len(int_array) > 0 else 1.0
+
+        # Add marker for locked-in start point (distinct from hover)
+        if self.spectrum_measure_start is not None and self.spectrum_measure_mode:
+            start_mz, start_int = self.spectrum_measure_start
+            if self.spectrum_intensity_percent:
+                start_y = (start_int / max_int) * 100
+            else:
+                start_y = start_int
+
+            # Small yellow circle marker for the locked-in start point
+            fig.add_trace(
+                go.Scatter(
+                    x=[start_mz],
+                    y=[start_y],
+                    mode="markers",
+                    marker={"color": "yellow", "size": 10, "symbol": "circle", "line": {"width": 1, "color": "black"}},
+                    hoverinfo="skip",
+                    showlegend=False,
+                )
+            )
+
+        # Add hover highlight marker when selecting second peak
+        if self.spectrum_hover_peak is not None and self.spectrum_measure_mode and self.spectrum_measure_start is not None:
+            hover_mz, hover_int = self.spectrum_hover_peak
+            if self.spectrum_intensity_percent:
+                hover_y = (hover_int / max_int) * 100
+            else:
+                hover_y = hover_int
+
+            # Add a highlighted ring around the hovered peak (yellow for hover target)
+            fig.add_trace(
+                go.Scatter(
+                    x=[hover_mz],
+                    y=[hover_y],
+                    mode="markers",
+                    marker={"color": "yellow", "size": 12, "symbol": "circle-open", "line": {"width": 2}},
+                    hoverinfo="skip",
+                    showlegend=False,
+                )
+            )
+
+        # Add preview line from start point to hover point
+        if self.spectrum_measure_start is not None and self.spectrum_hover_peak is not None:
+            start_mz, start_int = self.spectrum_measure_start
+            hover_mz, hover_int = self.spectrum_hover_peak
+
+            if self.spectrum_intensity_percent:
+                y1 = (start_int / max_int) * 100
+                y2 = (hover_int / max_int) * 100
+                max_bracket = 90  # Cap at 90% to stay in visible area
+            else:
+                y1, y2 = start_int, hover_int
+                max_bracket = max_int * 0.9
+
+            bracket_y = min(max(y1, y2) * 1.1, max_bracket)
+
+            # Preview horizontal line (dashed, semi-transparent)
+            fig.add_shape(
+                type="line",
+                x0=start_mz,
+                y0=bracket_y,
+                x1=hover_mz,
+                y1=bracket_y,
+                line={"color": "rgba(255, 255, 0, 0.5)", "width": 2, "dash": "dash"},
+            )
+
+            # Preview vertical connectors
+            fig.add_shape(
+                type="line",
+                x0=start_mz,
+                y0=y1,
+                x1=start_mz,
+                y1=bracket_y,
+                line={"color": "rgba(255, 255, 0, 0.5)", "width": 1, "dash": "dot"},
+            )
+            fig.add_shape(
+                type="line",
+                x0=hover_mz,
+                y0=y2,
+                x1=hover_mz,
+                y1=bracket_y,
+                line={"color": "rgba(255, 255, 0, 0.5)", "width": 1, "dash": "dot"},
+            )
+
+            # Preview delta annotation
+            delta_mz = abs(hover_mz - start_mz)
+            mid_mz = (start_mz + hover_mz) / 2
+            fig.add_annotation(
+                x=mid_mz,
+                y=bracket_y,
+                text=f"Δ{delta_mz:.4f}",
+                showarrow=False,
+                yshift=12,
+                font={"color": "rgba(255, 255, 0, 0.7)", "size": 11},
+                bgcolor="rgba(0,0,0,0.5)",
+                borderpad=2,
+            )
+
+        # Highlight selected measurement (for deletion)
+        if self.spectrum_selected_measurement_idx is not None:
+            if self.selected_spectrum_idx in self.spectrum_measurements:
+                measurements = self.spectrum_measurements[self.selected_spectrum_idx]
+                if 0 <= self.spectrum_selected_measurement_idx < len(measurements):
+                    mz1, int1, mz2, int2 = measurements[self.spectrum_selected_measurement_idx]
+                    if self.spectrum_intensity_percent:
+                        y1 = (int1 / max_int) * 100
+                        y2 = (int2 / max_int) * 100
+                    else:
+                        y1, y2 = int1, int2
+
+                    bracket_y = max(y1, y2) * 1.1
+
+                    # Add selection highlight (cyan glow effect via thicker line behind)
+                    fig.add_shape(
+                        type="line",
+                        x0=mz1,
+                        y0=bracket_y,
+                        x1=mz2,
+                        y1=bracket_y,
+                        line={"color": "cyan", "width": 4},
+                    )
 
     def navigate_spectrum_by_ms_level(self, direction: int, ms_level: int):
         """Navigate to prev/next spectrum of specific MS level."""
@@ -4542,11 +4737,15 @@ def create_ui():
                     def toggle_measure_mode():
                         viewer.spectrum_measure_mode = not viewer.spectrum_measure_mode
                         viewer.spectrum_measure_start = None  # Reset any pending measurement
+                        viewer.spectrum_hover_peak = None  # Clear hover highlight
                         measure_btn.props(f"color={'yellow' if viewer.spectrum_measure_mode else 'grey'}")
                         if viewer.spectrum_measure_mode:
                             ui.notify("Measure mode ON - click two peaks to measure Δm/z", type="info")
                         else:
                             ui.notify("Measure mode OFF", type="info")
+                        # Refresh display to clear any preview
+                        if viewer.selected_spectrum_idx is not None:
+                            viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
 
                     measure_btn = ui.button("📏 Measure", on_click=toggle_measure_mode).props(
                         "dense size=sm color=grey"
@@ -4565,14 +4764,53 @@ def create_ui():
                 # Spectrum plot
                 viewer.spectrum_browser_plot = ui.plotly(go.Figure()).classes("w-full")
 
-                # Spectrum measurement click handler (when measurement mode is active)
-                def on_spectrum_click(e):
-                    """Handle clicks on spectrum for peak measurement when in measure mode."""
+                # Spectrum hover handler - shows preview line when we have a start point
+                def on_spectrum_hover(e):
+                    """Handle hover events to show preview line after first peak is selected."""
                     try:
-                        # Only handle clicks when measurement mode is active
-                        if not viewer.spectrum_measure_mode:
+                        # Only show preview when we have a start point selected
+                        if not viewer.spectrum_measure_mode or viewer.spectrum_measure_start is None:
                             return
 
+                        if not e.args:
+                            return
+
+                        points = e.args.get("points", [])
+                        if not points:
+                            return
+
+                        hovered_mz = points[0].get("x")
+                        if hovered_mz is None:
+                            return
+
+                        if viewer.selected_spectrum_idx is None or viewer.exp is None:
+                            return
+
+                        spec = viewer.exp[viewer.selected_spectrum_idx]
+                        mz_array, int_array = spec.get_peaks()
+
+                        if len(mz_array) == 0:
+                            return
+
+                        # Snap to nearest peak
+                        snapped = viewer.snap_to_peak(hovered_mz, mz_array, int_array)
+                        if snapped is None:
+                            return
+
+                        # Only update if hover target changed (to avoid excessive redraws)
+                        if viewer.spectrum_hover_peak != snapped:
+                            viewer.spectrum_hover_peak = snapped
+                            viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
+
+                    except Exception:
+                        pass
+
+                viewer.spectrum_browser_plot.on("plotly_hover", on_spectrum_hover)
+
+                # Spectrum measurement click handler
+                def on_spectrum_click(e):
+                    """Handle clicks on spectrum for peak measurement and selection."""
+                    try:
                         if not e.args:
                             return
 
@@ -4582,6 +4820,7 @@ def create_ui():
                             return
 
                         clicked_mz = points[0].get("x")
+                        clicked_y = points[0].get("y")
                         if clicked_mz is None:
                             return
 
@@ -4593,6 +4832,29 @@ def create_ui():
                         mz_array, int_array = spec.get_peaks()
 
                         if len(mz_array) == 0:
+                            return
+
+                        # Check if clicking on an existing measurement line (for selection)
+                        if clicked_y is not None:
+                            measurement_idx = viewer.find_measurement_at_position(clicked_mz, clicked_y)
+                            if measurement_idx is not None:
+                                # Toggle selection
+                                if viewer.spectrum_selected_measurement_idx == measurement_idx:
+                                    viewer.spectrum_selected_measurement_idx = None
+                                    ui.notify("Measurement deselected", type="info")
+                                else:
+                                    viewer.spectrum_selected_measurement_idx = measurement_idx
+                                    ui.notify("Measurement selected - press Delete to remove", type="info")
+                                viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
+                                return
+
+                        # Clear selection if clicking elsewhere (not on a measurement)
+                        if viewer.spectrum_selected_measurement_idx is not None:
+                            viewer.spectrum_selected_measurement_idx = None
+                            viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
+
+                        # Only handle peak measurement when measurement mode is active
+                        if not viewer.spectrum_measure_mode:
                             return
 
                         # Snap to nearest peak
@@ -4607,10 +4869,13 @@ def create_ui():
                             # First click - set start point
                             viewer.spectrum_measure_start = (snapped_mz, snapped_int)
                             ui.notify(f"Start: m/z {snapped_mz:.4f} - click second peak", type="info")
+                            # Refresh to show the start point highlighted
+                            viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
                         else:
                             # Second click - complete measurement
                             start_mz, start_int = viewer.spectrum_measure_start
                             viewer.spectrum_measure_start = None
+                            viewer.spectrum_hover_peak = None  # Clear hover state
 
                             # Store the measurement
                             spectrum_idx = viewer.selected_spectrum_idx
@@ -5150,25 +5415,29 @@ def create_ui():
                     """)
 
         # Keyboard handlers
-        ui.keyboard(
-            on_key=lambda e: (
+        def on_global_key(e):
+            if not e.action.keydown:
+                return
+            if e.key in ["+", "="]:
                 viewer.zoom_in()
-                if e.key in ["+", "="] and e.action.keydown
-                else viewer.zoom_out()
-                if e.key == "-" and e.action.keydown
-                else viewer.pan(rt_frac=-0.1)
-                if e.key.arrow_left and e.action.keydown
-                else viewer.pan(rt_frac=0.1)
-                if e.key.arrow_right and e.action.keydown
-                else viewer.pan(mz_frac=0.1)
-                if e.key.arrow_up and e.action.keydown
-                else viewer.pan(mz_frac=-0.1)
-                if e.key.arrow_down and e.action.keydown
-                else viewer.reset_view()
-                if e.key == "Home" and e.action.keydown
-                else None
-            )
-        )
+            elif e.key == "-":
+                viewer.zoom_out()
+            elif e.key.arrow_left:
+                viewer.pan(rt_frac=-0.1)
+            elif e.key.arrow_right:
+                viewer.pan(rt_frac=0.1)
+            elif e.key.arrow_up:
+                viewer.pan(mz_frac=0.1)
+            elif e.key.arrow_down:
+                viewer.pan(mz_frac=-0.1)
+            elif e.key == "Home":
+                viewer.reset_view()
+            elif e.key in ["Delete", "Backspace"]:
+                # Delete selected measurement in spectrum browser
+                if viewer.spectrum_selected_measurement_idx is not None:
+                    viewer.delete_selected_measurement()
+
+        ui.keyboard(on_key=on_global_key)
 
     # Load CLI files after UI is ready
     if _cli_files["mzml"]:
