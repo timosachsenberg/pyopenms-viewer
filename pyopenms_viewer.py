@@ -546,9 +546,10 @@ class MzMLViewer:
         self.id_color = (255, 150, 50, 255)
         self.id_selected_color = (255, 50, 50, 255)
 
-        self.axis_color = (200, 200, 200, 255)
-        self.tick_color = (180, 180, 180, 255)
-        self.label_color = (220, 220, 220, 255)
+        # Neutral gray colors that work on both light and dark backgrounds
+        self.axis_color = (136, 136, 136, 255)  # #888
+        self.tick_color = (136, 136, 136, 255)  # #888
+        self.label_color = (136, 136, 136, 255)  # #888
         self.grid_color = (60, 60, 60, 255)
 
         # UI elements
@@ -2654,7 +2655,7 @@ class MzMLViewer:
         # Draw hover highlights (last so they appear on top)
         plot_img = self._draw_hover_overlay(plot_img)
 
-        canvas = Image.new("RGBA", (self.canvas_width, self.canvas_height), (20, 20, 25, 255))
+        canvas = Image.new("RGBA", (self.canvas_width, self.canvas_height), (0, 0, 0, 0))
         plot_img_rgba = plot_img.convert("RGBA")
         canvas.paste(plot_img_rgba, (self.margin_left, self.margin_top))
 
@@ -4134,7 +4135,7 @@ def create_ui():
                         .classes("w-full")
                         .style(
                             f"width: {viewer.canvas_width}px; height: {viewer.canvas_height}px; "
-                            f"background: #141419; cursor: crosshair;"
+                            f"background: transparent; cursor: crosshair;"
                         )
                     )
 
@@ -4199,7 +4200,7 @@ def create_ui():
                     ui.label("Overview").classes("text-xs text-gray-400 mb-1")
                     viewer.minimap_image = ui.image().style(
                         f"width: {viewer.minimap_width}px; height: {viewer.minimap_height}px; "
-                        f"background: #141419; cursor: pointer; border: 1px solid #333;"
+                        f"background: transparent; cursor: pointer; border: 1px solid #888;"
                     )
 
                     # Minimap click handler
@@ -4421,7 +4422,7 @@ def create_ui():
                     for cv in viewer.faims_cvs:
                         with ui.column().classes("flex-none"):
                             img = ui.image().style(
-                                f"width: {panel_width}px; height: {panel_height}px; background: #141419;"
+                                f"width: {panel_width}px; height: {panel_height}px; background: transparent;"
                             )
                             viewer.faims_images[cv] = img
 
