@@ -580,6 +580,7 @@ class MzMLViewer:
         self.spectrum_hover_peak = None  # Currently highlighted peak (mz, intensity) during hover
         self.spectrum_selected_measurement_idx = None  # Index of selected measurement for deletion/repositioning
         self.spectrum_dragging = False  # Whether we're in drag mode for creating/repositioning
+        self.spectrum_zoom_range = None  # (xmin, xmax) to preserve zoom during measurement
 
         # FAIMS UI elements
         self.faims_container = None  # Container for multiple peak maps
@@ -1368,7 +1369,15 @@ class MzMLViewer:
 
                 # Update title to include spectrum index
                 title = f"Spectrum #{spectrum_idx} | {sequence_str} (z={charge}+) | RT={rt:.2f}s"
-                fig.update_layout(title={"text": title, "font": {"size": 14}}, height=350)
+                fig.update_layout(
+                    title={"text": title, "font": {"size": 14}},
+                    height=350,
+                    uirevision=spectrum_idx,  # Preserve zoom/pan state during updates
+                )
+
+                # Apply saved zoom range if in measurement mode
+                if self.spectrum_measure_mode and self.spectrum_zoom_range is not None:
+                    fig.update_xaxes(range=list(self.spectrum_zoom_range))
 
                 # Update info label with ID info
                 if self.spectrum_browser_info is not None:
@@ -1449,9 +1458,16 @@ class MzMLViewer:
                 showlegend=False,
                 modebar={"remove": ["lasso2d", "select2d"]},  # Remove lasso and box select tools
                 font={"color": "#888"},  # Gray text works on both light and dark
+                uirevision=spectrum_idx,  # Preserve zoom/pan state during updates
             )
 
-            fig.update_xaxes(showgrid=False, linecolor="#888", tickcolor="#888")
+            # Apply saved zoom range if in measurement mode
+            if self.spectrum_measure_mode and self.spectrum_zoom_range is not None:
+                fig.update_xaxes(
+                    range=list(self.spectrum_zoom_range), showgrid=False, linecolor="#888", tickcolor="#888"
+                )
+            else:
+                fig.update_xaxes(showgrid=False, linecolor="#888", tickcolor="#888")
             fig.update_yaxes(range=y_range, showgrid=False, fixedrange=True, linecolor="#888", tickcolor="#888")
 
             # Update info label
@@ -1505,6 +1521,11 @@ class MzMLViewer:
 
         # Clamp to valid range
         new_idx = max(0, min(self.exp.size() - 1, new_idx))
+
+        # Clear zoom range when navigating to different spectrum
+        if new_idx != self.selected_spectrum_idx:
+            self.spectrum_zoom_range = None
+
         self.show_spectrum_in_browser(new_idx)
 
     # ==================== Spectrum Measurement Methods ====================
@@ -4738,6 +4759,8 @@ def create_ui():
                         viewer.spectrum_measure_mode = not viewer.spectrum_measure_mode
                         viewer.spectrum_measure_start = None  # Reset any pending measurement
                         viewer.spectrum_hover_peak = None  # Clear hover highlight
+                        if not viewer.spectrum_measure_mode:
+                            viewer.spectrum_zoom_range = None  # Clear saved zoom when leaving measurement mode
                         measure_btn.props(f"color={'yellow' if viewer.spectrum_measure_mode else 'grey'}")
                         if viewer.spectrum_measure_mode:
                             ui.notify("Measure mode ON - click two peaks to measure Δm/z", type="info")
@@ -4764,48 +4787,8 @@ def create_ui():
                 # Spectrum plot
                 viewer.spectrum_browser_plot = ui.plotly(go.Figure()).classes("w-full")
 
-                # Spectrum hover handler - shows preview line when we have a start point
-                def on_spectrum_hover(e):
-                    """Handle hover events to show preview line after first peak is selected."""
-                    try:
-                        # Only show preview when we have a start point selected
-                        if not viewer.spectrum_measure_mode or viewer.spectrum_measure_start is None:
-                            return
-
-                        if not e.args:
-                            return
-
-                        points = e.args.get("points", [])
-                        if not points:
-                            return
-
-                        hovered_mz = points[0].get("x")
-                        if hovered_mz is None:
-                            return
-
-                        if viewer.selected_spectrum_idx is None or viewer.exp is None:
-                            return
-
-                        spec = viewer.exp[viewer.selected_spectrum_idx]
-                        mz_array, int_array = spec.get_peaks()
-
-                        if len(mz_array) == 0:
-                            return
-
-                        # Snap to nearest peak
-                        snapped = viewer.snap_to_peak(hovered_mz, mz_array, int_array)
-                        if snapped is None:
-                            return
-
-                        # Only update if hover target changed (to avoid excessive redraws)
-                        if viewer.spectrum_hover_peak != snapped:
-                            viewer.spectrum_hover_peak = snapped
-                            viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
-
-                    except Exception:
-                        pass
-
-                viewer.spectrum_browser_plot.on("plotly_hover", on_spectrum_hover)
+                # Note: Hover preview disabled to preserve zoom state during measurement
+                # The two-click workflow still works: click first peak, click second peak
 
                 # Spectrum measurement click handler
                 def on_spectrum_click(e):
@@ -4866,11 +4849,9 @@ def create_ui():
                         snapped_mz, snapped_int = snapped
 
                         if viewer.spectrum_measure_start is None:
-                            # First click - set start point
+                            # First click - set start point (don't refresh to preserve zoom)
                             viewer.spectrum_measure_start = (snapped_mz, snapped_int)
                             ui.notify(f"Start: m/z {snapped_mz:.4f} - click second peak", type="info")
-                            # Refresh to show the start point highlighted
-                            viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
                         else:
                             # Second click - complete measurement
                             start_mz, start_int = viewer.spectrum_measure_start
@@ -4895,6 +4876,25 @@ def create_ui():
                         pass
 
                 viewer.spectrum_browser_plot.on("plotly_click", on_spectrum_click)
+
+                # Track zoom changes to preserve during measurement workflow
+                def on_spectrum_relayout(e):
+                    """Track zoom/pan changes on spectrum plot."""
+                    try:
+                        if not e.args:
+                            return
+                        # Check for zoom box selection or autorange
+                        xmin = e.args.get("xaxis.range[0]")
+                        xmax = e.args.get("xaxis.range[1]")
+                        if xmin is not None and xmax is not None:
+                            viewer.spectrum_zoom_range = (xmin, xmax)
+                        # Check for autorange (reset)
+                        elif e.args.get("xaxis.autorange"):
+                            viewer.spectrum_zoom_range = None
+                    except Exception:
+                        pass
+
+                viewer.spectrum_browser_plot.on("plotly_relayout", on_spectrum_relayout)
 
         # FAIMS Multi-CV Peak Maps (hidden by default)
         faims_container = ui.card().classes("w-full max-w-6xl mt-2 p-2")
