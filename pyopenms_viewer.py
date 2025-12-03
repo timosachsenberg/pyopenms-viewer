@@ -611,6 +611,20 @@ class MzMLViewer:
         self.rt_threshold_3d = 120.0  # Max RT range for 3D (seconds)
         self.mz_threshold_3d = 50.0  # Max m/z range for 3D
 
+        # Panel order configuration for reorderable panels
+        self.panel_definitions = {
+            "tic": {"name": "TIC", "icon": "show_chart"},
+            "peakmap": {"name": "2D Peak Map", "icon": "grid_on"},
+            "spectrum": {"name": "1D Spectrum", "icon": "ssid_chart"},
+            "spectra_table": {"name": "Spectra", "icon": "list"},
+            "features_table": {"name": "Features", "icon": "scatter_plot"},
+            "custom_range": {"name": "Custom Range", "icon": "tune"},
+            "legend": {"name": "Legend & Help", "icon": "help"},
+        }
+        self.panel_order = ["tic", "peakmap", "spectrum", "spectra_table", "features_table", "custom_range", "legend"]
+        self.panel_elements = {}  # Dict: panel_id -> expansion element
+        self.panels_container = None  # Column container holding all panels
+
         # NiceGUI 3.x: Event callbacks for state management
         # These allow UI components to subscribe to state changes
         self._on_data_loaded_callbacks: list[callable] = []
@@ -3747,6 +3761,68 @@ def create_ui():
                     )
                     ui.button("Clear IDs", on_click=clear_ids).props("dense outline color=grey").classes("text-xs")
 
+                # Settings button for panel order
+                def show_panel_settings():
+                    with ui.dialog() as dialog, ui.card().classes("min-w-[350px]"):
+                        ui.label("Panel Order").classes("text-lg font-bold mb-2")
+                        ui.label("Reorder panels using the arrows").classes("text-xs text-gray-500 mb-4")
+
+                        panel_list = ui.column().classes("w-full gap-1")
+
+                        def refresh_list():
+                            panel_list.clear()
+                            with panel_list:
+                                for idx, panel_id in enumerate(viewer.panel_order):
+                                    panel_def = viewer.panel_definitions.get(panel_id, {})
+                                    with ui.row().classes("w-full items-center gap-2 p-2 rounded").style(
+                                        "background: rgba(128,128,128,0.2);"
+                                    ):
+                                        ui.icon(panel_def.get("icon", "widgets")).classes("text-gray-400")
+                                        ui.label(panel_def.get("name", panel_id)).classes("flex-grow")
+
+                                        def move_up(i=idx):
+                                            if i > 0:
+                                                viewer.panel_order[i], viewer.panel_order[i - 1] = (
+                                                    viewer.panel_order[i - 1],
+                                                    viewer.panel_order[i],
+                                                )
+                                                refresh_list()
+
+                                        def move_down(i=idx):
+                                            if i < len(viewer.panel_order) - 1:
+                                                viewer.panel_order[i], viewer.panel_order[i + 1] = (
+                                                    viewer.panel_order[i + 1],
+                                                    viewer.panel_order[i],
+                                                )
+                                                refresh_list()
+
+                                        ui.button(icon="keyboard_arrow_up", on_click=move_up).props(
+                                            "flat dense size=sm"
+                                        ).set_enabled(idx > 0)
+                                        ui.button(icon="keyboard_arrow_down", on_click=move_down).props(
+                                            "flat dense size=sm"
+                                        ).set_enabled(idx < len(viewer.panel_order) - 1)
+
+                        refresh_list()
+
+                        with ui.row().classes("w-full justify-end gap-2 mt-4"):
+
+                            def apply_order():
+                                # Reorder panels using move()
+                                if viewer.panels_container:
+                                    for idx, panel_id in enumerate(viewer.panel_order):
+                                        if panel_id in viewer.panel_elements:
+                                            viewer.panel_elements[panel_id].move(target_index=idx)
+                                dialog.close()
+                                ui.notify("Panel order updated", type="positive")
+
+                            ui.button("Cancel", on_click=dialog.close).props("flat")
+                            ui.button("Apply", on_click=apply_order).props("color=primary")
+
+                    dialog.open()
+
+                ui.button(icon="tune", on_click=show_panel_settings).props("flat dense").tooltip("Panel Settings")
+
         # Info bar
         with ui.row().classes("w-full justify-center gap-6 mb-2 flex-wrap"):
             viewer.info_label = ui.label("No file loaded").classes("text-gray-400")
@@ -3777,10 +3853,15 @@ def create_ui():
             faims_toggle.set_visibility(False)
             viewer.faims_toggle = faims_toggle
 
+        # Panels container - holds all reorderable expansion panels
+        viewer.panels_container = ui.column().classes("w-full items-center gap-2")
+
         # TIC Plot (clickable to show MS1 spectrum, zoomable to update peak map)
         viewer.tic_expansion = ui.expansion("TIC (Total Ion Chromatogram)", icon="show_chart", value=False).classes(
             "w-full max-w-[1700px]"
         )
+        viewer.panel_elements["tic"] = viewer.tic_expansion
+        viewer.tic_expansion.move(target_container=viewer.panels_container)
         with viewer.tic_expansion:
             ui.label("Click to view spectrum, drag to zoom RT range").classes("text-xs text-gray-500 mb-1")
             viewer.tic_plot = ui.plotly(viewer.create_tic_plot()).classes("w-full")
@@ -3833,7 +3914,10 @@ def create_ui():
             viewer.tic_plot.on("plotly_relayout", on_tic_relayout)
 
         # Main visualization area - peak map with spectrum browser overlay (collapsible)
-        with ui.expansion("2D Peak Map", icon="grid_on", value=False).classes("w-full max-w-[1700px]"):
+        peakmap_expansion = ui.expansion("2D Peak Map", icon="grid_on", value=False).classes("w-full max-w-[1700px]")
+        viewer.panel_elements["peakmap"] = peakmap_expansion
+        peakmap_expansion.move(target_container=viewer.panels_container)
+        with peakmap_expansion:
             # Display options row
             with ui.row().classes("w-full items-center gap-4 mb-2 flex-wrap"):
                 ui.label("Overlay:").classes("text-xs text-gray-400")
@@ -4247,6 +4331,8 @@ def create_ui():
         viewer.spectrum_expansion = ui.expansion("1D Spectrum", icon="show_chart", value=False).classes(
             "w-full max-w-[1700px]"
         )
+        viewer.panel_elements["spectrum"] = viewer.spectrum_expansion
+        viewer.spectrum_expansion.move(target_container=viewer.panels_container)
         with viewer.spectrum_expansion:
             with ui.column().classes("w-full items-center"):
                 # Navigation and info row
@@ -4433,6 +4519,8 @@ def create_ui():
         viewer.spectrum_table_expansion = ui.expansion("Spectra", icon="list", value=False).classes(
             "w-full max-w-[1700px]"
         )
+        viewer.panel_elements["spectra_table"] = viewer.spectrum_table_expansion
+        viewer.spectrum_table_expansion.move(target_container=viewer.panels_container)
         with viewer.spectrum_table_expansion:
             ui.label("Click a row to view spectrum. Identified spectra show sequence and score.").classes(
                 "text-sm text-gray-400 mb-2"
@@ -4710,7 +4798,10 @@ def create_ui():
             viewer.spectrum_table.props("flat bordered dense")
 
         # Feature Table
-        with ui.expansion("Features", icon="scatter_plot").classes("w-full max-w-[1700px]"):
+        viewer.feature_table_expansion = ui.expansion("Features", icon="scatter_plot").classes("w-full max-w-[1700px]")
+        viewer.panel_elements["features_table"] = viewer.feature_table_expansion
+        viewer.feature_table_expansion.move(target_container=viewer.panels_container)
+        with viewer.feature_table_expansion:
             ui.label("Click a row to zoom to that feature").classes("text-sm text-gray-400 mb-2")
 
             # Feature filters row
@@ -4792,7 +4883,10 @@ def create_ui():
             viewer.feature_table.props("flat bordered dense")
 
         # Custom range
-        with ui.expansion("Custom Range", icon="tune").classes("w-full max-w-[1700px] mt-4"):
+        viewer.custom_range_expansion = ui.expansion("Custom Range", icon="tune").classes("w-full max-w-[1700px]")
+        viewer.panel_elements["custom_range"] = viewer.custom_range_expansion
+        viewer.custom_range_expansion.move(target_container=viewer.panels_container)
+        with viewer.custom_range_expansion:
             with ui.row().classes("w-full gap-4 items-end"):
                 rt_min_input = ui.number(label="RT Min (s)", value=0, format="%.2f")
                 rt_max_input = ui.number(label="RT Max (s)", value=1000, format="%.2f")
@@ -4807,7 +4901,10 @@ def create_ui():
                 ui.button("Apply Range", on_click=apply_range).props("color=primary")
 
         # Legend
-        with ui.expansion("Legend & Help", icon="help").classes("w-full max-w-[1700px] mt-2"):
+        viewer.legend_expansion = ui.expansion("Legend & Help", icon="help").classes("w-full max-w-[1700px]")
+        viewer.panel_elements["legend"] = viewer.legend_expansion
+        viewer.legend_expansion.move(target_container=viewer.panels_container)
+        with viewer.legend_expansion:
             with ui.row().classes("gap-8 flex-wrap"):
                 with ui.column():
                     ui.label("Overlay Colors:").classes("font-semibold")
