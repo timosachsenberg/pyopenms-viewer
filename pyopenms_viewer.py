@@ -3824,7 +3824,7 @@ def create_ui():
                     viewer.breadcrumb_label = ui.label("Full view").classes("text-xs text-gray-400")
                 viewer.coord_label = ui.label("RT: --  m/z: --").classes("text-xs text-cyan-400 font-mono")
 
-            ui.label("Scroll to zoom, drag to select region, double-click to reset").classes(
+            ui.label("Scroll to zoom, drag to select region, Shift+drag to measure, double-click to reset").classes(
                 "text-xs text-gray-500 mb-1"
             )
 
@@ -3832,17 +3832,40 @@ def create_ui():
             with ui.row().classes("w-full items-start gap-2"):
                 # Peak map image with mouse handlers
                 with ui.column().classes("flex-none"):
-                    # Drag state for selection rectangle
-                    drag_state = {"dragging": False, "start_x": 0, "start_y": 0}
+                    # Drag state for selection rectangle and measurement tool
+                    drag_state = {"dragging": False, "measuring": False, "start_x": 0, "start_y": 0}
+
+                    def pixel_to_data(px: float, py: float) -> tuple[float, float]:
+                        """Convert pixel coordinates to (rt, mz) respecting swap_axes."""
+                        plot_x = px - viewer.margin_left
+                        plot_y = py - viewer.margin_top
+                        plot_x = max(0, min(viewer.plot_width, plot_x))
+                        plot_y = max(0, min(viewer.plot_height, plot_y))
+
+                        x_frac = plot_x / viewer.plot_width
+                        y_frac = plot_y / viewer.plot_height
+                        rt_range = viewer.view_rt_max - viewer.view_rt_min
+                        mz_range = viewer.view_mz_max - viewer.view_mz_min
+
+                        if viewer.swap_axes:
+                            # swap_axes=True: m/z on x-axis, RT on y-axis (inverted)
+                            mz = viewer.view_mz_min + x_frac * mz_range
+                            rt = viewer.view_rt_max - y_frac * rt_range
+                        else:
+                            # swap_axes=False: RT on x-axis, m/z on y-axis (inverted)
+                            rt = viewer.view_rt_min + x_frac * rt_range
+                            mz = viewer.view_mz_max - y_frac * mz_range
+                        return rt, mz
 
                     def on_peakmap_mouse(e: MouseEventArguments):
-                        """Handle mouse events on the peakmap for drag-to-zoom with selection rectangle."""
+                        """Handle mouse events on the peakmap for drag-to-zoom and measurement tool."""
                         if e.type == "mousedown":
                             # Only start drag if within plot area
                             plot_x = e.image_x - viewer.margin_left
                             plot_y = e.image_y - viewer.margin_top
                             if 0 <= plot_x <= viewer.plot_width and 0 <= plot_y <= viewer.plot_height:
                                 drag_state["dragging"] = True
+                                drag_state["measuring"] = e.shift  # Shift+drag = measurement mode
                                 drag_state["start_x"] = e.image_x
                                 drag_state["start_y"] = e.image_y
 
@@ -3853,24 +3876,69 @@ def create_ui():
                             except Exception:
                                 pass
 
-                            # Draw selection rectangle if dragging
+                            # Draw overlay if dragging
                             if drag_state["dragging"]:
-                                x = min(drag_state["start_x"], e.image_x)
-                                y = min(drag_state["start_y"], e.image_y)
-                                w = abs(e.image_x - drag_state["start_x"])
-                                h = abs(e.image_y - drag_state["start_y"])
-                                viewer.image_element.content = f"""
-                                    <rect x="{x}" y="{y}" width="{w}" height="{h}"
-                                          fill="rgba(0, 200, 255, 0.15)"
-                                          stroke="cyan" stroke-width="2" stroke-dasharray="5,5"/>
-                                """
+                                if drag_state["measuring"]:
+                                    # Measurement mode: draw line with delta values
+                                    x1, y1 = drag_state["start_x"], drag_state["start_y"]
+                                    x2, y2 = e.image_x, e.image_y
+
+                                    # Calculate delta RT and m/z
+                                    rt1, mz1 = pixel_to_data(x1, y1)
+                                    rt2, mz2 = pixel_to_data(x2, y2)
+                                    delta_rt = abs(rt2 - rt1)
+                                    delta_mz = abs(mz2 - mz1)
+
+                                    # Format delta values
+                                    if viewer.rt_in_minutes:
+                                        rt_text = f"ΔRT: {delta_rt / 60.0:.3f} min"
+                                    else:
+                                        rt_text = f"ΔRT: {delta_rt:.2f} s"
+                                    mz_text = f"Δm/z: {delta_mz:.4f}"
+
+                                    # Position label near the midpoint of the line
+                                    mid_x = (x1 + x2) / 2
+                                    mid_y = (y1 + y2) / 2
+                                    label_offset = 15
+
+                                    viewer.image_element.content = f"""
+                                        <line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"
+                                              stroke="yellow" stroke-width="2"/>
+                                        <circle cx="{x1}" cy="{y1}" r="4" fill="yellow"/>
+                                        <circle cx="{x2}" cy="{y2}" r="4" fill="yellow"/>
+                                        <rect x="{mid_x - 5}" y="{mid_y + label_offset - 2}"
+                                              width="130" height="36" rx="3"
+                                              fill="rgba(0, 0, 0, 0.8)" stroke="yellow" stroke-width="1"/>
+                                        <text x="{mid_x}" y="{mid_y + label_offset + 12}"
+                                              fill="yellow" font-size="12" font-family="monospace">{rt_text}</text>
+                                        <text x="{mid_x}" y="{mid_y + label_offset + 28}"
+                                              fill="yellow" font-size="12" font-family="monospace">{mz_text}</text>
+                                    """
+                                else:
+                                    # Zoom mode: draw selection rectangle
+                                    x = min(drag_state["start_x"], e.image_x)
+                                    y = min(drag_state["start_y"], e.image_y)
+                                    w = abs(e.image_x - drag_state["start_x"])
+                                    h = abs(e.image_y - drag_state["start_y"])
+                                    viewer.image_element.content = f"""
+                                        <rect x="{x}" y="{y}" width="{w}" height="{h}"
+                                              fill="rgba(0, 200, 255, 0.15)"
+                                              stroke="cyan" stroke-width="2" stroke-dasharray="5,5"/>
+                                    """
 
                         elif e.type == "mouseup":
-                            # Clear selection rectangle
+                            # Clear overlay
                             viewer.image_element.content = ""
 
                             if drag_state["dragging"]:
+                                was_measuring = drag_state["measuring"]
                                 drag_state["dragging"] = False
+                                drag_state["measuring"] = False
+
+                                # Skip zoom if we were measuring
+                                if was_measuring:
+                                    return
+
                                 end_x = e.image_x
                                 end_y = e.image_y
 
@@ -3968,7 +4036,8 @@ def create_ui():
 
                     def on_mouseleave(e):
                         drag_state["dragging"] = False
-                        viewer.image_element.content = ""  # Clear any selection rectangle
+                        drag_state["measuring"] = False
+                        viewer.image_element.content = ""  # Clear any overlay
                         if viewer.coord_label:
                             viewer.coord_label.set_text("RT: --  m/z: --")
 
