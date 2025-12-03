@@ -535,6 +535,7 @@ class Viewer:
         self.colormap = "jet"  # Default colormap
         self.rt_in_minutes = False  # Display RT in minutes instead of seconds
         self.spectrum_intensity_percent = True  # Display spectrum intensity as percentage (vs absolute)
+        self.spectrum_auto_scale = False  # Auto-scale y-axis to fit visible peaks
         self.annotate_peaks = True  # Annotate peaks in spectrum view when ID is selected
         self.annotation_tolerance_da = 0.05  # Mass tolerance for peak annotation in Da
         self.show_all_hits = False  # Show all peptide hits, not just the best hit
@@ -1466,11 +1467,18 @@ class Viewer:
                 uirevision=spectrum_idx,  # Preserve zoom/pan state during updates
             )
 
-            # Apply saved zoom range if in measurement mode
-            if self.spectrum_measure_mode and self.spectrum_zoom_range is not None:
+            # Apply saved zoom range if available (for measurement mode or auto-scale)
+            if self.spectrum_zoom_range is not None:
                 fig.update_xaxes(
                     range=list(self.spectrum_zoom_range), showgrid=False, linecolor="#888", tickcolor="#888"
                 )
+                # Auto-scale y-axis to visible peaks if enabled
+                if self.spectrum_auto_scale:
+                    xmin, xmax = self.spectrum_zoom_range
+                    visible_mask = (mz_array >= xmin) & (mz_array <= xmax)
+                    if np.any(visible_mask):
+                        visible_max = float(int_display[visible_mask].max())
+                        y_range = [0, visible_max / 0.95]  # Scale so max peak is at 95%
             else:
                 fig.update_xaxes(showgrid=False, linecolor="#888", tickcolor="#888")
             fig.update_yaxes(range=y_range, showgrid=False, fixedrange=True, linecolor="#888", tickcolor="#888")
@@ -4760,6 +4768,20 @@ def create_ui():
                         ),
                     ).props("dense size=sm color=grey").tooltip("Toggle between relative (%) and absolute intensity")
 
+                    # Auto-scale checkbox
+                    ui.checkbox(
+                        "Auto Y",
+                        value=False,
+                        on_change=lambda e: (
+                            setattr(viewer, "spectrum_auto_scale", e.value),
+                            viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
+                            if viewer.selected_spectrum_idx is not None
+                            else None,
+                        ),
+                    ).props("dense size=sm color=grey").classes("text-xs").tooltip(
+                        "Auto-scale Y-axis to fit visible peaks (highest peak at 95%)"
+                    )
+
                     ui.label("|").classes("mx-1 text-gray-600")
 
                     # Measurement mode toggle
@@ -4934,7 +4956,7 @@ def create_ui():
 
                 viewer.spectrum_browser_plot.on("plotly_unhover", on_spectrum_unhover)
 
-                # Track zoom changes to preserve during measurement workflow
+                # Track zoom changes to preserve during measurement workflow and auto-scale
                 def on_spectrum_relayout(e):
                     """Track zoom/pan changes on spectrum plot."""
                     try:
@@ -4945,9 +4967,15 @@ def create_ui():
                         xmax = e.args.get("xaxis.range[1]")
                         if xmin is not None and xmax is not None:
                             viewer.spectrum_zoom_range = (xmin, xmax)
+                            # Re-render to apply auto-scale if enabled
+                            if viewer.spectrum_auto_scale and viewer.selected_spectrum_idx is not None:
+                                viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
                         # Check for autorange (reset)
                         elif e.args.get("xaxis.autorange"):
                             viewer.spectrum_zoom_range = None
+                            # Re-render to reset y-axis if auto-scale enabled
+                            if viewer.spectrum_auto_scale and viewer.selected_spectrum_idx is not None:
+                                viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
                     except Exception:
                         pass
 
