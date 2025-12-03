@@ -22,6 +22,7 @@ import io
 import math
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -2617,8 +2618,12 @@ class MzMLViewer:
 
         return canvas
 
-    def render_image(self) -> str:
-        """Render current view using datashader."""
+    def render_image(self, fast: bool = False) -> str:
+        """Render current view using datashader.
+
+        Args:
+            fast: If True, render at reduced resolution and skip overlays for faster panning.
+        """
         if self.df is None or len(self.df) == 0:
             return ""
 
@@ -2633,47 +2638,63 @@ class MzMLViewer:
         if len(view_df) == 0:
             return ""
 
+        # Use reduced resolution for fast mode (panning)
+        resolution_factor = 4 if fast else 1
+        render_width = self.plot_width // resolution_factor
+        render_height = self.plot_height // resolution_factor
+
         # Swap axes if enabled (m/z on x-axis, RT on y-axis)
         if self.swap_axes:
             ds_canvas = ds.Canvas(
-                plot_width=self.plot_width,
-                plot_height=self.plot_height,
+                plot_width=render_width,
+                plot_height=render_height,
                 x_range=(self.view_mz_min, self.view_mz_max),
                 y_range=(self.view_rt_min, self.view_rt_max),
             )
             agg = ds_canvas.points(view_df, "mz", "rt", ds.max("log_intensity"))
         else:
             ds_canvas = ds.Canvas(
-                plot_width=self.plot_width,
-                plot_height=self.plot_height,
+                plot_width=render_width,
+                plot_height=render_height,
                 x_range=(self.view_rt_min, self.view_rt_max),
                 y_range=(self.view_mz_min, self.view_mz_max),
             )
             agg = ds_canvas.points(view_df, "rt", "mz", ds.max("log_intensity"))
         img = tf.shade(agg, cmap=COLORMAPS[self.colormap], how="linear")
-        # Use dynspread to make points more visible (dynamically adjusts based on density)
-        img = tf.dynspread(img, threshold=0.5, max_px=3)
+        # Skip dynspread in fast mode for speed
+        if not fast:
+            img = tf.dynspread(img, threshold=0.5, max_px=3)
         img = tf.set_background(img, get_colormap_background(self.colormap))
 
         plot_img = img.to_pil()
 
-        if self.feature_map is not None:
-            plot_img = self._draw_features_on_plot(plot_img)
+        # Upscale if using reduced resolution
+        if fast and resolution_factor > 1:
+            plot_img = plot_img.resize(
+                (self.plot_width, self.plot_height), Image.Resampling.NEAREST
+            )
 
-        if self.peptide_ids:
-            plot_img = self._draw_ids_on_plot(plot_img)
+        # Skip overlays in fast mode for speed
+        if not fast:
+            if self.feature_map is not None:
+                plot_img = self._draw_features_on_plot(plot_img)
 
-        if self.show_spectrum_marker:
-            plot_img = self._draw_spectrum_marker_on_plot(plot_img)
+            if self.peptide_ids:
+                plot_img = self._draw_ids_on_plot(plot_img)
 
-        # Draw hover highlights (last so they appear on top)
-        plot_img = self._draw_hover_overlay(plot_img)
+            if self.show_spectrum_marker:
+                plot_img = self._draw_spectrum_marker_on_plot(plot_img)
+
+            # Draw hover highlights (last so they appear on top)
+            plot_img = self._draw_hover_overlay(plot_img)
 
         canvas = Image.new("RGBA", (self.canvas_width, self.canvas_height), (0, 0, 0, 0))
         plot_img_rgba = plot_img.convert("RGBA")
         canvas.paste(plot_img_rgba, (self.margin_left, self.margin_top))
 
-        canvas = self._draw_axes(canvas)
+        # Skip axes in fast mode
+        if not fast:
+            canvas = self._draw_axes(canvas)
 
         buffer = io.BytesIO()
         canvas.save(buffer, format="PNG")
@@ -2756,6 +2777,7 @@ class MzMLViewer:
         Args:
             lightweight: If True, only update the main peakmap image and range labels.
                         Skip minimap, TIC, 3D view, and breadcrumb updates (for panning).
+                        Also uses fast rendering (lower resolution, no overlays).
         """
         if self.df is None:
             return
@@ -2763,7 +2785,8 @@ class MzMLViewer:
         if self.status_label and not lightweight:
             self.status_label.set_text("Rendering...")
 
-        img_data = self.render_image()
+        # Use fast rendering during panning (lower resolution, no overlays)
+        img_data = self.render_image(fast=lightweight)
         if img_data and self.image_element:
             self.image_element.set_source(f"data:image/png;base64,{img_data}")
 
@@ -4066,6 +4089,8 @@ def create_ui():
                         "pan_rt_max": 0,
                         "pan_mz_min": 0,
                         "pan_mz_max": 0,
+                        # Throttling for panning (timestamp of last render)
+                        "last_pan_render": 0.0,
                     }
 
                     def pixel_to_data(px: float, py: float) -> tuple[float, float]:
@@ -4202,10 +4227,14 @@ def create_ui():
                                     viewer.view_mz_min = new_mz_min
                                     viewer.view_mz_max = new_mz_max
 
-                                    # Update plot (lightweight mode - only peakmap and labels)
-                                    viewer.update_plot(lightweight=True)
+                                    # Throttle rendering: only render if 50ms+ since last render
+                                    current_time = time.time()
+                                    if current_time - drag_state["last_pan_render"] >= 0.05:
+                                        drag_state["last_pan_render"] = current_time
+                                        # Update plot (lightweight/fast mode)
+                                        viewer.update_plot(lightweight=True)
 
-                                    # Show panning cursor indicator
+                                    # Show panning cursor indicator (always update)
                                     cx, cy = e.image_x, e.image_y
                                     viewer.image_element.content = f"""
                                         <circle cx="{cx}" cy="{cy}" r="8" fill="none"
@@ -4242,9 +4271,8 @@ def create_ui():
                                 if was_measuring or was_panning:
                                     # Do full UI update after panning finishes
                                     if was_panning:
-                                        viewer.update_minimap()
-                                        viewer.update_tic_plot()
-                                        viewer.update_breadcrumb()
+                                        # Full resolution render (not lightweight)
+                                        viewer.update_plot(lightweight=False)
                                     return
 
                                 end_x = e.image_x
@@ -4343,14 +4371,43 @@ def create_ui():
                         viewer.reset_view()
 
                     def on_mouseleave(e):
+                        was_panning = drag_state["panning"]
                         drag_state["dragging"] = False
                         drag_state["measuring"] = False
+                        drag_state["panning"] = False
                         viewer.image_element.content = ""  # Clear any overlay
                         if viewer.coord_label:
                             viewer.coord_label.set_text("RT: --  m/z: --")
+                        # If panning was active, do full resolution render
+                        if was_panning:
+                            viewer.update_plot(lightweight=False)
 
                     viewer.image_element.on("dblclick", on_dblclick)
                     viewer.image_element.on("mouseleave", on_mouseleave)
+
+                    # Handle ctrl key release during panning (triggers full render)
+                    def on_keyup(e):
+                        key = e.args.get("key", "")
+                        if key == "Control" and drag_state["panning"]:
+                            # Ctrl released during panning - end panning and do full render
+                            drag_state["dragging"] = False
+                            drag_state["measuring"] = False
+                            drag_state["panning"] = False
+                            viewer.image_element.content = ""
+                            viewer.update_plot(lightweight=False)
+
+                    viewer.image_element.on("keyup", on_keyup)
+
+                    # Also handle document-level mouseup for when mouse is released outside image
+                    async def on_document_mouseup():
+                        if drag_state["panning"]:
+                            drag_state["dragging"] = False
+                            drag_state["measuring"] = False
+                            drag_state["panning"] = False
+                            viewer.image_element.content = ""
+                            viewer.update_plot(lightweight=False)
+
+                    ui.on("mouseup", on_document_mouseup)
 
                     # 3D View Container (below 2D peakmap, hidden by default)
                     viewer.scene_3d_container = ui.column().classes("w-full mt-1")
