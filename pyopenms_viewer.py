@@ -1390,11 +1390,11 @@ class Viewer:
                 fig.update_layout(
                     title={"text": title, "font": {"size": 14}},
                     height=350,
-                    uirevision=spectrum_idx,  # Preserve zoom/pan state during updates
+                    uirevision="spectrum_stable",  # Stable key to preserve zoom/pan state
                 )
 
-                # Apply saved zoom range if in measurement mode
-                if self.spectrum_measure_mode and self.spectrum_zoom_range is not None:
+                # Always apply saved zoom range if available
+                if self.spectrum_zoom_range is not None:
                     fig.update_xaxes(range=list(self.spectrum_zoom_range))
 
                 # Update info label with ID info
@@ -1478,7 +1478,7 @@ class Viewer:
                 showlegend=False,
                 modebar={"remove": ["lasso2d", "select2d"]},  # Remove lasso and box select tools
                 font={"color": "#888"},  # Gray text works on both light and dark
-                uirevision=spectrum_idx,  # Preserve zoom/pan state during updates
+                uirevision="spectrum_stable",  # Stable key to preserve zoom/pan state
             )
 
             # Apply saved zoom range if available (for measurement mode or auto-scale)
@@ -4954,8 +4954,7 @@ def create_ui():
                         viewer.spectrum_measure_mode = not viewer.spectrum_measure_mode
                         viewer.spectrum_measure_start = None  # Reset any pending measurement
                         viewer.spectrum_hover_peak = None  # Clear hover highlight
-                        if not viewer.spectrum_measure_mode:
-                            viewer.spectrum_zoom_range = None  # Clear saved zoom when leaving measurement mode
+                        # Note: Don't clear zoom_range here - preserve zoom when toggling modes
                         # Disable annotation mode when measure mode is active
                         if viewer.spectrum_measure_mode and viewer.peak_annotation_mode:
                             viewer.peak_annotation_mode = False
