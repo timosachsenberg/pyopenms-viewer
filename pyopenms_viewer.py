@@ -878,6 +878,18 @@ class Viewer:
         ]
         self.panel_elements = {}  # Dict: panel_id -> expansion element
         self.panels_container = None  # Column container holding all panels
+        # Panel visibility: True = always show, False = always hide, "auto" = show only when data exists
+        self.panel_visibility = {
+            "tic": True,  # Always show
+            "chromatograms": "auto",  # Show only when chromatograms exist
+            "peakmap": True,  # Always show
+            "im_peakmap": "auto",  # Show only when ion mobility data exists
+            "spectrum": True,  # Always show
+            "spectra_table": True,  # Always show
+            "features_table": "auto",  # Show only when features loaded
+            "custom_range": True,  # Always show
+            "legend": True,  # Always show
+        }
 
         # NiceGUI 3.x: Event callbacks for state management
         # These allow UI components to subscribe to state changes
@@ -920,6 +932,52 @@ class Viewer:
                 callback(selection_type, index, self)
             except Exception:
                 pass
+
+    def should_panel_be_visible(self, panel_id: str) -> bool:
+        """Determine if a panel should be visible based on visibility setting and data availability.
+
+        Args:
+            panel_id: The panel identifier (e.g., "tic", "im_peakmap", "chromatograms")
+
+        Returns:
+            True if panel should be visible, False otherwise
+        """
+        visibility = self.panel_visibility.get(panel_id, True)
+
+        if visibility is True:
+            return True
+        elif visibility is False:
+            return False
+        elif visibility == "auto":
+            # Auto-visibility based on data availability
+            if panel_id == "im_peakmap":
+                return self.has_ion_mobility
+            elif panel_id == "chromatograms":
+                return self.has_chromatograms
+            elif panel_id == "features_table":
+                return self.feature_data is not None and len(self.feature_data) > 0
+            else:
+                return True
+        return True
+
+    def update_panel_visibility(self) -> None:
+        """Update visibility of all panels based on current visibility settings."""
+        for panel_id, element in self.panel_elements.items():
+            if element is not None:
+                should_show = self.should_panel_be_visible(panel_id)
+                element.set_visibility(should_show)
+
+    def set_panel_visibility(self, panel_id: str, visibility: bool | str) -> None:
+        """Set visibility for a specific panel.
+
+        Args:
+            panel_id: The panel identifier
+            visibility: True (always show), False (always hide), or "auto" (data-dependent)
+        """
+        self.panel_visibility[panel_id] = visibility
+        if panel_id in self.panel_elements and self.panel_elements[panel_id] is not None:
+            should_show = self.should_panel_be_visible(panel_id)
+            self.panel_elements[panel_id].set_visibility(should_show)
 
     def set_loading(self, is_loading: bool, message: str = "") -> None:
         """Set the loading state and optionally display a message.
@@ -4891,6 +4949,8 @@ def create_ui():
                             else:
                                 if viewer.im_info_label:
                                     viewer.im_info_label.set_text("No ion mobility data")
+                            # Update panel visibility based on loaded data
+                            viewer.update_panel_visibility()
                             ui.notify(f"Loaded {len(viewer.df):,} peaks from {original_name}", type="positive")
                         else:
                             ui.notify(f"Failed to load {original_name}", type="negative")
@@ -4903,6 +4963,8 @@ def create_ui():
                                 viewer.feature_info_label.set_text(f"Features: {viewer.feature_map.size():,}")
                             if viewer.feature_table is not None:
                                 viewer.feature_table.rows = viewer.feature_data
+                            # Update panel visibility (features panel now has data)
+                            viewer.update_panel_visibility()
                             ui.notify(
                                 f"Loaded {viewer.feature_map.size():,} features from {original_name}", type="positive"
                             )
@@ -5035,6 +5097,8 @@ def create_ui():
                                     else:
                                         if viewer.im_info_label:
                                             viewer.im_info_label.set_text("No ion mobility data")
+                                    # Update panel visibility based on loaded data
+                                    viewer.update_panel_visibility()
                                     ui.notify(f"Loaded {len(viewer.df):,} peaks from {filename}", type="positive")
                                 else:
                                     ui.notify(f"Failed to load {filename}", type="negative")
@@ -5047,6 +5111,8 @@ def create_ui():
                                         viewer.feature_info_label.set_text(f"Features: {viewer.feature_map.size():,}")
                                     if viewer.feature_table is not None:
                                         viewer.feature_table.rows = viewer.feature_data
+                                    # Update panel visibility (features panel now has data)
+                                    viewer.update_panel_visibility()
                                     ui.notify(
                                         f"Loaded {viewer.feature_map.size():,} features from {filename}",
                                         type="positive",
@@ -5114,9 +5180,75 @@ def create_ui():
 
                 # Settings button for panel order
                 def show_panel_settings():
-                    with ui.dialog() as dialog, ui.card().classes("min-w-[350px]"):
-                        ui.label("Panel Order").classes("text-lg font-bold mb-2")
-                        ui.label("Reorder panels using the arrows").classes("text-xs text-gray-500 mb-4")
+                    with ui.dialog() as dialog, ui.card().classes("min-w-[400px]"):
+                        ui.label("Panel Configuration").classes("text-lg font-bold mb-2")
+
+                        # Panel visibility section
+                        ui.label("Visibility").classes("text-sm font-semibold text-gray-400 mt-2")
+                        ui.label("Toggle panels on/off. 'Auto' hides when no data.").classes(
+                            "text-xs text-gray-500 mb-2"
+                        )
+
+                        visibility_container = ui.column().classes("w-full gap-1 mb-4")
+
+                        # Panels that support "auto" visibility
+                        auto_panels = {"chromatograms", "im_peakmap", "features_table"}
+
+                        def refresh_visibility():
+                            visibility_container.clear()
+                            with visibility_container:
+                                for panel_id in viewer.panel_order:
+                                    panel_def = viewer.panel_definitions.get(panel_id, {})
+                                    current_vis = viewer.panel_visibility.get(panel_id, True)
+
+                                    with ui.row().classes("w-full items-center gap-2"):
+                                        ui.icon(panel_def.get("icon", "widgets")).classes("text-gray-400 text-sm")
+                                        ui.label(panel_def.get("name", panel_id)).classes("flex-grow text-sm")
+
+                                        if panel_id in auto_panels:
+                                            # Three-state toggle for auto-capable panels
+                                            options = ["Hide", "Auto", "Show"]
+                                            if current_vis is False:
+                                                current_val = "Hide"
+                                            elif current_vis == "auto":
+                                                current_val = "Auto"
+                                            else:
+                                                current_val = "Show"
+
+                                            def make_toggle_handler(pid=panel_id):
+                                                def handler(e):
+                                                    if e.value == "Hide":
+                                                        viewer.panel_visibility[pid] = False
+                                                    elif e.value == "Auto":
+                                                        viewer.panel_visibility[pid] = "auto"
+                                                    else:
+                                                        viewer.panel_visibility[pid] = True
+
+                                                return handler
+
+                                            ui.toggle(options, value=current_val, on_change=make_toggle_handler()).props(
+                                                "dense size=sm"
+                                            ).classes("text-xs")
+                                        else:
+                                            # Simple checkbox for always-visible panels
+
+                                            def make_checkbox_handler(pid=panel_id):
+                                                def handler(e):
+                                                    viewer.panel_visibility[pid] = e.value
+
+                                                return handler
+
+                                            ui.checkbox(
+                                                "", value=current_vis is True, on_change=make_checkbox_handler()
+                                            ).props("dense")
+
+                        refresh_visibility()
+
+                        ui.separator().classes("my-2")
+
+                        # Panel order section
+                        ui.label("Order").classes("text-sm font-semibold text-gray-400")
+                        ui.label("Reorder panels using arrows").classes("text-xs text-gray-500 mb-2")
 
                         panel_list = ui.column().classes("w-full gap-1")
 
@@ -5125,11 +5257,11 @@ def create_ui():
                             with panel_list:
                                 for idx, panel_id in enumerate(viewer.panel_order):
                                     panel_def = viewer.panel_definitions.get(panel_id, {})
-                                    with ui.row().classes("w-full items-center gap-2 p-2 rounded").style(
-                                        "background: rgba(128,128,128,0.2);"
+                                    with ui.row().classes("w-full items-center gap-2 p-1 rounded").style(
+                                        "background: rgba(128,128,128,0.15);"
                                     ):
-                                        ui.icon(panel_def.get("icon", "widgets")).classes("text-gray-400")
-                                        ui.label(panel_def.get("name", panel_id)).classes("flex-grow")
+                                        ui.icon(panel_def.get("icon", "widgets")).classes("text-gray-400 text-sm")
+                                        ui.label(panel_def.get("name", panel_id)).classes("flex-grow text-sm")
 
                                         def move_up(i=idx):
                                             if i > 0:
@@ -5138,6 +5270,7 @@ def create_ui():
                                                     viewer.panel_order[i],
                                                 )
                                                 refresh_list()
+                                                refresh_visibility()
 
                                         def move_down(i=idx):
                                             if i < len(viewer.panel_order) - 1:
@@ -5146,6 +5279,7 @@ def create_ui():
                                                     viewer.panel_order[i],
                                                 )
                                                 refresh_list()
+                                                refresh_visibility()
 
                                         ui.button(icon="keyboard_arrow_up", on_click=move_up).props(
                                             "flat dense size=sm"
@@ -5158,17 +5292,19 @@ def create_ui():
 
                         with ui.row().classes("w-full justify-end gap-2 mt-4"):
 
-                            def apply_order():
+                            def apply_settings():
                                 # Reorder panels using move()
                                 if viewer.panels_container:
                                     for idx, panel_id in enumerate(viewer.panel_order):
                                         if panel_id in viewer.panel_elements:
                                             viewer.panel_elements[panel_id].move(target_index=idx)
+                                # Apply visibility
+                                viewer.update_panel_visibility()
                                 dialog.close()
-                                ui.notify("Panel order updated", type="positive")
+                                ui.notify("Panel settings updated", type="positive")
 
                             ui.button("Cancel", on_click=dialog.close).props("flat")
-                            ui.button("Apply", on_click=apply_order).props("color=primary")
+                            ui.button("Apply", on_click=apply_settings).props("color=primary")
 
                     dialog.open()
 
@@ -6999,6 +7135,9 @@ def create_ui():
 - Use `--native` for file dialog
 - Load multiple files at once
 """).classes("text-xs text-gray-400")
+
+        # Apply initial panel visibility (hide panels with "auto" that have no data yet)
+        viewer.update_panel_visibility()
 
         # Keyboard handlers
         def on_global_key(e):
