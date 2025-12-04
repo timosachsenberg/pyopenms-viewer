@@ -3895,7 +3895,8 @@ class Viewer:
         )
         agg = ds_canvas.points(view_df, "mz", "im", ds.max("log_intensity"))
         img = tf.shade(agg, cmap=COLORMAPS[self.colormap], how="linear")
-        img = tf.dynspread(img, threshold=0.5, max_px=3)
+        # Use higher max_px for sparse IM data to make individual points more visible
+        img = tf.dynspread(img, threshold=0.3, max_px=5)
         img = tf.set_background(img, get_colormap_background(self.colormap))
 
         plot_img = img.to_pil()
@@ -3930,6 +3931,11 @@ class Viewer:
         im_values, intensities = self.extract_mobilogram()
         if len(im_values) == 0 or len(intensities) == 0:
             return canvas
+
+        # Sort by IM values for proper line drawing (prevents jumps)
+        sort_idx = np.argsort(im_values)
+        im_values = im_values[sort_idx]
+        intensities = intensities[sort_idx]
 
         # Mobilogram plot area (to the right of the main plot)
         mob_left = self.margin_left + self.plot_width + 10
@@ -3966,9 +3972,11 @@ class Viewer:
         # Draw line connecting all points
         if len(points) > 1:
             # Draw filled polygon (intensity profile)
-            fill_points = [(mob_left, mob_top)]  # Start at top-left
-            fill_points.extend(points)
-            fill_points.append((mob_left, mob_bottom))  # End at bottom-left
+            # Points are sorted by IM ascending: first point = low IM (bottom), last point = high IM (top)
+            # Build polygon path: bottom-left -> data points (bottom to top) -> top-left -> close
+            fill_points = [(mob_left, mob_bottom)]  # Start at bottom-left
+            fill_points.extend(points)  # Go through data points (bottom to top)
+            fill_points.append((mob_left, mob_top))  # End at top-left
 
             # Fill with semi-transparent cyan
             draw.polygon(fill_points, fill=(0, 200, 255, 80))
@@ -4094,11 +4102,19 @@ class Viewer:
             self.im_image_element.set_source(f"data:image/png;base64,{img_data}")
 
     def reset_im_view(self):
-        """Reset IM view to full data range."""
+        """Reset IM view to full data range (both m/z and IM axes)."""
         if self.im_df is not None:
+            # Reset both m/z (X-axis) and IM (Y-axis) to full range
+            self.view_mz_min = self.mz_min
+            self.view_mz_max = self.mz_max
             self.view_im_min = self.im_min
             self.view_im_max = self.im_max
             self.update_im_plot()
+            if self.im_range_label:
+                self.im_range_label.set_text(
+                    f"m/z: {self.view_mz_min:.2f} - {self.view_mz_max:.2f} | "
+                    f"IM: {self.view_im_min:.3f} - {self.view_im_max:.3f} {self.im_unit}"
+                )
 
     def extract_mobilogram(self, mz_min: float = None, mz_max: float = None) -> tuple:
         """Extract mobilogram (summed intensity vs ion mobility) from IM data.
