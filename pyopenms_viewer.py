@@ -271,6 +271,7 @@ def create_annotated_spectrum_plot(
     tolerance_da: float = 0.5,
     peak_annotations: Optional[list[tuple[int, str, str]]] = None,
     annotate: bool = True,
+    mirror_mode: bool = False,
 ) -> go.Figure:
     """Create an annotated spectrum plot using Plotly.
 
@@ -283,6 +284,7 @@ def create_annotated_spectrum_plot(
         tolerance_da: Mass tolerance in Da for matching (used if no peak_annotations)
         peak_annotations: Optional list of (peak_index, ion_name, ion_type) from SpectrumAnnotator
         annotate: Whether to show annotations (if False, shows raw spectrum)
+        mirror_mode: If True, flip annotated peaks downward for comparison view
     """
 
     # Normalize intensities to percentage
@@ -354,6 +356,7 @@ def create_annotated_spectrum_plot(
                 pass
 
         # Add matched peaks as colored lines grouped by ion type
+        # In mirror mode, flip annotated peaks downward (negative y values)
         for ion_type, peaks in matched_peaks.items():
             if not peaks:
                 continue
@@ -364,7 +367,10 @@ def create_annotated_spectrum_plot(
             y_ions = []
             for peak in peaks:
                 x_ions.extend([peak["mz"], peak["mz"], None])
-                y_ions.extend([0, peak["intensity"], None])
+                if mirror_mode:
+                    y_ions.extend([0, -peak["intensity"], None])
+                else:
+                    y_ions.extend([0, peak["intensity"], None])
 
             fig.add_trace(
                 go.Scatter(
@@ -379,10 +385,11 @@ def create_annotated_spectrum_plot(
 
             # Add hover points and annotations for matched peaks
             for peak in peaks:
+                y_val = -peak["intensity"] if mirror_mode else peak["intensity"]
                 fig.add_trace(
                     go.Scatter(
                         x=[peak["mz"]],
-                        y=[peak["intensity"]],
+                        y=[y_val],
                         mode="markers",
                         marker={"color": color, "size": 4},
                         showlegend=False,
@@ -390,14 +397,20 @@ def create_annotated_spectrum_plot(
                     )
                 )
 
-                # Add text annotation
+                # Add text annotation (below peak in mirror mode)
+                if mirror_mode:
+                    text_y = y_val - 3
+                    text_angle = 45  # Flip angle for readability
+                else:
+                    text_y = peak["intensity"] + 3
+                    text_angle = -45
                 fig.add_annotation(
                     x=peak["mz"],
-                    y=peak["intensity"] + 3,
+                    y=text_y,
                     text=peak["label"],
                     showarrow=False,
                     font={"size": 9, "color": color},
-                    textangle=-45,
+                    textangle=text_angle,
                 )
 
     # Add precursor marker
@@ -426,13 +439,30 @@ def create_annotated_spectrum_plot(
         linecolor="#888",
         tickcolor="#888",
     )
-    fig.update_yaxes(
-        range=[0, 110],
-        showgrid=False,
-        fixedrange=True,
-        linecolor="#888",
-        tickcolor="#888",
-    )
+
+    if mirror_mode:
+        # Symmetric y-axis for mirror view with zero line
+        fig.update_yaxes(
+            range=[-110, 110],
+            showgrid=False,
+            fixedrange=True,
+            linecolor="#888",
+            tickcolor="#888",
+            zeroline=True,
+            zerolinecolor="#888",
+            zerolinewidth=1,
+            # Show absolute values on tick labels
+            tickvals=[-100, -50, 0, 50, 100],
+            ticktext=["100", "50", "0", "50", "100"],
+        )
+    else:
+        fig.update_yaxes(
+            range=[0, 110],
+            showgrid=False,
+            fixedrange=True,
+            linecolor="#888",
+            tickcolor="#888",
+        )
 
     return fig
 
@@ -563,6 +593,7 @@ class Viewer:
         self.spectrum_auto_scale = False  # Auto-scale y-axis to fit visible peaks
         self.annotate_peaks = True  # Annotate peaks in spectrum view when ID is selected
         self.annotation_tolerance_da = 0.05  # Mass tolerance for peak annotation in Da
+        self.mirror_annotation_view = False  # Mirror mode: flip annotated peaks downward for comparison
         self.show_all_hits = False  # Show all peptide hits, not just the best hit
 
         # Colors
@@ -1647,6 +1678,7 @@ class Viewer:
                     prec_mz,
                     peak_annotations=peak_annotations,
                     annotate=self.annotate_peaks,
+                    mirror_mode=self.mirror_annotation_view,
                 )
 
                 # Update title to include spectrum index
@@ -6314,6 +6346,18 @@ def create_ui():
                     .classes("w-20")
                 )
                 ui.tooltip("Mass tolerance for matching peaks to theoretical ions (Da)")
+
+                def toggle_mirror_view():
+                    viewer.mirror_annotation_view = mirror_view_cb.value
+                    if viewer.selected_spectrum_idx is not None:
+                        viewer.show_spectrum_in_browser(viewer.selected_spectrum_idx)
+
+                mirror_view_cb = (
+                    ui.checkbox("Mirror", value=viewer.mirror_annotation_view, on_change=toggle_mirror_view)
+                    .props("dense")
+                    .classes("text-blue-400")
+                )
+                ui.tooltip("Mirror view: flip annotated peaks downward for comparison")
 
             # Define all columns - basic and advanced
             basic_columns = [
