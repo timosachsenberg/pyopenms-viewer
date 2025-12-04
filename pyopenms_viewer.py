@@ -642,7 +642,7 @@ class Viewer:
             "spectra_table": {"name": "Spectra", "icon": "list"},
             "features_table": {"name": "Features", "icon": "scatter_plot"},
             "custom_range": {"name": "Custom Range", "icon": "tune"},
-            "legend": {"name": "Legend & Help", "icon": "help"},
+            "legend": {"name": "Help", "icon": "help"},
         }
         self.panel_order = ["tic", "peakmap", "spectrum", "spectra_table", "features_table", "custom_range", "legend"]
         self.panel_elements = {}  # Dict: panel_id -> expansion element
@@ -5794,8 +5794,8 @@ def create_ui():
 
                 ui.button("Apply Range", on_click=apply_range).props("color=primary")
 
-        # Legend & Cheat Sheet
-        viewer.legend_expansion = ui.expansion("Cheat Sheet", icon="help").classes("w-full max-w-[1700px]")
+        # Help panel
+        viewer.legend_expansion = ui.expansion("Help", icon="help").classes("w-full max-w-[1700px]")
         viewer.panel_elements["legend"] = viewer.legend_expansion
         viewer.legend_expansion.move(target_container=viewer.panels_container)
         with viewer.legend_expansion:
