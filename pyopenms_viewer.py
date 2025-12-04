@@ -4862,13 +4862,11 @@ def create_ui():
         """),
         ).props("flat round dense color=grey").tooltip("Toggle fullscreen (F11)")
 
-    with ui.column().classes("w-full items-center p-4"):
-        ui.label("pyopenms-viewer").classes("text-3xl font-bold mb-2")
-        ui.label("Fast mzML viewer using NiceGUI + Datashader + pyOpenMS").classes("text-gray-400 mb-4")
-
-        # File loading section (local filesystem paths)
-        with ui.card().classes("w-full max-w-6xl mb-4"):
-            ui.label("Load Data").classes("text-xl font-semibold mb-2")
+    with ui.column().classes("w-full items-center p-2"):
+        # Compact toolbar for file operations and info display
+        with ui.row().classes("w-full max-w-[1700px] items-center gap-2 px-2 py-1 rounded").style(
+            "background: rgba(128,128,128,0.1);"
+        ):
 
             async def handle_upload(e):
                 """Handle uploaded file - detect type and load appropriately."""
@@ -5145,188 +5143,194 @@ def create_ui():
                 except Exception as ex:
                     ui.notify(f"File dialog error: {ex}", type="negative")
 
-            with ui.row().classes("w-full items-center gap-4"):
-                # Native file dialog button (works in native mode, shows warning in browser mode)
-                ui.button(
-                    "Open Files...",
-                    icon="folder_open",
-                    on_click=open_native_file_dialog,
-                ).props("outline").tooltip("Open files using native file dialog (native mode only)")
+            # Open button
+            ui.button(
+                icon="folder_open",
+                on_click=open_native_file_dialog,
+            ).props("flat dense").tooltip("Open files (native mode)")
 
-                ui.upload(
-                    label="Drop mzML, featureXML, or idXML files here",
-                    on_upload=handle_upload,
-                    auto_upload=True,
-                    multiple=True,
-                ).classes("flex-grow").props(
-                    'accept=".mzML,.mzml,.featureXML,.featurexml,.idXML,.idxml,.xml" flat bordered'
-                )
+            # Compact drop zone
+            ui.upload(
+                label="Drop files here",
+                on_upload=handle_upload,
+                auto_upload=True,
+                multiple=True,
+            ).classes("w-40").props(
+                'accept=".mzML,.mzml,.featureXML,.featurexml,.idXML,.idxml,.xml" flat dense bordered'
+            ).style("min-height: 32px;")
 
-                # Clear buttons
-                with ui.column().classes("gap-1"):
+            ui.separator().props("vertical").classes("h-6")
 
-                    def clear_features():
-                        viewer.clear_features()
-                        viewer.update_plot()
+            # Clear buttons (icon only)
+            def clear_features():
+                viewer.clear_features()
+                viewer.update_plot()
+                if viewer.feature_info_label:
+                    viewer.feature_info_label.set_text("Features: None")
 
-                    def clear_ids():
-                        viewer.clear_ids()
-                        viewer.update_plot()
+            def clear_ids():
+                viewer.clear_ids()
+                viewer.update_plot()
+                if viewer.id_info_label:
+                    viewer.id_info_label.set_text("IDs: None")
 
-                    ui.button("Clear Features", on_click=clear_features).props("dense outline color=grey").classes(
-                        "text-xs"
+            ui.button(icon="delete_outline", on_click=clear_features).props(
+                "flat dense size=sm"
+            ).tooltip("Clear Features").classes("text-cyan-400")
+            ui.button(icon="delete_outline", on_click=clear_ids).props(
+                "flat dense size=sm"
+            ).tooltip("Clear IDs").classes("text-orange-400")
+
+            ui.separator().props("vertical").classes("h-6")
+
+            # Settings button for panel order
+            def show_panel_settings():
+                with ui.dialog() as dialog, ui.card().classes("min-w-[400px]"):
+                    ui.label("Panel Configuration").classes("text-lg font-bold mb-2")
+
+                    # Panel visibility section
+                    ui.label("Visibility").classes("text-sm font-semibold text-gray-400 mt-2")
+                    ui.label("Toggle panels on/off. 'Auto' hides when no data.").classes(
+                        "text-xs text-gray-500 mb-2"
                     )
-                    ui.button("Clear IDs", on_click=clear_ids).props("dense outline color=grey").classes("text-xs")
 
-                # Settings button for panel order
-                def show_panel_settings():
-                    with ui.dialog() as dialog, ui.card().classes("min-w-[400px]"):
-                        ui.label("Panel Configuration").classes("text-lg font-bold mb-2")
+                    visibility_container = ui.column().classes("w-full gap-1 mb-4")
 
-                        # Panel visibility section
-                        ui.label("Visibility").classes("text-sm font-semibold text-gray-400 mt-2")
-                        ui.label("Toggle panels on/off. 'Auto' hides when no data.").classes(
-                            "text-xs text-gray-500 mb-2"
-                        )
+                    # Panels that support "auto" visibility
+                    auto_panels = {"chromatograms", "im_peakmap", "features_table"}
 
-                        visibility_container = ui.column().classes("w-full gap-1 mb-4")
+                    def refresh_visibility():
+                        visibility_container.clear()
+                        with visibility_container:
+                            for panel_id in viewer.panel_order:
+                                panel_def = viewer.panel_definitions.get(panel_id, {})
+                                current_vis = viewer.panel_visibility.get(panel_id, True)
 
-                        # Panels that support "auto" visibility
-                        auto_panels = {"chromatograms", "im_peakmap", "features_table"}
+                                with ui.row().classes("w-full items-center gap-2"):
+                                    ui.icon(panel_def.get("icon", "widgets")).classes("text-gray-400 text-sm")
+                                    ui.label(panel_def.get("name", panel_id)).classes("flex-grow text-sm")
 
-                        def refresh_visibility():
-                            visibility_container.clear()
-                            with visibility_container:
-                                for panel_id in viewer.panel_order:
-                                    panel_def = viewer.panel_definitions.get(panel_id, {})
-                                    current_vis = viewer.panel_visibility.get(panel_id, True)
-
-                                    with ui.row().classes("w-full items-center gap-2"):
-                                        ui.icon(panel_def.get("icon", "widgets")).classes("text-gray-400 text-sm")
-                                        ui.label(panel_def.get("name", panel_id)).classes("flex-grow text-sm")
-
-                                        if panel_id in auto_panels:
-                                            # Three-state toggle for auto-capable panels
-                                            options = ["Hide", "Auto", "Show"]
-                                            if current_vis is False:
-                                                current_val = "Hide"
-                                            elif current_vis == "auto":
-                                                current_val = "Auto"
-                                            else:
-                                                current_val = "Show"
-
-                                            def make_toggle_handler(pid=panel_id):
-                                                def handler(e):
-                                                    if e.value == "Hide":
-                                                        viewer.panel_visibility[pid] = False
-                                                    elif e.value == "Auto":
-                                                        viewer.panel_visibility[pid] = "auto"
-                                                    else:
-                                                        viewer.panel_visibility[pid] = True
-
-                                                return handler
-
-                                            ui.toggle(options, value=current_val, on_change=make_toggle_handler()).props(
-                                                "dense size=sm"
-                                            ).classes("text-xs")
+                                    if panel_id in auto_panels:
+                                        # Three-state toggle for auto-capable panels
+                                        options = ["Hide", "Auto", "Show"]
+                                        if current_vis is False:
+                                            current_val = "Hide"
+                                        elif current_vis == "auto":
+                                            current_val = "Auto"
                                         else:
-                                            # Simple checkbox for always-visible panels
+                                            current_val = "Show"
 
-                                            def make_checkbox_handler(pid=panel_id):
-                                                def handler(e):
-                                                    viewer.panel_visibility[pid] = e.value
+                                        def make_toggle_handler(pid=panel_id):
+                                            def handler(e):
+                                                if e.value == "Hide":
+                                                    viewer.panel_visibility[pid] = False
+                                                elif e.value == "Auto":
+                                                    viewer.panel_visibility[pid] = "auto"
+                                                else:
+                                                    viewer.panel_visibility[pid] = True
 
-                                                return handler
+                                            return handler
 
-                                            ui.checkbox(
-                                                "", value=current_vis is True, on_change=make_checkbox_handler()
-                                            ).props("dense")
+                                        ui.toggle(options, value=current_val, on_change=make_toggle_handler()).props(
+                                            "dense size=sm"
+                                        ).classes("text-xs")
+                                    else:
+                                        # Simple checkbox for always-visible panels
 
-                        refresh_visibility()
+                                        def make_checkbox_handler(pid=panel_id):
+                                            def handler(e):
+                                                viewer.panel_visibility[pid] = e.value
 
-                        ui.separator().classes("my-2")
+                                            return handler
 
-                        # Panel order section
-                        ui.label("Order").classes("text-sm font-semibold text-gray-400")
-                        ui.label("Reorder panels using arrows").classes("text-xs text-gray-500 mb-2")
+                                        ui.checkbox(
+                                            "", value=current_vis is True, on_change=make_checkbox_handler()
+                                        ).props("dense")
 
-                        panel_list = ui.column().classes("w-full gap-1")
+                    refresh_visibility()
 
-                        def refresh_list():
-                            panel_list.clear()
-                            with panel_list:
+                    ui.separator().classes("my-2")
+
+                    # Panel order section
+                    ui.label("Order").classes("text-sm font-semibold text-gray-400")
+                    ui.label("Reorder panels using arrows").classes("text-xs text-gray-500 mb-2")
+
+                    panel_list = ui.column().classes("w-full gap-1")
+
+                    def refresh_list():
+                        panel_list.clear()
+                        with panel_list:
+                            for idx, panel_id in enumerate(viewer.panel_order):
+                                panel_def = viewer.panel_definitions.get(panel_id, {})
+                                with ui.row().classes("w-full items-center gap-2 p-1 rounded").style(
+                                    "background: rgba(128,128,128,0.15);"
+                                ):
+                                    ui.icon(panel_def.get("icon", "widgets")).classes("text-gray-400 text-sm")
+                                    ui.label(panel_def.get("name", panel_id)).classes("flex-grow text-sm")
+
+                                    def move_up(i=idx):
+                                        if i > 0:
+                                            viewer.panel_order[i], viewer.panel_order[i - 1] = (
+                                                viewer.panel_order[i - 1],
+                                                viewer.panel_order[i],
+                                            )
+                                            refresh_list()
+                                            refresh_visibility()
+
+                                    def move_down(i=idx):
+                                        if i < len(viewer.panel_order) - 1:
+                                            viewer.panel_order[i], viewer.panel_order[i + 1] = (
+                                                viewer.panel_order[i + 1],
+                                                viewer.panel_order[i],
+                                            )
+                                            refresh_list()
+                                            refresh_visibility()
+
+                                    ui.button(icon="keyboard_arrow_up", on_click=move_up).props(
+                                        "flat dense size=sm"
+                                    ).set_enabled(idx > 0)
+                                    ui.button(icon="keyboard_arrow_down", on_click=move_down).props(
+                                        "flat dense size=sm"
+                                    ).set_enabled(idx < len(viewer.panel_order) - 1)
+
+                    refresh_list()
+
+                    with ui.row().classes("w-full justify-end gap-2 mt-4"):
+
+                        def apply_settings():
+                            # Reorder panels using move()
+                            if viewer.panels_container:
                                 for idx, panel_id in enumerate(viewer.panel_order):
-                                    panel_def = viewer.panel_definitions.get(panel_id, {})
-                                    with ui.row().classes("w-full items-center gap-2 p-1 rounded").style(
-                                        "background: rgba(128,128,128,0.15);"
-                                    ):
-                                        ui.icon(panel_def.get("icon", "widgets")).classes("text-gray-400 text-sm")
-                                        ui.label(panel_def.get("name", panel_id)).classes("flex-grow text-sm")
+                                    if panel_id in viewer.panel_elements:
+                                        viewer.panel_elements[panel_id].move(target_index=idx)
+                            # Apply visibility
+                            viewer.update_panel_visibility()
+                            dialog.close()
+                            ui.notify("Panel settings updated", type="positive")
 
-                                        def move_up(i=idx):
-                                            if i > 0:
-                                                viewer.panel_order[i], viewer.panel_order[i - 1] = (
-                                                    viewer.panel_order[i - 1],
-                                                    viewer.panel_order[i],
-                                                )
-                                                refresh_list()
-                                                refresh_visibility()
+                        ui.button("Cancel", on_click=dialog.close).props("flat")
+                        ui.button("Apply", on_click=apply_settings).props("color=primary")
 
-                                        def move_down(i=idx):
-                                            if i < len(viewer.panel_order) - 1:
-                                                viewer.panel_order[i], viewer.panel_order[i + 1] = (
-                                                    viewer.panel_order[i + 1],
-                                                    viewer.panel_order[i],
-                                                )
-                                                refresh_list()
-                                                refresh_visibility()
+                dialog.open()
 
-                                        ui.button(icon="keyboard_arrow_up", on_click=move_up).props(
-                                            "flat dense size=sm"
-                                        ).set_enabled(idx > 0)
-                                        ui.button(icon="keyboard_arrow_down", on_click=move_down).props(
-                                            "flat dense size=sm"
-                                        ).set_enabled(idx < len(viewer.panel_order) - 1)
+            ui.button(icon="tune", on_click=show_panel_settings).props("flat dense").tooltip("Panel Settings")
 
-                        refresh_list()
+            # Spacer to push info to the right
+            ui.space()
 
-                        with ui.row().classes("w-full justify-end gap-2 mt-4"):
-
-                            def apply_settings():
-                                # Reorder panels using move()
-                                if viewer.panels_container:
-                                    for idx, panel_id in enumerate(viewer.panel_order):
-                                        if panel_id in viewer.panel_elements:
-                                            viewer.panel_elements[panel_id].move(target_index=idx)
-                                # Apply visibility
-                                viewer.update_panel_visibility()
-                                dialog.close()
-                                ui.notify("Panel settings updated", type="positive")
-
-                            ui.button("Cancel", on_click=dialog.close).props("flat")
-                            ui.button("Apply", on_click=apply_settings).props("color=primary")
-
-                    dialog.open()
-
-                ui.button(icon="tune", on_click=show_panel_settings).props("flat dense").tooltip("Panel Settings")
-
-        # Info bar
-        with ui.row().classes("w-full justify-center gap-6 mb-2 flex-wrap"):
-            viewer.info_label = ui.label("No file loaded").classes("text-gray-400")
-            viewer.feature_info_label = ui.label("Features: None").classes("text-cyan-400")
-            viewer.id_info_label = ui.label("IDs: None").classes("text-orange-400")
-            viewer.faims_info_label = ui.label("").classes("text-purple-400")
+            # Inline info labels
+            viewer.info_label = ui.label("No file loaded").classes("text-xs text-gray-400")
+            viewer.feature_info_label = ui.label("").classes("text-xs text-cyan-400")
+            viewer.id_info_label = ui.label("").classes("text-xs text-orange-400")
+            viewer.faims_info_label = ui.label("").classes("text-xs text-purple-400")
             viewer.faims_info_label.set_visibility(False)
-            viewer.status_label = ui.label("Ready").classes("text-green-400")
+            viewer.status_label = ui.label("").classes("text-xs text-green-400")
 
-        # Range display
-        with ui.row().classes("w-full justify-center gap-8 mb-2"):
-            viewer.rt_range_label = ui.label("RT: -- - -- s").classes("text-blue-300")
-            viewer.mz_range_label = ui.label("m/z: -- - --").classes("text-blue-300")
+            # Range labels
+            viewer.rt_range_label = ui.label("").classes("text-xs text-blue-300")
+            viewer.mz_range_label = ui.label("").classes("text-xs text-blue-300")
 
-        # FAIMS toggle (hidden by default, shown when FAIMS data is detected)
-        with ui.row().classes("w-full justify-center gap-4 mb-2"):
-
+            # FAIMS toggle (hidden by default, shown when FAIMS data is detected)
             def toggle_faims_view():
                 viewer.show_faims_view = faims_toggle.value
                 if viewer.faims_container:
@@ -5334,8 +5338,8 @@ def create_ui():
                 if viewer.df is not None and viewer.show_faims_view:
                     viewer.update_faims_plots()
 
-            faims_toggle = ui.checkbox("FAIMS Multi-CV View", value=False, on_change=toggle_faims_view).classes(
-                "text-purple-400"
+            faims_toggle = ui.checkbox("FAIMS", value=False, on_change=toggle_faims_view).props("dense").classes(
+                "text-xs text-purple-400"
             )
             faims_toggle.set_visibility(False)
             viewer.faims_toggle = faims_toggle
