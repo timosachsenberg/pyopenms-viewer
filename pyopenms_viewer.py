@@ -5794,88 +5794,154 @@ def create_ui():
 
                 ui.button("Apply Range", on_click=apply_range).props("color=primary")
 
-        # Legend
-        viewer.legend_expansion = ui.expansion("Legend & Help", icon="help").classes("w-full max-w-[1700px]")
+        # Legend & Cheat Sheet
+        viewer.legend_expansion = ui.expansion("Cheat Sheet", icon="help").classes("w-full max-w-[1700px]")
         viewer.panel_elements["legend"] = viewer.legend_expansion
         viewer.legend_expansion.move(target_container=viewer.panels_container)
         with viewer.legend_expansion:
-            with ui.row().classes("gap-8 flex-wrap"):
-                with ui.column():
-                    ui.label("Overlay Colors:").classes("font-semibold")
-                    with ui.row().classes("items-center gap-2"):
-                        ui.html(
-                            '<div style="width:16px;height:16px;background:#00ff64;border-radius:50%;border:1px solid white;"></div>',
-                            sanitize=False,
-                        )
-                        ui.label("Feature Centroid")
-                    with ui.row().classes("items-center gap-2"):
-                        ui.html('<div style="width:16px;height:16px;border:2px solid #ffff00;"></div>', sanitize=False)
-                        ui.label("Feature Bounding Box")
-                    with ui.row().classes("items-center gap-2"):
-                        ui.html(
-                            '<div style="width:16px;height:16px;background:rgba(0,200,255,0.5);border:1px solid #00c8ff;"></div>',
-                            sanitize=False,
-                        )
-                        ui.label("Feature Convex Hull")
-                    with ui.row().classes("items-center gap-2"):
-                        ui.html(
-                            '<div style="width:16px;height:16px;background:#ff9632;transform:rotate(45deg);"></div>',
-                            sanitize=False,
-                        )
-                        ui.label("ID Precursor Position")
-                    with ui.row().classes("items-center gap-2"):
-                        ui.html(
-                            '<div style="width:16px;height:16px;background:#ff64ff;border-radius:50%;"></div>',
-                            sanitize=False,
-                        )
-                        ui.label("Selected Item")
-
-                with ui.column():
-                    ui.label("Spectrum Annotation:").classes("font-semibold")
-                    with ui.row().classes("items-center gap-2"):
-                        ui.html('<div style="width:16px;height:16px;background:#1f77b4;"></div>', sanitize=False)
-                        ui.label("b-ions (blue)")
-                    with ui.row().classes("items-center gap-2"):
-                        ui.html('<div style="width:16px;height:16px;background:#d62728;"></div>', sanitize=False)
-                        ui.label("y-ions (red)")
-                    with ui.row().classes("items-center gap-2"):
-                        ui.html('<div style="width:16px;height:16px;background:gray;"></div>', sanitize=False)
-                        ui.label("Unmatched peaks")
-
-                with ui.column():
-                    ui.label("TIC & Spectra:").classes("font-semibold")
-                    with ui.row().classes("items-center gap-2"):
-                        ui.html('<div style="width:16px;height:4px;background:#00d4ff;"></div>', sanitize=False)
-                        ui.label("TIC trace")
-                    with ui.row().classes("items-center gap-2"):
-                        ui.html(
-                            '<div style="width:16px;height:16px;background:rgba(255,255,0,0.2);border:1px solid rgba(255,255,0,0.5);"></div>',
-                            sanitize=False,
-                        )
-                        ui.label("Current view range")
-                    with ui.row().classes("items-center gap-2"):
-                        ui.html('<div style="width:16px;height:16px;background:#00ff64;"></div>', sanitize=False)
-                        ui.label("MS1 spectrum peaks")
-                    with ui.row().classes("items-center gap-2"):
-                        ui.html('<div style="width:2px;height:16px;background:#00d4ff;"></div>', sanitize=False)
-                        ui.label("MS1 spectrum marker (cyan)")
-                    with ui.row().classes("items-center gap-2"):
-                        ui.html('<div style="width:2px;height:16px;background:#ff6b6b;"></div>', sanitize=False)
-                        ui.label("MS2 spectrum marker (red)")
-
-                with ui.column():
-                    ui.label("Keyboard & Mouse:").classes("font-semibold")
+            with ui.row().classes("gap-6 flex-wrap w-full"):
+                # Keyboard Shortcuts
+                with ui.card().classes("p-3").style("min-width: 280px;"):
+                    ui.label("⌨️ Keyboard Shortcuts").classes("font-bold text-lg mb-2")
                     ui.markdown("""
-| Input | Action |
-|-------|--------|
-| `+` / `=` | Zoom In |
-| `-` | Zoom Out |
-| `Arrow Keys` | Pan |
-| `Home` | Reset View |
-| `Drag` | Zoom to selection |
-| `Shift+Drag` | Measure distance |
-| `Ctrl+Drag` | Pan (grab & move) |
-                    """)
+| Key | Action |
+|-----|--------|
+| `+` or `=` | Zoom in |
+| `-` | Zoom out |
+| `←` `→` | Pan left/right (RT) |
+| `↑` `↓` | Pan up/down (m/z) |
+| `Home` | Reset to full view |
+| `Delete` | Delete selected measurement |
+| `F11` | Toggle fullscreen |
+""").classes("text-sm")
+
+                # Mouse Controls
+                with ui.card().classes("p-3").style("min-width: 280px;"):
+                    ui.label("🖱️ Mouse Controls").classes("font-bold text-lg mb-2")
+                    ui.markdown("""
+| Action | Effect |
+|--------|--------|
+| **Scroll wheel** | Zoom in/out at cursor |
+| **Drag** | Select region to zoom |
+| **Shift + Drag** | Measure distance (ΔRT, Δm/z) |
+| **Ctrl + Drag** | Pan (grab & move) |
+| **Double-click** | Reset to full view |
+| **Click TIC** | Jump to spectrum at RT |
+| **Click table row** | Select spectrum/feature |
+""").classes("text-sm")
+
+                # 1D Spectrum Controls
+                with ui.card().classes("p-3").style("min-width: 280px;"):
+                    ui.label("📊 1D Spectrum Tools").classes("font-bold text-lg mb-2")
+                    ui.markdown("""
+| Tool | Usage |
+|------|-------|
+| **📏 Measure** | Click two peaks to measure Δm/z |
+| **🏷️ Label** | Click peak to add custom annotation |
+| **m/z Labels** | Toggle to show all peak m/z values |
+| **Auto Y** | Auto-scale Y-axis to visible peaks |
+| **Navigation** | `< >` prev/next, `MS1`/`MS2` by level |
+| **3D View** | Toggle 3D surface visualization |
+""").classes("text-sm")
+
+                # Overlay Colors
+                with ui.card().classes("p-3").style("min-width: 220px;"):
+                    ui.label("🎨 Overlay Colors").classes("font-bold text-lg mb-2")
+                    with ui.column().classes("gap-1"):
+                        with ui.row().classes("items-center gap-2"):
+                            ui.html(
+                                '<div style="width:14px;height:14px;background:#00ff64;border-radius:50%;'
+                                'border:1px solid white;"></div>',
+                                sanitize=False,
+                            )
+                            ui.label("Feature Centroid").classes("text-sm")
+                        with ui.row().classes("items-center gap-2"):
+                            ui.html(
+                                '<div style="width:14px;height:14px;border:2px solid #ffff00;"></div>',
+                                sanitize=False,
+                            )
+                            ui.label("Feature Bounding Box").classes("text-sm")
+                        with ui.row().classes("items-center gap-2"):
+                            ui.html(
+                                '<div style="width:14px;height:14px;background:rgba(0,200,255,0.5);'
+                                'border:1px solid #00c8ff;"></div>',
+                                sanitize=False,
+                            )
+                            ui.label("Feature Convex Hull").classes("text-sm")
+                        with ui.row().classes("items-center gap-2"):
+                            ui.html(
+                                '<div style="width:14px;height:14px;background:#ff9632;'
+                                'transform:rotate(45deg);"></div>',
+                                sanitize=False,
+                            )
+                            ui.label("ID Precursor (◆)").classes("text-sm")
+                        with ui.row().classes("items-center gap-2"):
+                            ui.html(
+                                '<div style="width:14px;height:14px;background:#ff64ff;border-radius:50%;"></div>',
+                                sanitize=False,
+                            )
+                            ui.label("Selected Item").classes("text-sm")
+
+                # Ion Colors
+                with ui.card().classes("p-3").style("min-width: 180px;"):
+                    ui.label("🔬 Ion Annotations").classes("font-bold text-lg mb-2")
+                    with ui.column().classes("gap-1"):
+                        with ui.row().classes("items-center gap-2"):
+                            ui.html('<div style="width:14px;height:14px;background:#1f77b4;"></div>', sanitize=False)
+                            ui.label("b-ions").classes("text-sm")
+                        with ui.row().classes("items-center gap-2"):
+                            ui.html('<div style="width:14px;height:14px;background:#d62728;"></div>', sanitize=False)
+                            ui.label("y-ions").classes("text-sm")
+                        with ui.row().classes("items-center gap-2"):
+                            ui.html('<div style="width:14px;height:14px;background:#2ca02c;"></div>', sanitize=False)
+                            ui.label("a-ions").classes("text-sm")
+                        with ui.row().classes("items-center gap-2"):
+                            ui.html('<div style="width:14px;height:14px;background:#ff7f0e;"></div>', sanitize=False)
+                            ui.label("Precursor").classes("text-sm")
+                        with ui.row().classes("items-center gap-2"):
+                            ui.html('<div style="width:14px;height:14px;background:#7f7f7f;"></div>', sanitize=False)
+                            ui.label("Unmatched").classes("text-sm")
+
+                # TIC & Markers
+                with ui.card().classes("p-3").style("min-width: 200px;"):
+                    ui.label("📈 TIC & Markers").classes("font-bold text-lg mb-2")
+                    with ui.column().classes("gap-1"):
+                        with ui.row().classes("items-center gap-2"):
+                            ui.html('<div style="width:20px;height:3px;background:#00d4ff;"></div>', sanitize=False)
+                            ui.label("TIC trace").classes("text-sm")
+                        with ui.row().classes("items-center gap-2"):
+                            ui.html(
+                                '<div style="width:14px;height:14px;background:rgba(255,255,0,0.2);'
+                                'border:1px solid rgba(255,255,0,0.6);"></div>',
+                                sanitize=False,
+                            )
+                            ui.label("Current view").classes("text-sm")
+                        with ui.row().classes("items-center gap-2"):
+                            ui.html('<div style="width:3px;height:14px;background:#00d4ff;"></div>', sanitize=False)
+                            ui.label("MS1 marker").classes("text-sm")
+                        with ui.row().classes("items-center gap-2"):
+                            ui.html('<div style="width:3px;height:14px;background:#ff6b6b;"></div>', sanitize=False)
+                            ui.label("MS2 marker").classes("text-sm")
+                        with ui.row().classes("items-center gap-2"):
+                            ui.html('<div style="width:14px;height:14px;background:#00ff64;"></div>', sanitize=False)
+                            ui.label("Spectrum peaks").classes("text-sm")
+
+                # File Types
+                with ui.card().classes("p-3").style("min-width: 200px;"):
+                    ui.label("📁 Supported Files").classes("font-bold text-lg mb-2")
+                    ui.markdown("""
+| Extension | Content |
+|-----------|---------|
+| `.mzML` | MS peak data |
+| `.featureXML` | Detected features |
+| `.idXML` | Peptide IDs |
+""").classes("text-sm")
+                    ui.label("Tips:").classes("font-semibold mt-2 text-sm")
+                    ui.markdown("""
+- Drag & drop files to load
+- Use `--native` for file dialog
+- Load multiple files at once
+""").classes("text-xs text-gray-400")
 
         # Keyboard handlers
         def on_global_key(e):
