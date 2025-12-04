@@ -5161,25 +5161,29 @@ def create_ui():
 
             ui.separator().props("vertical").classes("h-6")
 
-            # Clear buttons (icon only)
+            # Clear menu (dropdown)
             def clear_features():
                 viewer.clear_features()
                 viewer.update_plot()
                 if viewer.feature_info_label:
-                    viewer.feature_info_label.set_text("Features: None")
+                    viewer.feature_info_label.set_text("")
 
             def clear_ids():
                 viewer.clear_ids()
                 viewer.update_plot()
                 if viewer.id_info_label:
-                    viewer.id_info_label.set_text("IDs: None")
+                    viewer.id_info_label.set_text("")
 
-            ui.button(icon="delete_outline", on_click=clear_features).props(
-                "flat dense size=sm"
-            ).tooltip("Clear Features").classes("text-cyan-400")
-            ui.button(icon="delete_outline", on_click=clear_ids).props(
-                "flat dense size=sm"
-            ).tooltip("Clear IDs").classes("text-orange-400")
+            def clear_all():
+                clear_features()
+                clear_ids()
+
+            with ui.button(icon="delete_outline").props("flat dense size=sm").tooltip("Clear data"):
+                with ui.menu().props("auto-close"):
+                    ui.menu_item("Clear Features", on_click=clear_features).classes("text-cyan-400")
+                    ui.menu_item("Clear IDs", on_click=clear_ids).classes("text-orange-400")
+                    ui.separator()
+                    ui.menu_item("Clear All", on_click=clear_all).classes("text-red-400")
 
             ui.separator().props("vertical").classes("h-6")
 
