@@ -112,24 +112,20 @@ def extract_ion_mobility_data(state: ViewerState) -> None:
     )
     im_df["log_intensity"] = np.log1p(im_df["intensity"])
 
-    # Register with data manager if available (handles both in-memory and out-of-core)
-    if state.data_manager is not None and state.current_file:
-        # data_manager.register_im_peaks returns DataFrame for in-memory, None for out-of-core
-        state.im_df = state.data_manager.register_im_peaks(im_df, state.current_file)
+    # Ensure data_manager is initialized (auto-init if not set by app)
+    if state.data_manager is None:
+        state.init_data_manager(out_of_core=False)
 
-        # Get bounds from data manager
-        im_bounds = state.data_manager.get_im_bounds()
-        state.im_min = im_bounds["im_min"]
-        state.im_max = im_bounds["im_max"]
-        im_mz_min = im_bounds["mz_min"]
-        im_mz_max = im_bounds["mz_max"]
-    else:
-        # Legacy: no data manager, keep DataFrame in state
-        state.im_df = im_df
-        state.im_min = float(im_df["im"].min())
-        state.im_max = float(im_df["im"].max())
-        im_mz_min = float(im_df["mz"].min())
-        im_mz_max = float(im_df["mz"].max())
+    # Register with data manager (handles both in-memory and out-of-core)
+    # data_manager.register_im_peaks returns DataFrame for in-memory, None for out-of-core
+    state.im_df = state.data_manager.register_im_peaks(im_df, state.current_file or "unknown")
+
+    # Get bounds from data manager (works for both modes via DuckDB)
+    im_bounds = state.data_manager.get_im_bounds()
+    state.im_min = im_bounds["im_min"]
+    state.im_max = im_bounds["im_max"]
+    im_mz_min = im_bounds["mz_min"]
+    im_mz_max = im_bounds["mz_max"]
 
     # Ensure valid IM range
     if state.im_max <= state.im_min:

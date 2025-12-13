@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import duckdb
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -56,6 +57,10 @@ class DataManager:
         self._source_file: str | None = None
         self._peak_cache_path: Path | None = None
         self._im_cache_path: Path | None = None
+
+        # Cached counts to avoid repeated SQL queries
+        self._peak_count: int = 0
+        self._im_peak_count: int = 0
 
         # Keep DataFrame references for in-memory mode
         self._df: pd.DataFrame | None = None
@@ -125,6 +130,7 @@ class DataManager:
                 SELECT * FROM read_parquet('{cache_path}')
             """)
             self._peaks_registered = True
+            self._peak_count = len(df)  # Cache count before freeing df
             self._df = None
             return None  # Signal to free DataFrame
         else:
@@ -132,6 +138,7 @@ class DataManager:
             self.conn.register("peaks_table", df)
             self.conn.execute("CREATE VIEW peaks AS SELECT * FROM peaks_table")
             self._peaks_registered = True
+            self._peak_count = len(df)  # Cache count
             self._df = df
             return df  # Keep in memory
 
@@ -173,12 +180,14 @@ class DataManager:
                 SELECT * FROM read_parquet('{cache_path}')
             """)
             self._im_peaks_registered = True
+            self._im_peak_count = len(df)  # Cache count before freeing df
             self._im_df = None
             return None
         else:
             self.conn.register("im_peaks_table", df)
             self.conn.execute("CREATE VIEW im_peaks AS SELECT * FROM im_peaks_table")
             self._im_peaks_registered = True
+            self._im_peak_count = len(df)  # Cache count
             self._im_df = df
             return df
 
@@ -190,7 +199,11 @@ class DataManager:
         mz_max: float,
         cv: float | None = None,
     ) -> pd.DataFrame:
-        """Query peaks within view bounds.
+        """Query peaks within view bounds via DuckDB.
+
+        This is the unified query path for both in-memory and out-of-core modes.
+        In-memory mode uses DuckDB's zero-copy DataFrame registration for good
+        performance (~30ms for 5M peaks). Out-of-core mode queries from Parquet.
 
         Args:
             rt_min: Minimum retention time
@@ -226,7 +239,9 @@ class DataManager:
         im_min: float,
         im_max: float,
     ) -> pd.DataFrame:
-        """Query ion mobility peaks within view bounds.
+        """Query ion mobility peaks within view bounds via DuckDB.
+
+        This is the unified query path for both in-memory and out-of-core modes.
 
         Args:
             mz_min: Minimum m/z
@@ -248,13 +263,126 @@ class DataManager:
         """
         return self.conn.execute(query, [mz_min, mz_max, im_min, im_max]).fetchdf()
 
+    def query_peaks_top_n(
+        self,
+        rt_min: float,
+        rt_max: float,
+        mz_min: float,
+        mz_max: float,
+        limit: int,
+        cv: float | None = None,
+    ) -> pd.DataFrame:
+        """Query top N peaks by intensity within view bounds via DuckDB.
+
+        Uses ORDER BY + LIMIT pushdown for efficient top-k selection without
+        fetching all peaks. DuckDB uses a heap-based algorithm (O(n log k))
+        which is much faster than fetching all rows and sorting in Python.
+
+        Args:
+            rt_min: Minimum retention time
+            rt_max: Maximum retention time
+            mz_min: Minimum m/z
+            mz_max: Maximum m/z
+            limit: Maximum number of peaks to return (top N by intensity)
+            cv: Compensation voltage for FAIMS filtering (optional)
+
+        Returns:
+            DataFrame with top N peaks by intensity in the specified view
+        """
+        if not self._peaks_registered:
+            return pd.DataFrame()
+
+        query = """
+            SELECT rt, mz, intensity, log_intensity
+            FROM peaks
+            WHERE rt >= ? AND rt <= ?
+              AND mz >= ? AND mz <= ?
+        """
+        params: list = [rt_min, rt_max, mz_min, mz_max]
+
+        if cv is not None:
+            query += " AND cv = ?"
+            params.append(cv)
+
+        query += " ORDER BY intensity DESC LIMIT ?"
+        params.append(limit)
+
+        return self.conn.execute(query, params).fetchdf()
+
+    def query_mobilogram(
+        self,
+        mz_min: float,
+        mz_max: float,
+        im_min: float,
+        im_max: float,
+        n_bins: int = 200,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Query mobilogram histogram via DuckDB aggregation.
+
+        Computes a histogram of summed intensities across ion mobility bins
+        entirely in DuckDB, returning only the aggregated bin data instead
+        of millions of individual peaks.
+
+        Args:
+            mz_min: Minimum m/z
+            mz_max: Maximum m/z
+            im_min: Minimum ion mobility value
+            im_max: Maximum ion mobility value
+            n_bins: Number of histogram bins (default 200)
+
+        Returns:
+            Tuple of (bin_centers, intensities) numpy arrays
+        """
+        if not self._im_peaks_registered:
+            return np.array([]), np.array([])
+
+        im_range = im_max - im_min
+        if im_range <= 0:
+            return np.array([]), np.array([])
+
+        bin_width = im_range / n_bins
+
+        # Use DuckDB to compute histogram aggregation
+        # FLOOR((im - im_min) / bin_width) gives bin index 0 to n_bins-1
+        # We clamp to valid range with LEAST/GREATEST
+        query = """
+            SELECT
+                LEAST(GREATEST(FLOOR((im - ?) / ?), 0), ? - 1)::INT as bin_idx,
+                SUM(intensity) as total_intensity
+            FROM im_peaks
+            WHERE mz >= ? AND mz <= ?
+              AND im >= ? AND im <= ?
+            GROUP BY bin_idx
+            ORDER BY bin_idx
+        """
+        result = self.conn.execute(
+            query, [im_min, bin_width, n_bins, mz_min, mz_max, im_min, im_max]
+        ).fetchdf()
+
+        if len(result) == 0:
+            return np.array([]), np.array([])
+
+        # Build full arrays with zeros for empty bins
+        bin_centers = np.linspace(im_min + bin_width / 2, im_max - bin_width / 2, n_bins)
+        intensities = np.zeros(n_bins, dtype=np.float64)
+
+        # Fill in the bins that have data
+        for _, row in result.iterrows():
+            bin_idx = int(row["bin_idx"])
+            if 0 <= bin_idx < n_bins:
+                intensities[bin_idx] = row["total_intensity"]
+
+        return bin_centers, intensities
+
     def query_peaks_for_minimap(self, minimap_pixels: int = 80000) -> pd.DataFrame | None:
-        """Query peaks for minimap rendering with adaptive downsampling.
+        """Query peaks for minimap rendering with adaptive downsampling via DuckDB.
 
         Downsampling is adaptive based on data size vs minimap resolution.
         For a 400x200 minimap (80k pixels), we target roughly that many points
         for good visual quality. This significantly speeds up rendering for
         large datasets (e.g., 10M peaks: 71ms -> 9ms).
+
+        This is the unified query path for both in-memory and out-of-core modes.
 
         Args:
             minimap_pixels: Target number of points (default: 400*200 = 80000)
@@ -265,42 +393,32 @@ class DataManager:
         if not self._peaks_registered:
             return None
 
-        if self.out_of_core:
-            # Get total count to determine sample rate
-            total = self.conn.execute("SELECT COUNT(*) FROM peaks").fetchone()[0]
+        # Get total count to determine sample rate
+        total = self.conn.execute("SELECT COUNT(*) FROM peaks").fetchone()[0]
 
-            if total <= minimap_pixels:
-                # Small dataset - return all
-                return self.conn.execute("""
-                    SELECT rt, mz, log_intensity FROM peaks
-                """).fetchdf()
-            else:
-                # Adaptive downsampling: sample_rate = total / target_points
-                sample_rate = max(1, total // minimap_pixels)
-                return self.conn.execute(f"""
-                    SELECT rt, mz, log_intensity
-                    FROM (
-                        SELECT rt, mz, log_intensity,
-                               ROW_NUMBER() OVER () as rn
-                        FROM peaks
-                    )
-                    WHERE rn % {sample_rate} = 0
-                """).fetchdf()
+        if total <= minimap_pixels:
+            # Small dataset - return all
+            return self.conn.execute("""
+                SELECT rt, mz, log_intensity FROM peaks
+            """).fetchdf()
         else:
-            # In-memory: adaptive downsampling for large datasets
-            if self._df is None:
-                return None
-            total = len(self._df)
-            if total <= minimap_pixels:
-                return self._df
-            else:
-                sample_rate = max(1, total // minimap_pixels)
-                return self._df.iloc[::sample_rate]
+            # Adaptive downsampling: sample_rate = total / target_points
+            sample_rate = max(1, total // minimap_pixels)
+            return self.conn.execute(f"""
+                SELECT rt, mz, log_intensity
+                FROM (
+                    SELECT rt, mz, log_intensity,
+                           ROW_NUMBER() OVER () as rn
+                    FROM peaks
+                )
+                WHERE rn % {sample_rate} = 0
+            """).fetchdf()
 
     def query_all_peaks(self) -> pd.DataFrame | None:
-        """Query all peaks without downsampling.
+        """Query all peaks without downsampling via DuckDB.
 
         Use this when downsampling is disabled and full data accuracy is needed.
+        This is the unified query path for both in-memory and out-of-core modes.
 
         Returns:
             DataFrame with all peaks, or None if no data
@@ -308,17 +426,16 @@ class DataManager:
         if not self._peaks_registered:
             return None
 
-        if self.out_of_core:
-            return self.conn.execute("""
-                SELECT rt, mz, log_intensity FROM peaks
-            """).fetchdf()
-        else:
-            return self._df
+        return self.conn.execute("""
+            SELECT rt, mz, log_intensity FROM peaks
+        """).fetchdf()
 
     def query_peaks_for_cv(
         self, cv: float, downsample: bool = True, minimap_pixels: int = 80000
     ) -> pd.DataFrame | None:
-        """Query peaks for a specific FAIMS CV value.
+        """Query peaks for a specific FAIMS CV value via DuckDB.
+
+        This is the unified query path for both in-memory and out-of-core modes.
 
         Args:
             cv: Compensation voltage value to filter by
@@ -331,52 +448,36 @@ class DataManager:
         if not self._peaks_registered:
             return None
 
-        if self.out_of_core:
-            if not downsample:
-                # No downsampling - return all peaks for this CV
-                return self.conn.execute("""
-                    SELECT rt, mz, log_intensity FROM peaks WHERE cv = ?
-                """, [cv]).fetchdf()
+        if not downsample:
+            # No downsampling - return all peaks for this CV
+            return self.conn.execute("""
+                SELECT rt, mz, log_intensity FROM peaks WHERE cv = ?
+            """, [cv]).fetchdf()
 
-            # Get count for this CV
-            total = self.conn.execute(
-                "SELECT COUNT(*) FROM peaks WHERE cv = ?", [cv]
-            ).fetchone()[0]
+        # Get count for this CV
+        total = self.conn.execute(
+            "SELECT COUNT(*) FROM peaks WHERE cv = ?", [cv]
+        ).fetchone()[0]
 
-            if total == 0:
-                return pd.DataFrame()
+        if total == 0:
+            return pd.DataFrame()
 
-            if total <= minimap_pixels:
-                return self.conn.execute("""
-                    SELECT rt, mz, log_intensity FROM peaks WHERE cv = ?
-                """, [cv]).fetchdf()
-            else:
-                sample_rate = max(1, total // minimap_pixels)
-                return self.conn.execute(f"""
-                    SELECT rt, mz, log_intensity
-                    FROM (
-                        SELECT rt, mz, log_intensity,
-                               ROW_NUMBER() OVER () as rn
-                        FROM peaks
-                        WHERE cv = ?
-                    )
-                    WHERE rn % {sample_rate} = 0
-                """, [cv]).fetchdf()
+        if total <= minimap_pixels:
+            return self.conn.execute("""
+                SELECT rt, mz, log_intensity FROM peaks WHERE cv = ?
+            """, [cv]).fetchdf()
         else:
-            # In-memory mode - filter DataFrame
-            if self._df is None:
-                return None
-            cv_df = self._df[self._df["cv"] == cv]
-
-            if not downsample:
-                return cv_df[["rt", "mz", "log_intensity"]]
-
-            total = len(cv_df)
-            if total <= minimap_pixels:
-                return cv_df[["rt", "mz", "log_intensity"]]
-            else:
-                sample_rate = max(1, total // minimap_pixels)
-                return cv_df.iloc[::sample_rate][["rt", "mz", "log_intensity"]]
+            sample_rate = max(1, total // minimap_pixels)
+            return self.conn.execute(f"""
+                SELECT rt, mz, log_intensity
+                FROM (
+                    SELECT rt, mz, log_intensity,
+                           ROW_NUMBER() OVER () as rn
+                    FROM peaks
+                    WHERE cv = ?
+                )
+                WHERE rn % {sample_rate} = 0
+            """, [cv]).fetchdf()
 
     def get_bounds(self) -> dict[str, float]:
         """Get data bounds without loading all data.
@@ -425,15 +526,20 @@ class DataManager:
         }
 
     def get_peak_count(self) -> int:
-        """Get total peak count.
+        """Get total peak count (cached, no SQL query).
 
         Returns:
             Number of peaks in the dataset
         """
-        if not self._peaks_registered:
-            return 0
-        result = self.conn.execute("SELECT COUNT(*) FROM peaks").fetchone()
-        return int(result[0]) if result else 0
+        return self._peak_count
+
+    def get_im_peak_count(self) -> int:
+        """Get total ion mobility peak count (cached, no SQL query).
+
+        Returns:
+            Number of IM peaks in the dataset
+        """
+        return self._im_peak_count
 
     def get_cache_size_mb(self) -> float:
         """Get total cache size in MB.
@@ -480,6 +586,8 @@ class DataManager:
         self._df = None
         self._im_df = None
         self._source_file = None
+        self._peak_count = 0
+        self._im_peak_count = 0
 
     def cleanup(self):
         """Clean up resources and close connection."""

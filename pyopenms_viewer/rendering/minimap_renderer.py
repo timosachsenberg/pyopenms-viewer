@@ -41,17 +41,15 @@ class MinimapRenderer:
         Returns:
             Base64-encoded PNG string, or None if no data
         """
-        # Get data for minimap
-        # If downsampling is enabled, use data_manager's downsampled query
-        # Otherwise, get full data for accurate representation
-        if state.data_manager is not None:
-            if state.peakmap_downsampling:
-                minimap_df = state.data_manager.query_peaks_for_minimap()
-            else:
-                # No downsampling - get all peaks
-                minimap_df = state.data_manager.query_all_peaks()
+        # Get data for minimap via unified DuckDB query path
+        if state.data_manager is None:
+            return None
+
+        if state.peakmap_downsampling:
+            minimap_df = state.data_manager.query_peaks_for_minimap()
         else:
-            minimap_df = state.df
+            # No downsampling - get all peaks
+            minimap_df = state.data_manager.query_all_peaks()
 
         if minimap_df is None or len(minimap_df) == 0:
             return None
@@ -203,11 +201,11 @@ class MinimapRenderer:
         if not state.has_faims:
             return None
 
-        # Get CV data - use data_manager in out-of-core mode, faims_data in-memory
-        if state.data_manager is not None:
-            cv_df = state.data_manager.query_peaks_for_cv(cv, downsample=state.peakmap_downsampling)
-        else:
-            cv_df = state.faims_data.get(cv)
+        # Get CV data via unified DuckDB query path
+        if state.data_manager is None:
+            return None
+
+        cv_df = state.data_manager.query_peaks_for_cv(cv, downsample=state.peakmap_downsampling)
 
         if cv_df is None or len(cv_df) == 0:
             return None

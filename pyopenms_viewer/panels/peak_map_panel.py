@@ -483,6 +483,10 @@ class PeakMapPanel(BasePanel):
         # Update breadcrumb
         self._update_breadcrumb()
 
+        # Update 3D view if visible
+        if self.state.show_3d_view:
+            self._update_3d_view()
+
     def update_minimap(self) -> None:
         """Update the minimap display."""
         if not self._has_data() or self.minimap_image is None:
@@ -506,14 +510,7 @@ class PeakMapPanel(BasePanel):
             self.image_element.set_source(f"data:image/png;base64,{base64_img}")
 
     def _has_data(self) -> bool:
-        """Check if panel has data to display.
-
-        Works for both in-memory mode (state.df is not None) and
-        out-of-core mode (state.df is None but data_manager has data).
-        """
-        if self.state.df is not None:
-            return True
-        # Out-of-core mode: check data_manager
+        """Check if panel has data to display via unified data_manager check."""
         if self.state.data_manager is not None:
             return self.state.data_manager.get_peak_count() > 0
         return False
@@ -1250,25 +1247,32 @@ class PeakMapPanel(BasePanel):
                 )
             return
 
-        # Get peaks in current view
-        df = self.state.df
-        mask = (
-            (df["rt"] >= self.state.view_rt_min)
-            & (df["rt"] <= self.state.view_rt_max)
-            & (df["mz"] >= self.state.view_mz_min)
-            & (df["mz"] <= self.state.view_mz_max)
+        # Get top N peaks by intensity via DuckDB pushdown (much faster than fetching all then filtering)
+        # This uses ORDER BY + LIMIT in SQL which is O(n log k) instead of fetching millions of rows
+        if self.state.data_manager is None:
+            return
+
+        rt_min = self.state.view_rt_min if self.state.view_rt_min is not None else self.state.rt_min
+        rt_max = self.state.view_rt_max if self.state.view_rt_max is not None else self.state.rt_max
+        mz_min = self.state.view_mz_min if self.state.view_mz_min is not None else self.state.mz_min
+        mz_max = self.state.view_mz_max if self.state.view_mz_max is not None else self.state.mz_max
+        cv = self.state.selected_faims_cv if self.state.has_faims else None
+
+        # Get total count for status display
+        num_peaks_total = self.state.data_manager.get_peak_count()
+
+        # Query top N peaks directly from DuckDB
+        view_df = self.state.data_manager.query_peaks_top_n(
+            rt_min, rt_max, mz_min, mz_max,
+            limit=self.state.max_3d_peaks,
+            cv=cv
         )
-        view_df = df[mask].copy()
 
         if len(view_df) == 0:
             if self.view_3d_status:
                 self.view_3d_status.set_text("No peaks in view")
             return
 
-        # Subsample if too many peaks
-        num_peaks_total = len(view_df)
-        if len(view_df) > self.state.max_3d_peaks:
-            view_df = view_df.nlargest(self.state.max_3d_peaks, "intensity")
         num_peaks_shown = len(view_df)
 
         try:

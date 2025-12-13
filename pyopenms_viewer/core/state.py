@@ -90,7 +90,6 @@ class ViewerState:
         self.exp = None  # MSExperiment - pyOpenMS C++ object (~500MB)
         self.df: Optional[pd.DataFrame] = None  # All peaks: rt, mz, intensity, log_intensity (~2GB)
         self.im_df: Optional[pd.DataFrame] = None  # Ion mobility peaks: mz, im, intensity, log_intensity
-        self.faims_data: dict[float, pd.DataFrame] = {}  # CV -> DataFrame (views into self.df)
         self.chromatogram_data: dict[int, tuple[np.ndarray, np.ndarray]] = {}  # idx -> (rt, intensity) arrays
 
         # ========== OVERLAY DATA ==========
@@ -290,24 +289,13 @@ class ViewerState:
     # ========== VIEW ACCESSORS (return views, not copies) ==========
 
     def get_peaks_in_view(self) -> pd.DataFrame:
-        """Return peaks in current view bounds.
+        """Return peaks in current view bounds via unified DuckDB query.
 
-        This method provides unified access to peak data regardless of storage mode:
+        This method provides unified access to peak data regardless of storage mode.
+        All queries go through DuckDB for consistency and simpler code paths:
 
-        IN-MEMORY MODE (data_manager with out_of_core=False):
-            Queries via DuckDB with zero-copy DataFrame registration.
-            Performance: ~49ms for 5M peaks (slightly slower than direct pandas).
-
-        OUT-OF-CORE MODE (data_manager with out_of_core=True):
-            Queries via DuckDB reading from Parquet files on disk.
-            Performance: ~74ms for 5M peaks. Enables datasets larger than RAM.
-
-        LEGACY MODE (no data_manager):
-            Falls back to direct pandas boolean masking.
-            Performance: ~22ms for 5M peaks (fastest).
-
-        Note: For rendering hot paths, prefer checking state.df directly and using
-        pandas masking when available (see PeakMapRenderer for example).
+        IN-MEMORY MODE: DuckDB queries zero-copy registered DataFrame (~30ms for 5M peaks)
+        OUT-OF-CORE MODE: DuckDB queries from Parquet files (~74ms for 5M peaks)
 
         Returns:
             DataFrame of peaks within current RT/m/z bounds
@@ -317,34 +305,17 @@ class ViewerState:
         mz_min = self.view_mz_min if self.view_mz_min is not None else self.mz_min
         mz_max = self.view_mz_max if self.view_mz_max is not None else self.mz_max
 
-        # Use data manager if available (unified DuckDB interface)
-        if self.data_manager is not None:
-            cv = self.selected_faims_cv if self.has_faims else None
-            return self.data_manager.query_peaks_in_view(rt_min, rt_max, mz_min, mz_max, cv)
-
-        # Fallback: direct pandas filtering
-        if self.df is None:
+        if self.data_manager is None:
             return pd.DataFrame()
 
-        mask = (
-            (self.df["rt"] >= rt_min)
-            & (self.df["rt"] <= rt_max)
-            & (self.df["mz"] >= mz_min)
-            & (self.df["mz"] <= mz_max)
-        )
-        return self.df[mask]
+        cv = self.selected_faims_cv if self.has_faims else None
+        return self.data_manager.query_peaks_in_view(rt_min, rt_max, mz_min, mz_max, cv)
 
     def get_im_peaks_in_view(self) -> pd.DataFrame:
-        """Return ion mobility peaks in current view bounds.
+        """Return ion mobility peaks in current view bounds via unified DuckDB query.
 
-        This method provides unified access to IM peak data regardless of storage mode:
-
-        IN-MEMORY MODE: Queries via DuckDB with zero-copy DataFrame registration.
-        OUT-OF-CORE MODE: Queries via DuckDB reading from Parquet files on disk.
-        LEGACY MODE: Falls back to direct pandas boolean masking.
-
-        Note: For rendering hot paths, prefer checking state.im_df directly and using
-        pandas masking when available (see IMPeakMapRenderer for example).
+        This method provides unified access to IM peak data regardless of storage mode.
+        All queries go through DuckDB for consistency and simpler code paths.
 
         Returns:
             DataFrame of ion mobility peaks within current m/z/IM bounds
@@ -354,21 +325,10 @@ class ViewerState:
         im_min = self.view_im_min if self.view_im_min is not None else self.im_min
         im_max = self.view_im_max if self.view_im_max is not None else self.im_max
 
-        # Use data manager if available (unified DuckDB interface)
-        if self.data_manager is not None:
-            return self.data_manager.query_im_peaks_in_view(mz_min, mz_max, im_min, im_max)
-
-        # Fallback: direct pandas filtering
-        if self.im_df is None:
+        if self.data_manager is None:
             return pd.DataFrame()
 
-        mask = (
-            (self.im_df["mz"] >= mz_min)
-            & (self.im_df["mz"] <= mz_max)
-            & (self.im_df["im"] >= im_min)
-            & (self.im_df["im"] <= im_max)
-        )
-        return self.im_df[mask]
+        return self.data_manager.query_im_peaks_in_view(mz_min, mz_max, im_min, im_max)
 
     def get_view_bounds(self) -> ViewBounds:
         """Get current view bounds as a ViewBounds object."""
@@ -586,7 +546,6 @@ class ViewerState:
         self.im_type = None
         self.im_unit = ""
         self.faims_cvs = []
-        self.faims_data = {}
         self.faims_tic = {}
         self.has_faims = False
         self.show_faims_view = False
@@ -720,8 +679,8 @@ class ViewerState:
             zoom_in: True to zoom in, False to zoom out
             emit_event: If True, emit view_changed event
         """
-        # Check if we have data (in-memory or out-of-core mode)
-        if self.df is None and self.data_manager is None:
+        # Check if we have data
+        if self.data_manager is None or self.data_manager.get_peak_count() == 0:
             return
 
         # Save current state to zoom history
@@ -777,7 +736,7 @@ class ViewerState:
             emit_event: If True, emit view_changed event
         """
         # Check if we have data (in-memory or out-of-core mode)
-        if self.df is None and self.data_manager is None:
+        if self.data_manager is None or self.data_manager.get_peak_count() == 0:
             return
 
         # Convert minimap fractions to data coordinates (depends on axis orientation)
@@ -852,7 +811,7 @@ class ViewerState:
     def zoom_in(self, emit_event: bool = True) -> None:
         """Zoom in by 10% on all axes."""
         # Check if we have data (in-memory or out-of-core mode)
-        if self.df is None and self.data_manager is None:
+        if self.data_manager is None or self.data_manager.get_peak_count() == 0:
             return
 
         rt_range = (self.view_rt_max - self.view_rt_min) * 0.1
@@ -869,7 +828,7 @@ class ViewerState:
     def zoom_out(self, emit_event: bool = True) -> None:
         """Zoom out by 10% on all axes."""
         # Check if we have data (in-memory or out-of-core mode)
-        if self.df is None and self.data_manager is None:
+        if self.data_manager is None or self.data_manager.get_peak_count() == 0:
             return
 
         rt_range = (self.view_rt_max - self.view_rt_min) * 0.1
@@ -892,7 +851,7 @@ class ViewerState:
             emit_event: If True, emit view_changed event
         """
         # Check if we have data (in-memory or out-of-core mode)
-        if self.df is None and self.data_manager is None:
+        if self.data_manager is None or self.data_manager.get_peak_count() == 0:
             return
 
         rt_range = self.view_rt_max - self.view_rt_min

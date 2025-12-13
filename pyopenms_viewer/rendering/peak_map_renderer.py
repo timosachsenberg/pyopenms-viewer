@@ -100,35 +100,9 @@ class PeakMapRenderer:
         view_mz_min = state.view_mz_min if state.view_mz_min is not None else state.mz_min
         view_mz_max = state.view_mz_max if state.view_mz_max is not None else state.mz_max
 
-        # Get peaks in view - two paths for performance:
-        #
-        # IN-MEMORY MODE (state.df is not None):
-        #   Use direct pandas boolean masking for best performance (~22ms for 5M peaks).
-        #   This is the fast path for datasets that fit in RAM.
-        #
-        # OUT-OF-CORE MODE (state.df is None):
-        #   Use state.get_peaks_in_view() which queries via DuckDB from Parquet files.
-        #   Slower (~74ms) but enables viewing datasets larger than available RAM.
-        #   The DataManager handles the DuckDB queries transparently.
-        #
-        if state.df is not None:
-            # Fast path: direct pandas filtering (in-memory mode)
-            # Determine which DataFrame to use (CV-filtered or full)
-            if state.has_faims and state.selected_faims_cv is not None and state.selected_faims_cv in state.faims_data:
-                source_df = state.faims_data[state.selected_faims_cv]
-            else:
-                source_df = state.df
-
-            mask = (
-                (source_df["rt"] >= view_rt_min)
-                & (source_df["rt"] <= view_rt_max)
-                & (source_df["mz"] >= view_mz_min)
-                & (source_df["mz"] <= view_mz_max)
-            )
-            view_df = source_df[mask]
-        else:
-            # Out-of-core path: query via DuckDB (handles FAIMS CV filtering internally)
-            view_df = state.get_peaks_in_view()
+        # Get peaks in view via unified DuckDB query path
+        # Both in-memory and out-of-core modes go through DuckDB for consistency
+        view_df = state.get_peaks_in_view()
 
         if view_df is None or len(view_df) == 0:
             return ""
@@ -363,25 +337,20 @@ class PeakMapRenderer:
         Returns:
             Base64-encoded PNG string
         """
-        if cv not in state.faims_data or len(state.faims_data[cv]) == 0:
-            return ""
-
-        cv_df = state.faims_data[cv]
-
         view_rt_min = state.view_rt_min if state.view_rt_min is not None else state.rt_min
         view_rt_max = state.view_rt_max if state.view_rt_max is not None else state.rt_max
         view_mz_min = state.view_mz_min if state.view_mz_min is not None else state.mz_min
         view_mz_max = state.view_mz_max if state.view_mz_max is not None else state.mz_max
 
-        mask = (
-            (cv_df["rt"] >= view_rt_min)
-            & (cv_df["rt"] <= view_rt_max)
-            & (cv_df["mz"] >= view_mz_min)
-            & (cv_df["mz"] <= view_mz_max)
-        )
-        view_df = cv_df[mask]
+        # Query peaks for this CV via unified DuckDB path
+        if state.data_manager is None:
+            return ""
 
-        if len(view_df) == 0:
+        view_df = state.data_manager.query_peaks_in_view(
+            view_rt_min, view_rt_max, view_mz_min, view_mz_max, cv=cv
+        )
+
+        if view_df is None or len(view_df) == 0:
             return ""
 
         # Smaller dimensions for FAIMS panels
@@ -453,27 +422,8 @@ class IMPeakMapRenderer:
         view_im_min = state.view_im_min if state.view_im_min is not None else state.im_min
         view_im_max = state.view_im_max if state.view_im_max is not None else state.im_max
 
-        # Get IM peaks in view - two paths for performance:
-        #
-        # IN-MEMORY MODE (state.im_df is not None):
-        #   Use direct pandas boolean masking for best performance.
-        #
-        # OUT-OF-CORE MODE (state.im_df is None):
-        #   Use state.get_im_peaks_in_view() which queries via DuckDB from Parquet.
-        #   The DataManager handles the DuckDB queries transparently.
-        #
-        if state.im_df is not None:
-            # Fast path: direct pandas filtering (in-memory mode)
-            mask = (
-                (state.im_df["mz"] >= view_mz_min)
-                & (state.im_df["mz"] <= view_mz_max)
-                & (state.im_df["im"] >= view_im_min)
-                & (state.im_df["im"] <= view_im_max)
-            )
-            view_df = state.im_df[mask]
-        else:
-            # Out-of-core path: query via DuckDB
-            view_df = state.get_im_peaks_in_view()
+        # Get IM peaks in view via unified DuckDB query path
+        view_df = state.get_im_peaks_in_view()
 
         if view_df is None or len(view_df) == 0:
             return ""
@@ -709,39 +659,15 @@ class IMPeakMapRenderer:
     ) -> tuple:
         """Extract mobilogram (summed intensity vs ion mobility) from IM data.
 
+        Uses DuckDB aggregation pushdown to compute the histogram directly in SQL,
+        returning only ~200 bins instead of potentially millions of individual peaks.
+
         Returns:
             Tuple of (im_values, intensities) arrays for plotting
         """
-        # Get IM peaks - use same dual-path approach as render():
-        # IN-MEMORY: direct pandas filtering, OUT-OF-CORE: DuckDB query
-        if state.im_df is not None:
-            # Fast path: direct pandas filtering (in-memory mode)
-            mask = (
-                (state.im_df["mz"] >= mz_min)
-                & (state.im_df["mz"] <= mz_max)
-                & (state.im_df["im"] >= im_min)
-                & (state.im_df["im"] <= im_max)
-            )
-            filtered_df = state.im_df[mask]
-        else:
-            # Out-of-core path: query via DuckDB
-            filtered_df = state.get_im_peaks_in_view()
-
-        if filtered_df is None or len(filtered_df) == 0:
+        if state.data_manager is None:
             return np.array([]), np.array([])
 
-        # Bin IM values and sum intensities
-        n_bins = min(200, max(50, int(len(filtered_df) / 100)))  # Adaptive bin count
-
-        bin_edges = np.linspace(im_min, im_max, n_bins + 1)
-        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-
-        # Digitize IM values into bins
-        bin_indices = np.digitize(filtered_df["im"].values, bin_edges) - 1
-        bin_indices = np.clip(bin_indices, 0, n_bins - 1)
-
-        # Sum intensities per bin
-        intensities = np.zeros(n_bins, dtype=np.float64)
-        np.add.at(intensities, bin_indices, filtered_df["intensity"].values)
-
-        return bin_centers, intensities
+        # Use DuckDB GROUP BY aggregation for histogram (much faster than fetching all peaks)
+        n_bins = 200  # Fixed bin count for mobilogram display
+        return state.data_manager.query_mobilogram(mz_min, mz_max, im_min, im_max, n_bins)

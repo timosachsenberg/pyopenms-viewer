@@ -107,13 +107,8 @@ async def create_ui():
                             id_info_label.set_text(f"IDs: {len(state.peptide_ids):,} ({n_linked} linked)")
 
                     state.emit_data_loaded("mzml")
-                    # Get peak count (works for both in-memory and out-of-core modes)
-                    if state.data_manager is not None:
-                        peak_count = state.data_manager.get_peak_count()
-                    elif state.df is not None:
-                        peak_count = len(state.df)
-                    else:
-                        peak_count = 0
+                    # Get peak count via unified data_manager
+                    peak_count = state.data_manager.get_peak_count() if state.data_manager else 0
                     info_text = f"Loaded: {name} | Spectra: {len(state.exp):,} | Peaks: {peak_count:,}"
                     if state.has_faims:
                         info_text += f" | FAIMS: {len(state.faims_cvs)} CVs"
@@ -533,7 +528,7 @@ async def create_ui():
                             if new_downsample != state.peakmap_downsampling:
                                 state.peakmap_downsampling = new_downsample
                                 # Trigger redraw if data is loaded
-                                if state.df is not None or state.data_manager is not None:
+                                if state.data_manager is not None and state.data_manager.get_peak_count() > 0:
                                     state.emit_view_changed()
                                 # Re-render spectrum if one is selected
                                 if state.selected_spectrum_idx is not None:

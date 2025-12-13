@@ -164,7 +164,7 @@ class IMPeakMapPanel(BasePanel):
 
         # Update info label
         if self.info_label is not None and self.state.has_ion_mobility:
-            n_peaks = len(self.state.im_df) if self.state.im_df is not None else 0
+            n_peaks = self.state.data_manager.get_im_peak_count() if self.state.data_manager else 0
             self.info_label.set_text(
                 f"Ion mobility data: {n_peaks:,} peaks | {self.state.im_type or 'Unknown type'}"
             )
