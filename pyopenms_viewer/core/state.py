@@ -131,6 +131,7 @@ class ViewerState:
         self.has_ion_mobility: bool = False
         self.has_chromatograms: bool = False
         self.faims_cvs: list[float] = []
+        self.faims_data: dict = {}  # CV -> DataFrame for per-CV peak data
         self.im_type: Optional[str] = None  # "ion mobility", "inverse reduced ion mobility", etc.
         self.im_unit: str = ""
         self.show_faims_view: bool = False
@@ -546,6 +547,7 @@ class ViewerState:
         self.im_type = None
         self.im_unit = ""
         self.faims_cvs = []
+        self.faims_data = {}
         self.faims_tic = {}
         self.has_faims = False
         self.show_faims_view = False
