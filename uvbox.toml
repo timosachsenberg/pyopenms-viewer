@@ -1,0 +1,11 @@
+[package]
+name = "pyopenms-viewer"
+script = "pyopenms-viewer"
+
+[package.version]
+static = "0.2.0"
+
+[uv]
+environment = [
+  "UV_PYTHON=3.11"
+]
