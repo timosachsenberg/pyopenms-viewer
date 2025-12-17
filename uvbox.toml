@@ -1,5 +1,5 @@
 [package]
-name = "pyopenms-viewer"
+name = "pyopenms-viewer[native]"
 script = "pyopenms-viewer"
 
 [package.version]
