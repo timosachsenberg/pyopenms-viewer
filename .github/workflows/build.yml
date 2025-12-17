@@ -30,11 +30,41 @@ jobs:
       - name: List built artifacts
         run: ls -laR dist/
 
-      - name: Upload all binaries
+      - name: Upload macOS ARM64
         uses: actions/upload-artifact@v4
         with:
-          name: pyopenms-viewer-binaries
-          path: dist/
+          name: pyopenms-viewer-macos-arm64
+          path: dist/pyopenms-viewer-aarch64-apple-darwin.tar.gz
+
+      - name: Upload macOS x64
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyopenms-viewer-macos-x64
+          path: dist/pyopenms-viewer-x86_64-apple-darwin.tar.gz
+
+      - name: Upload Linux ARM64
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyopenms-viewer-linux-arm64
+          path: dist/pyopenms-viewer-aarch64-unknown-linux-gnu.tar.gz
+
+      - name: Upload Linux x64
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyopenms-viewer-linux-x64
+          path: dist/pyopenms-viewer-x86_64-unknown-linux-gnu.tar.gz
+
+      - name: Upload Windows ARM64
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyopenms-viewer-windows-arm64
+          path: dist/pyopenms-viewer-aarch64-pc-windows-msvc.zip
+
+      - name: Upload Windows x64
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyopenms-viewer-windows-x64
+          path: dist/pyopenms-viewer-x86_64-pc-windows-msvc.zip
 
   release:
     needs: build
@@ -47,22 +77,13 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: pyopenms-viewer-binaries
-          path: binaries
+          path: artifacts
 
-      - name: Create zip archives for release
+      - name: Prepare release assets
         run: |
-          cd binaries
-          ls -la
-          for file in *; do
-            if [ -f "$file" ]; then
-              zip "${file}.zip" "$file"
-            fi
-          done
-          ls -la *.zip
-          mv *.zip ../
-          cd ..
-          ls -la *.zip
+          mkdir -p release
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release/ \;
+          ls -la release/
 
       - name: Create or update GitHub Release and upload assets
         env:
@@ -75,8 +96,8 @@ jobs:
           # Create release if it doesn't exist; otherwise upload and overwrite assets
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release exists for $TAG, uploading assets with --clobber"
-            gh release upload "$TAG" *.zip --clobber || true
+            gh release upload "$TAG" release/* --clobber || true
           else
             echo "Creating release for $TAG and uploading assets"
-            gh release create "$TAG" *.zip --generate-notes || true
+            gh release create "$TAG" release/* --generate-notes || true
           fi
