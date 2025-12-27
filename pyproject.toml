@@ -1,6 +1,6 @@
 [project]
 name = "pyopenms-viewer"
-version = "0.2.0"
+version = "0.2.1"
 description = "Fast mzML peak map viewer using NiceGUI, Datashader, and pyOpenMS"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -54,6 +54,7 @@ dev = [
 
 [project.scripts]
 pyopenms-viewer = "pyopenms_viewer.cli:main"
+pyopenms-viewer-tiles = "pyopenms_viewer.tile_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/OpenMS/OpenMS"

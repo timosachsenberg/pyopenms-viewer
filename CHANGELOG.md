@@ -4,8 +4,17 @@ All notable changes to pyopenms-viewer are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.1] - 2025-12-27
+
+### Fixed
+- **Windows PyInstaller Qt6 DLL conflict**: Resolved critical runtime error (0xc0000139) caused by DLL version conflicts between PyQt6 6.10.1 and pyopenms 3.5.0. Runtime hook now deletes PyQt6's Qt6/bin directory at startup to force use of pyopenms's Qt6 DLLs. Windows executable now builds and runs successfully.
+
 ### Added
-- **Native file dialog**: Added "Open Files..." button for opening mzML, featureXML, and idXML files directly from the filesystem using native OS file picker. Only available in native mode (`--native` flag). Uses pywebview's `create_file_dialog()` for native OS integration.
+- **Custom PyInstaller hooks**: Added hook-pyopenms.py collection hook to gather DLLs without importing, and pyi_rth_pyopenms.py runtime hook for DLL path management
+- **Windows build configuration**: Added pyopenms-viewer-windows.spec for Windows-specific PyInstaller settings
+- **Pre-safe-import hook**: Added pre_safe_import_module/hook-pyopenms.py to configure DLL paths during PyInstaller analysis
+- **Smoke tests**: Added test_windows_fix.py for local validation of Windows fixes
+- **Technical documentation**: Added WINDOWS_PYINSTALLER_SOLUTION.md explaining the root cause and solution architecture
 
 ## [0.1.2] - 2024-12-03
 
