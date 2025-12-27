@@ -1,6 +1,21 @@
 # pyopenms-viewer
 
+
 Fast mzML peak map viewer using NiceGUI, Datashader, and pyOpenMS.
+
+## 🚀 Native Desktop Installers (One-Click)
+
+Download the latest native installers for Windows, macOS, and Linux from the [GitHub Releases page](https://github.com/timosachsenberg/pyopenms-viewer/releases).
+
+- **Windows:** Download and run the `.exe` installer
+- **macOS:** Download the `.dmg` or `.app` bundle, drag to Applications, and open (right-click → Open if unsigned)
+- **Linux:** Download the `.AppImage` (preferred) or `.deb`/`.rpm` and run
+
+**No Python or dependencies required!**
+
+**Native mode** launches a real desktop window with native file dialogs and direct file access. "Open files" uses your OS's file picker.
+
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for platform-specific notes (WebView, unsigned app, Linux deps, etc).
 
 Designed to handle **50+ million peaks** with smooth zooming and panning using server-side rendering.
 
@@ -12,11 +27,11 @@ Designed to handle **50+ million peaks** with smooth zooming and panning using s
 - **MS2 Spectrum Viewer** - Annotated spectrum viewer for peptide identifications
 - **TIC Display** - Total Ion Chromatogram with clickable MS1 spectrum viewer
 
-## Prerequisites
 
-Before installing pyopenms-viewer, ensure you have:
+## Prerequisites (for source install)
 
-- **Python 3.10 or higher** - Check with `python --version` or `python3 --version`
+If you want to build from source or use the CLI, you need:
+- **Python 3.10 or higher**
 - **Operating System**: Windows, macOS, or Linux
 
 ## Installation
@@ -83,7 +98,14 @@ pip install -e ".[dev]"
 
 ## Quick Start
 
+
 ### Step 1: Start the Viewer
+
+#### Option A: Native Desktop App (Recommended)
+
+Just double-click the downloaded installer/app from [Releases](https://github.com/timosachsenberg/pyopenms-viewer/releases)!
+
+#### Option B: From Source (Python/CLI)
 
 ```bash
 # Using uv
@@ -93,7 +115,7 @@ uv run pyopenms-viewer
 pyopenms-viewer
 ```
 
-This opens a web browser at `http://localhost:8080` with an empty viewer.
+This opens a web browser at `http://localhost:8080` with an empty viewer, or a native window if you use `--native`.
 
 ### Step 2: Load Your Data
 
@@ -118,9 +140,10 @@ uv run pyopenms-viewer sample.mzML features.featureXML ids.idXML
 - Drag and drop files onto the upload area
 - Supports `.mzML`, `.featureXML`, and `.idXML` files
 
+
 **Via native file dialog (native mode only):**
 - Click the "Open Files..." button to open a native OS file picker
-- Only available when running with `--native` flag
+- Only available in the native desktop app or when running with `--native`
 - Provides direct filesystem access without file upload
 
 ### Step 3: Navigate the Peak Map
@@ -133,7 +156,8 @@ uv run pyopenms-viewer sample.mzML features.featureXML ids.idXML
   - `-` : Zoom out
   - `Arrow keys` : Pan
 
-## Command Line Options
+
+## Command Line Options (for source/CLI users)
 
 ```bash
 uv run pyopenms-viewer [FILES] [OPTIONS]
@@ -174,7 +198,10 @@ uv run ruff check .
 uv run ruff format .
 ```
 
-## Troubleshooting
+
+## Troubleshooting & FAQ
+
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for platform-specific issues (WebView, unsigned app, Linux deps, etc).
 
 ### Common Issues
 
@@ -199,6 +226,7 @@ uv run ruff format .
 
 - Check existing [GitHub Issues](https://github.com/timosachsenberg/pyopenms-viewer/issues)
 - Open a new issue with your error message and Python version
+
 
 ## License
 

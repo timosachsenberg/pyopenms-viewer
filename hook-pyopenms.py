@@ -1,7 +1,3 @@
-# PyInstaller hook for pyopenms
-# Collect the entire package (dylibs, data files, hidden imports) WITHOUT importing it.
-# This avoids build-time DLL loading failures on Windows.
-
 from PyInstaller.utils.hooks import collect_all, collect_dynamic_libs, get_package_paths, collect_submodules
 import os
 import sys
@@ -116,4 +112,5 @@ hiddenimports += [
 # CRITICAL: Exclude imports that would trigger pyopenms to load during build
 # We only want to collect files, not actually import the module
 excludedimports = []
+
 

@@ -15,6 +15,55 @@ if sys.stdout is None:
 if sys.stderr is None:
     sys.stderr = open(os.devnull, "w")
 
+_PYINSTALLER_ARG_EXACT = {"-B", "-S", "-I"}
+_PYINSTALLER_ARG_PREFIXES = ("-psn_", "--multiprocessing-", "tracker_fd=", "pipe_handle=")
+
+
+def _sanitize_pyinstaller_args(argv: list[str]) -> list[str]:
+    """Strip arguments injected by macOS launch services or multiprocessing.
+
+    PyInstaller GUI binaries on macOS receive synthetic flags such as ``-psn_*``
+    from LaunchServices. When multiprocessing spins up helper processes it also
+    re-executes the entry point with ``--multiprocessing-*`` and ``-B``. These
+    confuse Click's argument parser and previously caused the app to abort
+    immediately. We filter them out before Click inspects ``sys.argv``.
+    """
+
+    if len(argv) <= 1:
+        return argv
+
+    sanitized = [argv[0]]
+    for arg in argv[1:]:
+        if arg in _PYINSTALLER_ARG_EXACT:
+            continue
+        if arg.startswith(_PYINSTALLER_ARG_PREFIXES):
+            continue
+        sanitized.append(arg)
+    log_path = os.environ.get("PYOPENMS_VIEWER_DEBUG_ARGS")
+    if log_path:
+        try:
+            with Path(log_path).expanduser().open("a", encoding="utf-8") as fh:
+                fh.write(f"original={argv!r}\n sanitized={sanitized!r}\n")
+        except OSError:
+            pass
+    return sanitized
+
+
+def _run_embedded_python_snippet(argv: list[str]) -> bool:
+    """Execute ``python -c ...`` style invocations used by multiprocessing.
+
+    When PyInstaller re-executes the frozen app to launch helpers such as the
+    multiprocessing resource tracker it passes ``-c" <code>``. Running Click in
+    that situation is wrong; instead we execute the snippet just like the
+    regular interpreter would and exit immediately.
+    """
+
+    if len(argv) >= 3 and argv[1] == "-c":
+        code = argv[2]
+        exec(compile(code, "<pyinstaller-cmd>", "exec"), {"__name__": "__main__"})
+        return True
+    return False
+
 # Set OpenMP threads for pyOpenMS
 cpu_count = os.cpu_count() or 1
 os.environ.setdefault("OMP_NUM_THREADS", str(cpu_count))
