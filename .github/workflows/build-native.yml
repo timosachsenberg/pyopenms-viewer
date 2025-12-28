@@ -39,9 +39,10 @@ jobs:
       - name: Build native app (Windows)
         if: runner.os == 'Windows'
         run: >-
-          pyinstaller --noconfirm --onefile --windowed --name pyopenms-viewer
-          --collect-all pyopenms --collect-all plotly --additional-hooks-dir=.
-          pyopenms_viewer/__main__.py
+          python -m PyInstaller --noconfirm --onedir --windowed --name pyopenms-viewer \
+            --collect-all pyopenms --collect-all plotly --additional-hooks-dir=. \
+            pyopenms_viewer/__main__.py
+          powershell Compress-Archive -Path dist\* -DestinationPath dist\pyopenms-viewer-windows.zip
       - name: Build native app (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -125,7 +126,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/pyopenms-viewer.exe
+            dist/pyopenms-viewer-windows.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Create GitHub Release (macOS)
