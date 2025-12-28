@@ -13,21 +13,21 @@ if sys.platform == 'win32':
     try:
         pkg_base, pkg_dir = get_package_paths('pyopenms')
         pyopenms_dir = pkg_dir
-        
+
         print(f"[SPEC] pyopenms directory: {pyopenms_dir}", flush=True)
-        
+
         # Add to PATH (inherited by subprocesses)
         if os.path.exists(pyopenms_dir):
             os.environ['PATH'] = pyopenms_dir + os.pathsep + os.environ.get('PATH', '')
             print(f"[SPEC] Added pyopenms directory to PATH", flush=True)
-            
+
             # Verify OpenMS.dll exists
             openms_dll = os.path.join(pyopenms_dir, 'OpenMS.dll')
             if os.path.exists(openms_dll):
                 print(f"[SPEC] Verified OpenMS.dll exists: {openms_dll}", flush=True)
             else:
                 print(f"[SPEC] WARNING: OpenMS.dll not found at {openms_dll}", flush=True)
-        
+
         # Add DLL directory for main process
         if hasattr(os, 'add_dll_directory') and os.path.exists(pyopenms_dir):
             try:
@@ -35,7 +35,7 @@ if sys.platform == 'win32':
                 print(f"[SPEC] Added DLL search directory", flush=True)
             except Exception as e:
                 print(f"[SPEC] WARNING: add_dll_directory failed: {e}", flush=True)
-                
+
     except Exception as e:
         print(f"[SPEC] ERROR: Failed to configure pyopenms paths: {e}", flush=True)
 
