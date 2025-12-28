@@ -11,7 +11,9 @@ from pyopenms_viewer.loaders.spectrum_extractor import extract_spectrum_data
 __all__ = [
     "MzMLLoader",
     "FeatureLoader",
-    "ImzMLLoader",
+        "IDLoader",
+        "get_cv_from_spectrum",
+        "extract_feature_data",
     "IDLoader",
     "get_cv_from_spectrum",
     "extract_feature_data",

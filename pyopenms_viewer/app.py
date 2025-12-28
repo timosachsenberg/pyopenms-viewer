@@ -13,6 +13,7 @@ from nicegui import app, run, ui
 from pyopenms_viewer.components.local_file_picker import LocalFilePicker
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.loaders import FeatureLoader, IDLoader, MzMLLoader, ImzMLLoader
+from pyopenms_viewer.loaders import FeatureLoader, IDLoader, MzMLLoader
 from pyopenms_viewer.panels import (
     ChromatogramPanel,
     FAIMSPanel,
@@ -164,6 +165,8 @@ async def create_ui():
                         await load_mzml(tmp_path, original_name)
                     elif filename.endswith(".imzml"):
                         await load_imzml(tmp_path, original_name)
+                            f"Unknown file type: {original_name}. Supported: .mzML, .featureXML, .idXML", type="warning"
+                            "Mass Spec Files (*.mzML;*.featureXML;*.idXML)",
 
                     elif filename.endswith(".featurexml") or (filename.endswith(".xml") and "feature" in filename):
                         loader = FeatureLoader(state)
@@ -319,6 +322,7 @@ async def create_ui():
             with upload_container:
                 ui.upload(on_upload=handle_upload, auto_upload=True, multiple=True).props(
                     'hide-upload-btn no-thumbnails accept=".mzML,.mzml,.imzML,.imzml,.featureXML,.featurexml,.idXML,.idxml,.xml"'
+                                    'hide-upload-btn no-thumbnails accept=".mzML,.mzml,.featureXML,.featurexml,.idXML,.idxml,.xml"'
                 ).classes("w-full border rounded")
 
             ui.separator().props("vertical").classes("h-6")
@@ -736,7 +740,8 @@ async def create_ui():
 | Extension | Content |
 |-----------|---------|
 | `.mzML` | MS peak data |
-| `.imzML` | Imaging MS data |
+| `.mzML` | MS peak data |
+| `.featureXML` | Detected features |
 | `.featureXML` | Detected features |
 | `.idXML` | Peptide IDs |
 """).classes("text-sm")
