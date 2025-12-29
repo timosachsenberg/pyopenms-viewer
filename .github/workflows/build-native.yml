@@ -12,6 +12,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      smoke:
+        description: 'Run smoke test on Windows only. Set to "windows" to run windows-only smoke test.'
+        required: false
+        default: ''
 
 jobs:
   build:
@@ -41,9 +46,9 @@ jobs:
       - name: Build native app (Windows)
         if: runner.os == 'Windows'
         run: >-
-          pyinstaller --noconfirm pyopenms-viewer-windows.spec
+          pyinstaller --noconfirm --noupx pyopenms-viewer-windows.spec
       - name: Build native app (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && (github.event_name != 'workflow_dispatch' || github.event.inputs.smoke != 'windows')
         run: |
           python -m PyInstaller --noconfirm --onedir --windowed --name pyopenms-viewer \
             --collect-all pyopenms --collect-all plotly \
@@ -105,12 +110,13 @@ jobs:
         run: |
           ditto -c -k --sequesterRsrc --keepParent dist/pyopenms-viewer.app dist/pyopenms-viewer-macos.zip
       - name: Build native app (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && (github.event_name != 'workflow_dispatch' || github.event.inputs.smoke != 'windows')
         run: |
           python -m PyInstaller --noconfirm pyopenms-viewer-linux.spec
           mv dist/pyopenms-viewer dist/pyopenms-viewer-linux
       - name: Archive build artifacts
         uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows' || github.event_name != 'workflow_dispatch'
         with:
           name: pyopenms-viewer-${{ matrix.os }}
           path: dist/
