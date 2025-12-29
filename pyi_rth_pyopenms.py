@@ -14,18 +14,17 @@ def _add_dll_dir():
     except Exception as e:
         print(f"[pyi_rth_pyopenms] Could not set DLL directory: {e}", file=sys.stderr)
 
-_add_dll_dir()"""
-PyInstaller runtime hook for pyopenms.
-
-This hook runs when the frozen application starts, BEFORE any user code.
-It sets up the Windows DLL search path so pyopenms can find its dependency DLLs.
-
-CRITICAL PROBLEM: PyQt6 and pyopenms both bundle Qt6 DLLs. If both are in PATH,
-Windows may load mismatched Qt6 versions causing symbol resolution failures.
-
-SOLUTION: Ensure pyopenms's DLLs (especially Qt6) are loaded FIRST by modifying
-PATH before any imports happen.
-"""
+_add_dll_dir()
+# PyInstaller runtime hook for pyopenms.
+#
+# This hook runs when the frozen application starts, BEFORE any user code.
+# It sets up the Windows DLL search path so pyopenms can find its dependency DLLs.
+#
+# CRITICAL PROBLEM: PyQt6 and pyopenms both bundle Qt6 DLLs. If both are in PATH,
+# Windows may load mismatched Qt6 versions causing symbol resolution failures.
+#
+# SOLUTION: Ensure pyopenms's DLLs (especially Qt6) are loaded FIRST by modifying
+# PATH before any imports happen.
 import os
 import sys
 
