@@ -2400,6 +2400,20 @@ wheels = [
 ]
 
 [[package]]
+name = "pyimzml"
+version = "1.5.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "wheezy-template" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/08/31/9bea42c08939196e999ed9cce3c0d5e7167a42af11dba4d6d356a4870899/pyimzML-1.5.5.tar.gz", hash = "sha256:296ca2d98aff7769a6779c5b55eb0960e511b3dc6ed01b72b42fe787f8da7091", size = 61903, upload-time = "2024-11-04T14:19:02.268Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/73/7c/db60e60bcc720ee8bee3d29f77e6ffcbb7dcf4e3c82fdb30240ad358a0b7/pyimzML-1.5.5-py3-none-any.whl", hash = "sha256:d0477aa5878567bbcccd1509d3485907d3fe30367726b67fb2b689ef2bb939e4", size = 64523, upload-time = "2024-11-04T14:19:00.852Z" },
+]
+
+[[package]]
 name = "pyinstaller"
 version = "6.17.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2583,7 +2597,7 @@ wheels = [
 
 [[package]]
 name = "pyopenms-viewer"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -2597,6 +2611,7 @@ dependencies = [
     { name = "pillow" },
     { name = "plotly" },
     { name = "pyarrow" },
+    { name = "pyimzml" },
     { name = "pyopenms" },
     { name = "pyopenms-viz" },
 ]
@@ -2627,6 +2642,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=10.0.0" },
     { name = "plotly", specifier = ">=5.0.0" },
     { name = "pyarrow", specifier = ">=15.0.0" },
+    { name = "pyimzml", specifier = ">=1.3.1" },
     { name = "pyinstaller", marker = "extra == 'dev'", specifier = ">=6.0.0" },
     { name = "pyopenms", specifier = ">=3.5.0" },
     { name = "pyopenms-viz", specifier = ">=0.1.0" },
@@ -3521,6 +3537,12 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/68/a1/dcb68430b1d00b698ae7a7e0194433bce4f07ded185f0ee5fb21e2a2e91e/websockets-15.0.1-pp310-pypy310_pp73-win_amd64.whl", hash = "sha256:cad21560da69f4ce7658ca2cb83138fb4cf695a2ba3e475e0559e05991aa8122", size = 176884, upload-time = "2025-03-05T20:03:27.934Z" },
     { url = "https://files.pythonhosted.org/packages/fa/a8/5b41e0da817d64113292ab1f8247140aac61cbf6cfd085d6a0fa77f4984f/websockets-15.0.1-py3-none-any.whl", hash = "sha256:f7a866fbc1e97b5c617ee4116daaa09b722101d4a3c170c787450ba409f9736f", size = 169743, upload-time = "2025-03-05T20:03:39.41Z" },
 ]
+
+[[package]]
+name = "wheezy-template"
+version = "3.2.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d7/24/e0f0757b8a29e73463a09c2ef59e7624909753e08703a827ba1cb14b7304/wheezy_template-3.2.4.tar.gz", hash = "sha256:465b9ac52e1c38bc9fc30127ae90bd232ce8df07fc2ac53383cb784f238b144f", size = 19296, upload-time = "2025-12-13T14:11:14.527Z" }
 
 [[package]]
 name = "wsproto"
