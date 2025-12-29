@@ -41,8 +41,7 @@ jobs:
       - name: Build native app (Windows)
         if: runner.os == 'Windows'
         run: >-
-          pyinstaller --noconfirm
-          --additional-hooks-dir=. pyopenms-viewer-windows.spec
+          pyinstaller --noconfirm pyopenms-viewer-windows.spec
       - name: Build native app (macOS)
         if: runner.os == 'macOS'
         run: |
