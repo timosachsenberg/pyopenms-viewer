@@ -108,7 +108,7 @@ jobs:
       - name: Build native app (Linux)
         if: runner.os == 'Linux'
         run: |
-          python -m PyInstaller --noconfirm --additional-hooks-dir=. pyopenms-viewer-linux.spec
+          python -m PyInstaller --noconfirm pyopenms-viewer-linux.spec
           mv dist/pyopenms-viewer dist/pyopenms-viewer-linux
       - name: Archive build artifacts
         uses: actions/upload-artifact@v4
