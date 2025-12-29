@@ -46,7 +46,7 @@ jobs:
       - name: Build native app (Windows)
         if: runner.os == 'Windows'
         run: >-
-          pyinstaller --noconfirm --noupx pyopenms-viewer-windows.spec
+          pyinstaller --noconfirm pyopenms-viewer-windows.spec
       - name: Build native app (macOS)
         if: runner.os == 'macOS' && (github.event_name != 'workflow_dispatch' || github.event.inputs.smoke != 'windows')
         run: |
