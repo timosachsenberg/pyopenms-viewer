@@ -44,7 +44,11 @@ jobs:
       - name: Build native app (macOS)
         if: runner.os == 'macOS'
         run: |
-          python -m PyInstaller --noconfirm --additional-hooks-dir=. pyopenms-viewer.spec
+          python -m PyInstaller --noconfirm --onedir --windowed --name pyopenms-viewer \
+            --collect-all pyopenms --collect-all plotly \
+            --collect-binaries pyopenms --collect-binaries PyQt6 \
+            --additional-hooks-dir=. \
+            pyopenms_viewer/__main__.py
           ls -lh dist/
       - name: Configure Windows code signing certificate
         if: runner.os == 'Windows' && env.WINDOWS_CERT_BASE64 != ''
