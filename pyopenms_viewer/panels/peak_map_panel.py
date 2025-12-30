@@ -125,9 +125,7 @@ class PeakMapPanel(BasePanel):
             The expansion element created
         """
         with container:
-            self.expansion = ui.expansion(
-                self.name, icon=self.icon, value=False
-            ).classes("w-full max-w-[1700px]")
+            self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
 
             with self.expansion:
                 self._build_options_row()
@@ -189,20 +187,16 @@ class PeakMapPanel(BasePanel):
 
             # Colormap selector
             colormap_options = list(COLORMAPS.keys())
-            ui.select(
-                colormap_options,
-                value=self.state.colormap,
-                on_change=self._change_colormap
-            ).props("dense outlined").classes("w-28")
+            ui.select(colormap_options, value=self.state.colormap, on_change=self._change_colormap).props(
+                "dense outlined"
+            ).classes("w-28")
 
             ui.label("|").classes("text-gray-600 mx-2")
             ui.label("RT:").classes("text-xs text-gray-400")
 
             # RT unit toggle
             ui.toggle(
-                ["sec", "min"],
-                value="min" if self.state.rt_in_minutes else "sec",
-                on_change=self._toggle_rt_unit
+                ["sec", "min"], value="min" if self.state.rt_in_minutes else "sec", on_change=self._toggle_rt_unit
             ).props("dense")
 
             ui.label("|").classes("text-gray-600 mx-2")
@@ -214,8 +208,7 @@ class PeakMapPanel(BasePanel):
                 .classes("text-purple-400")
             )
             ui.tooltip(
-                "When checked: m/z on x-axis, RT on y-axis (default). "
-                "When unchecked: RT on x-axis, m/z on y-axis."
+                "When checked: m/z on x-axis, RT on y-axis (default). When unchecked: RT on x-axis, m/z on y-axis."
             )
 
             # Spectrum marker checkbox
@@ -229,10 +222,9 @@ class PeakMapPanel(BasePanel):
             ui.element("div").classes("flex-grow")
 
             # Save PNG button
-            ui.button(
-                icon="download",
-                on_click=self._save_png
-            ).props("dense flat size=sm").tooltip("Save peak map as PNG")
+            ui.button(icon="download", on_click=self._save_png).props("dense flat size=sm").tooltip(
+                "Save peak map as PNG"
+            )
 
     def _build_navigation_row(self):
         """Build the breadcrumb trail and coordinate display row."""
@@ -262,35 +254,29 @@ class PeakMapPanel(BasePanel):
                 ui.label("Go to Range").classes("text-sm font-bold mb-2")
                 with ui.row().classes("gap-2 items-end"):
                     ui.label("RT:").classes("text-xs text-gray-400")
-                    self.range_rt_min = ui.number(format="%.1f").props(
-                        "dense outlined"
-                    ).classes("w-24").style("font-size: 12px;")
+                    self.range_rt_min = (
+                        ui.number(format="%.1f").props("dense outlined").classes("w-24").style("font-size: 12px;")
+                    )
                     ui.label("–").classes("text-gray-400")
-                    self.range_rt_max = ui.number(format="%.1f").props(
-                        "dense outlined"
-                    ).classes("w-24").style("font-size: 12px;")
+                    self.range_rt_max = (
+                        ui.number(format="%.1f").props("dense outlined").classes("w-24").style("font-size: 12px;")
+                    )
                     self.range_rt_unit_label = ui.label("s").classes("text-xs text-gray-400")
 
                 with ui.row().classes("gap-2 items-end mt-2"):
                     ui.label("m/z:").classes("text-xs text-gray-400")
-                    self.range_mz_min = ui.number(format="%.2f").props(
-                        "dense outlined"
-                    ).classes("w-24").style("font-size: 12px;")
+                    self.range_mz_min = (
+                        ui.number(format="%.2f").props("dense outlined").classes("w-24").style("font-size: 12px;")
+                    )
                     ui.label("–").classes("text-gray-400")
-                    self.range_mz_max = ui.number(format="%.2f").props(
-                        "dense outlined"
-                    ).classes("w-24").style("font-size: 12px;")
+                    self.range_mz_max = (
+                        ui.number(format="%.2f").props("dense outlined").classes("w-24").style("font-size: 12px;")
+                    )
 
                 with ui.row().classes("gap-2 mt-3 justify-end"):
-                    ui.button("Reset", on_click=self._reset_range_from_dialog).props(
-                        "flat dense color=grey"
-                    )
-                    ui.button("Cancel", on_click=self.range_dialog.close).props(
-                        "flat dense"
-                    )
-                    ui.button("Apply", on_click=self._apply_range_from_dialog).props(
-                        "dense color=primary"
-                    )
+                    ui.button("Reset", on_click=self._reset_range_from_dialog).props("flat dense color=grey")
+                    ui.button("Cancel", on_click=self.range_dialog.close).props("flat dense")
+                    ui.button("Apply", on_click=self._apply_range_from_dialog).props("dense color=primary")
 
     def _open_range_popover(self):
         """Open the range input popover and populate with current values."""
@@ -445,9 +431,9 @@ class PeakMapPanel(BasePanel):
 
             # Back and 3D View buttons
             with ui.row().classes("mt-1 gap-1"):
-                ui.button("← Back", on_click=self._go_back).props(
-                    "dense size=sm color=grey"
-                ).tooltip("Go to previous view")
+                ui.button("← Back", on_click=self._go_back).props("dense size=sm color=grey").tooltip(
+                    "Go to previous view"
+                )
 
                 self.view_3d_btn = (
                     ui.button("3D", on_click=self._toggle_3d_view)
@@ -784,7 +770,7 @@ class PeakMapPanel(BasePanel):
         if not self.state.show_centroids:
             return None
 
-        min_dist_sq = self.state.hover_snap_distance_px ** 2
+        min_dist_sq = self.state.hover_snap_distance_px**2
         nearest_idx = None
 
         # Get current view bounds
@@ -955,7 +941,7 @@ class PeakMapPanel(BasePanel):
                     f"Selected feature #{feature_idx}: RT={rt_str}, m/z={mz:.4f}{charge_str}, I={intensity:.2e}",
                     type="info",
                     position="bottom-right",
-                    timeout=3000
+                    timeout=3000,
                 )
 
             self.update()
@@ -1350,8 +1336,10 @@ class PeakMapPanel(BasePanel):
             mz = feature.getMZ()
 
             # Check if feature is in current view
-            if not (self.state.view_rt_min <= rt <= self.state.view_rt_max and
-                    self.state.view_mz_min <= mz <= self.state.view_mz_max):
+            if not (
+                self.state.view_rt_min <= rt <= self.state.view_rt_max
+                and self.state.view_mz_min <= mz <= self.state.view_mz_max
+            ):
                 continue
 
             # Get RT and m/z bounds from convex hull

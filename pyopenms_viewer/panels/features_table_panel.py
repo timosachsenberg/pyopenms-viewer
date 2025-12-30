@@ -49,9 +49,7 @@ class FeaturesTablePanel(BasePanel):
             The expansion element created
         """
         with container:
-            self.expansion = ui.expansion(
-                self.name, icon=self.icon, value=False
-            ).classes("w-full max-w-[1700px]")
+            self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
 
             with self.expansion:
                 self._build_help_text()
@@ -67,48 +65,36 @@ class FeaturesTablePanel(BasePanel):
 
     def _build_help_text(self):
         """Build the help text."""
-        ui.label("Click a row to zoom to that feature").classes(
-            "text-sm text-gray-400 mb-2"
-        )
+        ui.label("Click a row to zoom to that feature").classes("text-sm text-gray-400 mb-2")
 
     def _build_filter_row(self):
         """Build the filter controls row."""
         with ui.row().classes("w-full items-end gap-2 mb-2 flex-wrap"):
             ui.label("Filter:").classes("text-xs text-gray-400")
 
-            self.min_intensity_input = ui.number(
-                label="Min Intensity",
-                format="%.0f"
-            ).props("dense outlined").classes("w-28")
-
-            self.min_quality_input = ui.number(
-                label="Min Quality",
-                format="%.2f"
-            ).props("dense outlined").classes("w-24")
-
-            self.charge_select = ui.select(
-                ["All", "1", "2", "3", "4", "5+"],
-                value="All",
-                label="Charge"
-            ).props("dense outlined").classes("w-20")
-
-            ui.button("Apply", on_click=self._apply_filter).props(
-                "dense size=sm color=primary"
+            self.min_intensity_input = (
+                ui.number(label="Min Intensity", format="%.0f").props("dense outlined").classes("w-28")
             )
-            ui.button("Reset", on_click=self._reset_filter).props(
-                "dense size=sm color=grey"
+
+            self.min_quality_input = (
+                ui.number(label="Min Quality", format="%.2f").props("dense outlined").classes("w-24")
             )
+
+            self.charge_select = (
+                ui.select(["All", "1", "2", "3", "4", "5+"], value="All", label="Charge")
+                .props("dense outlined")
+                .classes("w-20")
+            )
+
+            ui.button("Apply", on_click=self._apply_filter).props("dense size=sm color=primary")
+            ui.button("Reset", on_click=self._reset_filter).props("dense size=sm color=grey")
 
             ui.element("div").classes("flex-grow")  # Spacer
 
             # Export button
-            ui.button(
-                "Export TSV",
-                icon="download",
-                on_click=self._export_tsv
-            ).props("dense outline size=sm color=grey").tooltip(
-                "Export filtered table data as TSV"
-            )
+            ui.button("Export TSV", icon="download", on_click=self._export_tsv).props(
+                "dense outline size=sm color=grey"
+            ).tooltip("Export filtered table data as TSV")
 
     def _build_table(self):
         """Build the features table."""
@@ -226,11 +212,7 @@ class FeaturesTablePanel(BasePanel):
 
         # Sort rows the same way the table is sorted to find position
         if sort_by:
-            rows = sorted(
-                rows,
-                key=lambda r: r.get(sort_by, 0) or 0,
-                reverse=descending
-            )
+            rows = sorted(rows, key=lambda r: r.get(sort_by, 0) or 0, reverse=descending)
 
         # Find the position of the feature in the sorted list
         row_position = None
@@ -375,7 +357,7 @@ class FeaturesTablePanel(BasePanel):
         escaped_content = tsv_content.replace("`", "\\`")
 
         # Trigger download using JavaScript
-        ui.run_javascript(f'''
+        ui.run_javascript(f"""
             const blob = new Blob([`{escaped_content}`], {{type: "text/tab-separated-values"}});
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
@@ -383,7 +365,7 @@ class FeaturesTablePanel(BasePanel):
             a.download = "features_table.tsv";
             a.click();
             URL.revokeObjectURL(url);
-        ''')
+        """)
         ui.notify(f"Exported {len(data)} rows", type="positive")
 
     def set_on_feature_selected(self, callback: Callable):

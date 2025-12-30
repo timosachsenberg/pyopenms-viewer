@@ -5,8 +5,8 @@ components to communicate without tight coupling. Components subscribe to
 events and receive callbacks when those events are emitted.
 """
 
-from typing import Callable, Any
 from enum import Enum, auto
+from typing import Callable
 
 
 class EventType(Enum):
@@ -58,9 +58,7 @@ class EventBus:
             callback: The callback function to remove
         """
         if event_type in self._subscribers:
-            self._subscribers[event_type] = [
-                cb for cb in self._subscribers[event_type] if cb != callback
-            ]
+            self._subscribers[event_type] = [cb for cb in self._subscribers[event_type] if cb != callback]
 
     def emit(self, event_type: str, **kwargs) -> None:
         """Emit an event to all subscribers.

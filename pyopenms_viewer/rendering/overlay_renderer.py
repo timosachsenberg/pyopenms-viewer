@@ -72,19 +72,16 @@ class OverlayRenderer:
 
         return (x, y)
 
-    def feature_intersects_view(self, state: ViewerState, rt_min: float, rt_max: float, mz_min: float, mz_max: float) -> bool:
+    def feature_intersects_view(
+        self, state: ViewerState, rt_min: float, rt_max: float, mz_min: float, mz_max: float
+    ) -> bool:
         """Check if a feature bounding box intersects the current view."""
         view_rt_min = state.view_rt_min if state.view_rt_min is not None else state.rt_min
         view_rt_max = state.view_rt_max if state.view_rt_max is not None else state.rt_max
         view_mz_min = state.view_mz_min if state.view_mz_min is not None else state.mz_min
         view_mz_max = state.view_mz_max if state.view_mz_max is not None else state.mz_max
 
-        return (
-            rt_max >= view_rt_min
-            and rt_min <= view_rt_max
-            and mz_max >= view_mz_min
-            and mz_min <= view_mz_max
-        )
+        return rt_max >= view_rt_min and rt_min <= view_rt_max and mz_max >= view_mz_min and mz_min <= view_mz_max
 
     def draw_features(self, img: Image.Image, state: ViewerState) -> Image.Image:
         """Draw feature overlays (centroids, bounding boxes, convex hulls).
@@ -188,7 +185,7 @@ class OverlayRenderer:
                     draw.ellipse(
                         [cx - glow_r, cy - glow_r, cx + glow_r, cy + glow_r],
                         outline=(*state.hover_color[:3], 150),
-                        width=2
+                        width=2,
                     )
 
                 # Centroid size: selected > hovered > default
@@ -206,7 +203,7 @@ class OverlayRenderer:
                     [cx - r, cy - r, cx + r, cy + r],
                     fill=centroid_color,
                     outline=(255, 255, 255, 255),
-                    width=outline_width
+                    width=outline_width,
                 )
 
         img = Image.alpha_composite(img, overlay)
@@ -261,12 +258,16 @@ class OverlayRenderer:
             r = 6 if is_selected else 4
 
             # Draw diamond shape
-            draw.polygon([
-                (x, y - r),
-                (x + r, y),
-                (x, y + r),
-                (x - r, y),
-            ], fill=color, outline=(255, 255, 255, 255))
+            draw.polygon(
+                [
+                    (x, y - r),
+                    (x + r, y),
+                    (x, y + r),
+                    (x - r, y),
+                ],
+                fill=color,
+                outline=(255, 255, 255, 255),
+            )
 
             # Draw sequence label if enabled
             if state.show_id_sequences and font:

@@ -2,16 +2,13 @@
 
 from pathlib import Path
 
-import pytest
-
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.loaders import (
-    MzMLLoader,
     FeatureLoader,
     IDLoader,
+    MzMLLoader,
     extract_chromatograms,
 )
-
 
 # Test data paths
 TEST_DATA_DIR = Path(__file__).parent / "data"

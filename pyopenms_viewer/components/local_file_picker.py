@@ -43,13 +43,17 @@ class LocalFilePicker(ui.dialog):
 
         with self, ui.card():
             self._add_drives_toggle()
-            self.grid = ui.aggrid(
-                {
-                    "columnDefs": [{"field": "name", "headerName": "File"}],
-                    "rowSelection": {"mode": "multiRow" if multiple else "singleRow"},
-                },
-                html_columns=[0],
-            ).classes("w-96").on("cellDoubleClicked", self._handle_double_click)
+            self.grid = (
+                ui.aggrid(
+                    {
+                        "columnDefs": [{"field": "name", "headerName": "File"}],
+                        "rowSelection": {"mode": "multiRow" if multiple else "singleRow"},
+                    },
+                    html_columns=[0],
+                )
+                .classes("w-96")
+                .on("cellDoubleClicked", self._handle_double_click)
+            )
             with ui.row().classes("w-full justify-end"):
                 ui.button("Cancel", on_click=self.close).props("outline")
                 ui.button("Ok", on_click=self._handle_ok)

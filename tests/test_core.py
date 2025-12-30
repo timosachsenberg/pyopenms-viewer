@@ -2,20 +2,17 @@
 
 from pathlib import Path
 
-import pytest
-
-from pyopenms_viewer.core.state import ViewerState, ViewBounds
 from pyopenms_viewer.core.config import (
-    ION_COLORS,
     COLORMAPS,
-    DEFAULTS,
-    get_colormap_background,
-    PANEL_DEFINITIONS,
     DEFAULT_PANEL_ORDER,
     DEFAULT_PANEL_VISIBILITY,
+    DEFAULTS,
+    ION_COLORS,
+    PANEL_DEFINITIONS,
+    get_colormap_background,
 )
 from pyopenms_viewer.core.events import EventBus
-
+from pyopenms_viewer.core.state import ViewBounds, ViewerState
 
 # Test data paths
 TEST_DATA_DIR = Path(__file__).parent / "data"
@@ -410,7 +407,7 @@ class TestConfig:
         assert "peakmap" in PANEL_DEFINITIONS
         assert "spectrum" in PANEL_DEFINITIONS
 
-        for panel_id, panel_def in PANEL_DEFINITIONS.items():
+        for _panel_id, panel_def in PANEL_DEFINITIONS.items():
             assert "name" in panel_def
             assert "icon" in panel_def
 

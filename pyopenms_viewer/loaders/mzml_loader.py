@@ -8,13 +8,13 @@ Two-phase loading:
 2. process() - Extract peaks, TIC, chromatograms, ion mobility data
 """
 
-from pathlib import Path
-from typing import Optional, Callable
 import re
+from pathlib import Path
+from typing import Callable, Optional
+
 import numpy as np
 import pandas as pd
-
-from pyopenms import MSExperiment, MzMLFile, DriftTimeUnit
+from pyopenms import DriftTimeUnit, MSExperiment, MzMLFile
 
 from pyopenms_viewer.core.state import ViewerState
 
@@ -195,7 +195,7 @@ class MzMLLoader:
                 tic_ms_level = 1
                 self.state.tic_source = "MS1 TIC"
             else:
-                ms_levels = set(spec.getMSLevel() for spec in self.state.exp)
+                ms_levels = {spec.getMSLevel() for spec in self.state.exp}
                 tic_ms_level = min(lv for lv in ms_levels if lv > 1) if ms_levels else 2
                 self.state.tic_source = f"MS{tic_ms_level} BPC"
 

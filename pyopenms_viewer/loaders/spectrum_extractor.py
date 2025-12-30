@@ -52,22 +52,24 @@ def extract_spectrum_data(state: ViewerState) -> list[dict[str, Any]]:
         # Get FAIMS CV if available (stored as float, None if not available)
         cv = get_cv_from_spectrum(spec)
 
-        data.append({
-            "idx": idx,
-            "rt": round(rt, 2),
-            "ms_level": ms_level,
-            "cv": cv,
-            "n_peaks": n_peaks,
-            "tic": f"{tic:.2e}",
-            "bpi": f"{bpi:.2e}",
-            "mz_range": f"{mz_min:.1f}-{mz_max:.1f}" if n_peaks > 0 else "-",
-            "precursor_mz": precursor_mz,
-            "precursor_z": precursor_charge,
-            # ID fields - populated by link_ids_to_spectra()
-            "sequence": "-",
-            "full_sequence": "",
-            "score": "-",
-            "id_idx": None,
-        })
+        data.append(
+            {
+                "idx": idx,
+                "rt": round(rt, 2),
+                "ms_level": ms_level,
+                "cv": cv,
+                "n_peaks": n_peaks,
+                "tic": f"{tic:.2e}",
+                "bpi": f"{bpi:.2e}",
+                "mz_range": f"{mz_min:.1f}-{mz_max:.1f}" if n_peaks > 0 else "-",
+                "precursor_mz": precursor_mz,
+                "precursor_z": precursor_charge,
+                # ID fields - populated by link_ids_to_spectra()
+                "sequence": "-",
+                "full_sequence": "",
+                "score": "-",
+                "id_idx": None,
+            }
+        )
 
     return data

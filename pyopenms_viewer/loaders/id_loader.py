@@ -36,15 +36,17 @@ def extract_id_data(state: ViewerState) -> list[dict[str, Any]]:
             score = 0
             charge = 0
 
-        data.append({
-            "idx": idx,
-            "rt": round(rt, 2),
-            "mz": round(mz, 4),
-            "sequence": sequence[:30] + "..." if len(sequence) > 30 else sequence,
-            "full_sequence": sequence,
-            "charge": charge if charge != 0 else "-",
-            "score": round(score, 4) if score != 0 else "-",
-        })
+        data.append(
+            {
+                "idx": idx,
+                "rt": round(rt, 2),
+                "mz": round(mz, 4),
+                "sequence": sequence[:30] + "..." if len(sequence) > 30 else sequence,
+                "full_sequence": sequence,
+                "charge": charge if charge != 0 else "-",
+                "score": round(score, 4) if score != 0 else "-",
+            }
+        )
         idx += 1
 
     return data
@@ -143,16 +145,18 @@ def link_ids_to_spectra(state: ViewerState, rt_tolerance: float = 5.0, mz_tolera
                     value = round(value, 4)
                 hit_meta_values[f"hit:{key_str}"] = value
 
-            all_hits_data.append({
-                "sequence": sequence[:25] + "..." if len(sequence) > 25 else sequence,
-                "full_sequence": sequence,
-                "score": round(score, 4) if score != 0 else "-",
-                "charge": charge,
-                "hit_rank": hit_idx + 1,
-                "id_idx": id_idx,
-                "hit_idx": hit_idx,
-                "meta_values": hit_meta_values,
-            })
+            all_hits_data.append(
+                {
+                    "sequence": sequence[:25] + "..." if len(sequence) > 25 else sequence,
+                    "full_sequence": sequence,
+                    "score": round(score, 4) if score != 0 else "-",
+                    "charge": charge,
+                    "hit_rank": hit_idx + 1,
+                    "id_idx": id_idx,
+                    "hit_idx": hit_idx,
+                    "meta_values": hit_meta_values,
+                }
+            )
 
         # Find matching spectrum
         best_match = None

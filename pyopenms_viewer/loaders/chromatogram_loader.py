@@ -1,6 +1,7 @@
 """Chromatogram extraction from mzML experiments."""
 
 import numpy as np
+
 from pyopenms_viewer.core.state import ViewerState
 
 
@@ -57,20 +58,22 @@ def extract_chromatograms(state: ViewerState) -> None:
         total_intensity = float(int_array.sum()) if len(int_array) > 0 else 0
 
         # Store metadata
-        state.chromatograms.append({
-            "idx": idx,
-            "native_id": native_id,
-            "is_tic": is_tic,
-            "type": "TIC" if is_tic else "",
-            "precursor_mz": round(precursor_mz, 4) if precursor_mz > 0 else "-",
-            "precursor_z": precursor_charge if precursor_charge > 0 else "-",
-            "product_mz": round(product_mz, 4) if product_mz > 0 else "-",
-            "rt_min": round(rt_min, 2),
-            "rt_max": round(rt_max, 2),
-            "n_points": len(rt_array),
-            "max_int": f"{max_intensity:.2e}",
-            "total_int": f"{total_intensity:.2e}",
-        })
+        state.chromatograms.append(
+            {
+                "idx": idx,
+                "native_id": native_id,
+                "is_tic": is_tic,
+                "type": "TIC" if is_tic else "",
+                "precursor_mz": round(precursor_mz, 4) if precursor_mz > 0 else "-",
+                "precursor_z": precursor_charge if precursor_charge > 0 else "-",
+                "product_mz": round(product_mz, 4) if product_mz > 0 else "-",
+                "rt_min": round(rt_min, 2),
+                "rt_max": round(rt_max, 2),
+                "n_points": len(rt_array),
+                "max_int": f"{max_intensity:.2e}",
+                "total_int": f"{total_intensity:.2e}",
+            }
+        )
 
         # Store data arrays
         state.chromatogram_data[idx] = (

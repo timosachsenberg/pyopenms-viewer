@@ -67,9 +67,7 @@ class IMPeakMapPanel(BasePanel):
             The expansion element created
         """
         with container:
-            self.expansion = ui.expansion(
-                self.name, icon=self.icon, value=False
-            ).classes("w-full max-w-[1700px]")
+            self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
 
             with self.expansion:
                 self._build_controls_row()
@@ -86,35 +84,32 @@ class IMPeakMapPanel(BasePanel):
     def _build_controls_row(self):
         """Build the controls row."""
         with ui.row().classes("w-full items-center gap-2 mb-2"):
-            self.info_label = ui.label("No ion mobility data").classes(
-                "text-sm text-gray-400"
-            )
+            self.info_label = ui.label("No ion mobility data").classes("text-sm text-gray-400")
             ui.element("div").classes("flex-grow")
 
             # Link to spectrum m/z checkbox
-            self.link_checkbox = ui.checkbox(
-                "Link to Spectrum m/z",
-                value=self.state.link_spectrum_mz_to_im,
-                on_change=self._on_link_change
-            ).props("dense").tooltip("Sync m/z range with spectrum plot zoom")
+            self.link_checkbox = (
+                ui.checkbox(
+                    "Link to Spectrum m/z", value=self.state.link_spectrum_mz_to_im, on_change=self._on_link_change
+                )
+                .props("dense")
+                .tooltip("Sync m/z range with spectrum plot zoom")
+            )
 
             # Show mobilogram checkbox
-            self.mobilogram_checkbox = ui.checkbox(
-                "Show Mobilogram",
-                value=self.state.show_mobilogram,
-                on_change=self._on_mobilogram_change
-            ).props("dense").tooltip("Show summed intensity profile vs ion mobility")
+            self.mobilogram_checkbox = (
+                ui.checkbox("Show Mobilogram", value=self.state.show_mobilogram, on_change=self._on_mobilogram_change)
+                .props("dense")
+                .tooltip("Show summed intensity profile vs ion mobility")
+            )
 
-            ui.button(
-                "Reset View",
-                icon="home",
-                on_click=self._reset_view
-            ).props("dense outline size=sm").tooltip("Reset to full IM range")
+            ui.button("Reset View", icon="home", on_click=self._reset_view).props("dense outline size=sm").tooltip(
+                "Reset to full IM range"
+            )
 
-            ui.button(
-                icon="download",
-                on_click=self._save_png
-            ).props("dense flat size=sm").tooltip("Save ion mobility map as PNG")
+            ui.button(icon="download", on_click=self._save_png).props("dense flat size=sm").tooltip(
+                "Save ion mobility map as PNG"
+            )
 
     def _build_range_row(self):
         """Build the range display row."""
@@ -165,9 +160,7 @@ class IMPeakMapPanel(BasePanel):
         # Update info label
         if self.info_label is not None and self.state.has_ion_mobility:
             n_peaks = len(self.state.im_df) if self.state.im_df is not None else 0
-            self.info_label.set_text(
-                f"Ion mobility data: {n_peaks:,} peaks | {self.state.im_type or 'Unknown type'}"
-            )
+            self.info_label.set_text(f"Ion mobility data: {n_peaks:,} peaks | {self.state.im_type or 'Unknown type'}")
 
     def _has_data(self) -> bool:
         """Check if panel has data to display."""

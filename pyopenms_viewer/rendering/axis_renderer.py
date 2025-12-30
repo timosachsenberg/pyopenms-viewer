@@ -2,8 +2,8 @@
 
 from PIL import Image, ImageDraw, ImageFont
 
-from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.annotation.tick_formatter import calculate_nice_ticks, format_tick_label
+from pyopenms_viewer.core.state import ViewerState
 
 
 def get_font(size: int = 12):

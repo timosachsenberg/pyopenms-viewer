@@ -46,12 +46,14 @@ def generate_peak_df(n_peaks: int, seed: int = RANDOM_SEED) -> pd.DataFrame:
     intensity = rng.lognormal(10, 2, n_peaks)  # Log-normal intensity
     log_intensity = np.log1p(intensity)
 
-    return pd.DataFrame({
-        "rt": rt.astype(np.float32),
-        "mz": mz.astype(np.float32),
-        "intensity": intensity.astype(np.float32),
-        "log_intensity": log_intensity.astype(np.float32),
-    })
+    return pd.DataFrame(
+        {
+            "rt": rt.astype(np.float32),
+            "mz": mz.astype(np.float32),
+            "intensity": intensity.astype(np.float32),
+            "log_intensity": log_intensity.astype(np.float32),
+        }
+    )
 
 
 def setup_state_in_memory(df: pd.DataFrame) -> ViewerState:
@@ -207,15 +209,17 @@ class TestRenderingPerformance:
                 timing = time_render(self.renderer, state, TIMING_ITERATIONS)
                 print(f"done (avg: {format_time(timing['avg_ms'])})")
 
-                results.append({
-                    "peaks": peak_str,
-                    "mode": "in-memory",
-                    "gen_ms": gen_time,
-                    "setup_ms": setup_time,
-                    "render_avg_ms": timing["avg_ms"],
-                    "render_min_ms": timing["min_ms"],
-                    "render_max_ms": timing["max_ms"],
-                })
+                results.append(
+                    {
+                        "peaks": peak_str,
+                        "mode": "in-memory",
+                        "gen_ms": gen_time,
+                        "setup_ms": setup_time,
+                        "render_avg_ms": timing["avg_ms"],
+                        "render_min_ms": timing["min_ms"],
+                        "render_max_ms": timing["max_ms"],
+                    }
+                )
 
                 # Cleanup
                 del df
@@ -224,16 +228,18 @@ class TestRenderingPerformance:
 
             except MemoryError:
                 print("SKIPPED (out of memory)")
-                results.append({
-                    "peaks": peak_str,
-                    "mode": "in-memory",
-                    "gen_ms": None,
-                    "setup_ms": None,
-                    "render_avg_ms": None,
-                    "render_min_ms": None,
-                    "render_max_ms": None,
-                    "error": "MemoryError",
-                })
+                results.append(
+                    {
+                        "peaks": peak_str,
+                        "mode": "in-memory",
+                        "gen_ms": None,
+                        "setup_ms": None,
+                        "render_avg_ms": None,
+                        "render_min_ms": None,
+                        "render_max_ms": None,
+                        "error": "MemoryError",
+                    }
+                )
 
         # Print results table
         self._print_results_table(results, "In-Memory")
@@ -279,16 +285,18 @@ class TestRenderingPerformance:
                     # Get cache size
                     cache_size_mb = state.data_manager.get_cache_size_mb()
 
-                    results.append({
-                        "peaks": peak_str,
-                        "mode": "out-of-core",
-                        "gen_ms": gen_time,
-                        "setup_ms": setup_time,
-                        "render_avg_ms": timing["avg_ms"],
-                        "render_min_ms": timing["min_ms"],
-                        "render_max_ms": timing["max_ms"],
-                        "cache_mb": cache_size_mb,
-                    })
+                    results.append(
+                        {
+                            "peaks": peak_str,
+                            "mode": "out-of-core",
+                            "gen_ms": gen_time,
+                            "setup_ms": setup_time,
+                            "render_avg_ms": timing["avg_ms"],
+                            "render_min_ms": timing["min_ms"],
+                            "render_max_ms": timing["max_ms"],
+                            "cache_mb": cache_size_mb,
+                        }
+                    )
 
                     # Cleanup
                     state.data_manager.clear_cache()
@@ -297,16 +305,18 @@ class TestRenderingPerformance:
 
                 except MemoryError:
                     print("SKIPPED (out of memory)")
-                    results.append({
-                        "peaks": peak_str,
-                        "mode": "out-of-core",
-                        "gen_ms": None,
-                        "setup_ms": None,
-                        "render_avg_ms": None,
-                        "render_min_ms": None,
-                        "render_max_ms": None,
-                        "error": "MemoryError",
-                    })
+                    results.append(
+                        {
+                            "peaks": peak_str,
+                            "mode": "out-of-core",
+                            "gen_ms": None,
+                            "setup_ms": None,
+                            "render_avg_ms": None,
+                            "render_min_ms": None,
+                            "render_max_ms": None,
+                            "error": "MemoryError",
+                        }
+                    )
 
         # Print results table
         self._print_results_table(results, "Out-of-Core")
@@ -338,11 +348,13 @@ class TestRenderingPerformance:
                     timing_mem = time_render(self.renderer, state_mem, TIMING_ITERATIONS)
                     print(f"{format_time(timing_mem['avg_ms'])}")
 
-                    all_results.append({
-                        "peaks": peak_str,
-                        "mode": "in-memory",
-                        "render_avg_ms": timing_mem["avg_ms"],
-                    })
+                    all_results.append(
+                        {
+                            "peaks": peak_str,
+                            "mode": "in-memory",
+                            "render_avg_ms": timing_mem["avg_ms"],
+                        }
+                    )
 
                     del state_mem
                     gc.collect()
@@ -357,12 +369,14 @@ class TestRenderingPerformance:
                     cache_mb = state_ooc.data_manager.get_cache_size_mb()
                     print(f"{format_time(timing_ooc['avg_ms'])} (cache: {cache_mb:.1f}MB)")
 
-                    all_results.append({
-                        "peaks": peak_str,
-                        "mode": "out-of-core",
-                        "render_avg_ms": timing_ooc["avg_ms"],
-                        "cache_mb": cache_mb,
-                    })
+                    all_results.append(
+                        {
+                            "peaks": peak_str,
+                            "mode": "out-of-core",
+                            "render_avg_ms": timing_ooc["avg_ms"],
+                            "cache_mb": cache_mb,
+                        }
+                    )
 
                     state_ooc.data_manager.clear_cache()
                     del state_ooc
@@ -370,18 +384,22 @@ class TestRenderingPerformance:
 
                 except MemoryError:
                     print("SKIPPED (out of memory)")
-                    all_results.append({
-                        "peaks": peak_str,
-                        "mode": "in-memory",
-                        "render_avg_ms": None,
-                        "error": "MemoryError",
-                    })
-                    all_results.append({
-                        "peaks": peak_str,
-                        "mode": "out-of-core",
-                        "render_avg_ms": None,
-                        "error": "MemoryError",
-                    })
+                    all_results.append(
+                        {
+                            "peaks": peak_str,
+                            "mode": "in-memory",
+                            "render_avg_ms": None,
+                            "error": "MemoryError",
+                        }
+                    )
+                    all_results.append(
+                        {
+                            "peaks": peak_str,
+                            "mode": "out-of-core",
+                            "render_avg_ms": None,
+                            "error": "MemoryError",
+                        }
+                    )
 
         # Print combined comparison table
         self._print_comparison_table(all_results)

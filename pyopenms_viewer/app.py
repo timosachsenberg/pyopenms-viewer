@@ -12,6 +12,7 @@ from nicegui import app, run, ui
 
 from pyopenms_viewer.components.local_file_picker import LocalFilePicker
 from pyopenms_viewer.core.state import ViewerState
+from pyopenms_viewer.loaders import FeatureLoader, IDLoader, MzMLLoader, ImzMLLoader
 from pyopenms_viewer.loaders import FeatureLoader, IDLoader, MzMLLoader
 from pyopenms_viewer.panels import (
     ChromatogramPanel,
@@ -87,27 +88,21 @@ async def create_ui():
             .style("background: rgba(128,128,128,0.1);")
         ):
             # Setup helper functions for file loading
+
             async def load_mzml(filepath: str, original_name: str = None):
                 """Load mzML file in background."""
                 loader = MzMLLoader(state)
                 name = original_name or Path(filepath).name
                 ui.notify(f"Loading {name}...", type="info")
-
-                # Run in background thread
                 success = await run.io_bound(loader.load_sync, filepath)
-
                 if success:
-                    # If IDs were already loaded, link them to the new spectra
                     if state.peptide_ids:
                         from pyopenms_viewer.loaders import link_ids_to_spectra
-
                         link_ids_to_spectra(state)
                         n_linked = sum(1 for s in state.spectrum_data if s.get("id_idx") is not None)
                         if id_info_label:
                             id_info_label.set_text(f"IDs: {len(state.peptide_ids):,} ({n_linked} linked)")
-
                     state.emit_data_loaded("mzml")
-                    # Get peak count (works for both in-memory and out-of-core modes)
                     if state.data_manager is not None:
                         peak_count = state.data_manager.get_peak_count()
                     elif state.df is not None:
@@ -125,8 +120,29 @@ async def create_ui():
                 else:
                     ui.notify(f"Failed to load {name}", type="negative")
 
-            # Store load_mzml in state for use by panels
+            async def load_imzml(filepath: str, original_name: str = None):
+                """Load imzML file in background."""
+                loader = ImzMLLoader(state)
+                name = original_name or Path(filepath).name
+                ui.notify(f"Loading {name} (imzML)...", type="info")
+                success = await run.io_bound(loader.parse, filepath)
+                if success:
+                    await run.io_bound(loader.process, filepath)
+                    state.emit_data_loaded("imzml")
+                    if state.df is not None:
+                        peak_count = len(state.df)
+                    else:
+                        peak_count = 0
+                    info_text = f"Loaded: {name} | Peaks: {peak_count:,} | imzML"
+                    if info_label:
+                        info_label.set_text(info_text)
+                    ui.notify(f"Loaded {peak_count:,} peaks from {name}", type="positive")
+                else:
+                    ui.notify(f"Failed to load {name}", type="negative")
+
+            # Store loaders in state for use by panels
             state._load_mzml = load_mzml
+            state._load_imzml = load_imzml
 
             async def handle_upload(e):
                 """Handle uploaded file - detect type and load appropriately.
@@ -140,12 +156,17 @@ async def create_ui():
 
                 # Save to temp file using FileUpload.save()
                 suffix = Path(filename).suffix
-                tmp_path = tempfile.mktemp(suffix=suffix)
+                fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+                os.close(fd)
                 await file.save(tmp_path)
 
                 try:
                     if filename.endswith(".mzml"):
                         await load_mzml(tmp_path, original_name)
+                    elif filename.endswith(".imzml"):
+                        await load_imzml(tmp_path, original_name)
+                            f"Unknown file type: {original_name}. Supported: .mzML, .featureXML, .idXML", type="warning"
+                            "Mass Spec Files (*.mzML;*.featureXML;*.idXML)",
 
                     elif filename.endswith(".featurexml") or (filename.endswith(".xml") and "feature" in filename):
                         loader = FeatureLoader(state)
@@ -173,7 +194,7 @@ async def create_ui():
 
                     else:
                         ui.notify(
-                            f"Unknown file type: {original_name}. Supported: .mzML, .featureXML, .idXML", type="warning"
+                            f"Unknown file type: {original_name}. Supported: .mzML, .imzML, .featureXML, .idXML", type="warning"
                         )
 
                 except Exception as ex:
@@ -196,8 +217,9 @@ async def create_ui():
                     files = await app.native.main_window.create_file_dialog(
                         allow_multiple=True,
                         file_types=(
-                            "Mass Spec Files (*.mzML;*.featureXML;*.idXML)",
+                            "Mass Spec Files (*.mzML;*.imzML;*.featureXML;*.idXML)",
                             "mzML Files (*.mzML)",
+                            "imzML Files (*.imzML)",
                             "Feature Files (*.featureXML)",
                             "ID Files (*.idXML)",
                             "All Files (*.*)",
@@ -214,6 +236,8 @@ async def create_ui():
                         try:
                             if ext == ".mzml":
                                 await load_mzml(filepath, name)
+                            elif ext == ".imzml":
+                                await load_imzml(filepath, name)
                             elif ext == ".featurexml":
                                 loader = FeatureLoader(state)
                                 success = await run.io_bound(loader.load_sync, filepath)
@@ -251,6 +275,8 @@ async def create_ui():
                     try:
                         if ext == ".mzml":
                             await load_mzml(filepath, name)
+                        elif ext == ".imzml":
+                            await load_imzml(filepath, name)
                         elif ext == ".featurexml":
                             loader = FeatureLoader(state)
                             success = await run.io_bound(loader.load_sync, filepath)
@@ -279,7 +305,7 @@ async def create_ui():
             ui.button(
                 icon="folder_open",
                 on_click=open_files,
-            ).props("flat dense").tooltip("Open files (fast, direct access)")
+            ).props("flat dense").tooltip("Open files (fast, direct access, now supports imzML)")
 
             # Collapsible drop zone for drag-and-drop uploads
             upload_container = ui.row().classes("items-center")
@@ -294,9 +320,10 @@ async def create_ui():
             ).props("flat dense").tooltip("Toggle drag & drop zone (slower, uploads file)")
 
             with upload_container:
-                ui.upload(on_upload=handle_upload, auto_upload=True, multiple=True) \
-                    .props('hide-upload-btn no-thumbnails accept=".mzML,.mzml,.featureXML,.featurexml,.idXML,.idxml,.xml"') \
-                    .classes('w-full border rounded')
+                ui.upload(on_upload=handle_upload, auto_upload=True, multiple=True).props(
+                    'hide-upload-btn no-thumbnails accept=".mzML,.mzml,.imzML,.imzml,.featureXML,.featurexml,.idXML,.idxml,.xml"'
+                                    'hide-upload-btn no-thumbnails accept=".mzML,.mzml,.featureXML,.featurexml,.idXML,.idxml,.xml"'
+                ).classes("w-full border rounded")
 
             ui.separator().props("vertical").classes("h-6")
 
@@ -480,9 +507,7 @@ async def create_ui():
                         ui.label("Downsample Peaks").classes("flex-grow text-sm")
                         downsample_switch = ui.switch(value=state.peakmap_downsampling).props("dense")
 
-                    ui.label("Faster rendering for large datasets").classes(
-                        "text-xs text-gray-500 ml-6"
-                    )
+                    ui.label("Faster rendering for large datasets").classes("text-xs text-gray-500 ml-6")
 
                     # Cache status
                     def get_cache_status():
@@ -715,6 +740,8 @@ async def create_ui():
 | Extension | Content |
 |-----------|---------|
 | `.mzML` | MS peak data |
+| `.mzML` | MS peak data |
+| `.featureXML` | Detected features |
 | `.featureXML` | Detected features |
 | `.idXML` | Peptide IDs |
 """).classes("text-sm")
@@ -767,6 +794,8 @@ async def create_ui():
 
         if cli_files["mzml"]:
             await load_mzml(cli_files["mzml"])
+        if cli_files.get("imzml"):
+            await load_imzml(cli_files["imzml"])
 
         if cli_files["featurexml"]:
             loader = FeatureLoader(state)

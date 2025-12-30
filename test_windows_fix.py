@@ -166,7 +166,7 @@ def main():
         try:
             results.append(test())
         except Exception as e:
-            print(f"  ❌ FAIL: Exception: {e}")
+            print(f"  FAIL: Exception: {e}")
             results.append(False)
     
     print("\n" + "=" * 60)
@@ -174,7 +174,7 @@ def main():
     print("=" * 60)
     
     if all(results):
-        print("\n✅ All smoke tests PASSED!")
+        print("\nAll smoke tests PASSED!")
         print("\nNext steps:")
         print("1. Wait for GitHub Actions workflow to complete")
         print("2. Check workflow logs for build success")
@@ -182,7 +182,7 @@ def main():
         print("4. If successful, create PR to upstream")
         return 0
     else:
-        print("\n❌ Some tests FAILED!")
+        print("\nSome tests FAILED!")
         print("\nFix the issues above before pushing to CI.")
         return 1
 

@@ -334,25 +334,30 @@ class DataManager:
         if self.out_of_core:
             if not downsample:
                 # No downsampling - return all peaks for this CV
-                return self.conn.execute("""
+                return self.conn.execute(
+                    """
                     SELECT rt, mz, log_intensity FROM peaks WHERE cv = ?
-                """, [cv]).fetchdf()
+                """,
+                    [cv],
+                ).fetchdf()
 
             # Get count for this CV
-            total = self.conn.execute(
-                "SELECT COUNT(*) FROM peaks WHERE cv = ?", [cv]
-            ).fetchone()[0]
+            total = self.conn.execute("SELECT COUNT(*) FROM peaks WHERE cv = ?", [cv]).fetchone()[0]
 
             if total == 0:
                 return pd.DataFrame()
 
             if total <= minimap_pixels:
-                return self.conn.execute("""
+                return self.conn.execute(
+                    """
                     SELECT rt, mz, log_intensity FROM peaks WHERE cv = ?
-                """, [cv]).fetchdf()
+                """,
+                    [cv],
+                ).fetchdf()
             else:
                 sample_rate = max(1, total // minimap_pixels)
-                return self.conn.execute(f"""
+                return self.conn.execute(
+                    f"""
                     SELECT rt, mz, log_intensity
                     FROM (
                         SELECT rt, mz, log_intensity,
@@ -361,7 +366,9 @@ class DataManager:
                         WHERE cv = ?
                     )
                     WHERE rn % {sample_rate} = 0
-                """, [cv]).fetchdf()
+                """,
+                    [cv],
+                ).fetchdf()
         else:
             # In-memory mode - filter DataFrame
             if self._df is None:

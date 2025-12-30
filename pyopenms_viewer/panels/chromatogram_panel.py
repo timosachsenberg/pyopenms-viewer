@@ -38,8 +38,16 @@ class ChromatogramPanel(BasePanel):
 
         # Color palette for multiple chromatograms
         self.colors = [
-            "#00d4ff", "#ff6b6b", "#4ecdc4", "#ffe66d", "#95e1d3",
-            "#f38181", "#aa96da", "#fcbad3", "#a8d8ea", "#ffb6b9",
+            "#00d4ff",
+            "#ff6b6b",
+            "#4ecdc4",
+            "#ffe66d",
+            "#95e1d3",
+            "#f38181",
+            "#aa96da",
+            "#fcbad3",
+            "#a8d8ea",
+            "#ffb6b9",
         ]
 
         # Plotly config (must be included in figure dict)
@@ -71,9 +79,7 @@ class ChromatogramPanel(BasePanel):
             The expansion element created
         """
         with container:
-            self.expansion = ui.expansion(
-                self.name, icon=self.icon, value=False
-            ).classes("w-full max-w-[1700px]")
+            self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
 
             with self.expansion:
                 self._build_header_row()
@@ -91,23 +97,14 @@ class ChromatogramPanel(BasePanel):
     def _build_header_row(self):
         """Build the header row with info and controls."""
         with ui.row().classes("w-full items-center gap-2 mb-2"):
-            self.info_label = ui.label("No chromatograms loaded").classes(
-                "text-sm text-gray-400"
-            )
+            self.info_label = ui.label("No chromatograms loaded").classes("text-sm text-gray-400")
             ui.element("div").classes("flex-grow")
 
-            ui.button(
-                "Export TSV",
-                icon="download",
-                on_click=self._export_tsv
-            ).props("dense outline size=sm color=grey").tooltip(
-                "Export chromatogram table as TSV"
-            )
+            ui.button("Export TSV", icon="download", on_click=self._export_tsv).props(
+                "dense outline size=sm color=grey"
+            ).tooltip("Export chromatogram table as TSV")
 
-            ui.button(
-                "Clear Selection",
-                on_click=self._clear_selection
-            ).props("dense outline size=sm color=grey")
+            ui.button("Clear Selection", on_click=self._clear_selection).props("dense outline size=sm color=grey")
 
     def _build_plot(self):
         """Build the chromatogram plot."""
@@ -118,9 +115,9 @@ class ChromatogramPanel(BasePanel):
 
     def _build_table(self):
         """Build the chromatogram selection table."""
-        ui.label(
-            "Chromatogram Table (click to select, Ctrl+click to multi-select)"
-        ).classes("text-xs text-gray-500 mt-2")
+        ui.label("Chromatogram Table (click to select, Ctrl+click to multi-select)").classes(
+            "text-xs text-gray-500 mt-2"
+        )
 
         columns = [
             {"name": "idx", "label": "#", "field": "idx", "sortable": True, "align": "left"},
@@ -161,9 +158,7 @@ class ChromatogramPanel(BasePanel):
             if self.state.has_chromatograms:
                 n_chroms = len(self.state.chromatograms)
                 n_selected = len(self.state.selected_chromatogram_indices)
-                self.info_label.set_text(
-                    f"{n_chroms} chromatograms available, {n_selected} selected"
-                )
+                self.info_label.set_text(f"{n_chroms} chromatograms available, {n_selected} selected")
             else:
                 self.info_label.set_text("No chromatograms loaded")
 
@@ -210,10 +205,7 @@ class ChromatogramPanel(BasePanel):
             display_rt = rt_array / rt_divisor
 
             # Find metadata for label
-            chrom_meta = next(
-                (c for c in self.state.chromatograms if c["idx"] == chrom_idx),
-                None
-            )
+            chrom_meta = next((c for c in self.state.chromatograms if c["idx"] == chrom_idx), None)
             if chrom_meta:
                 native_id = chrom_meta["native_id"]
                 label = native_id[:27] + "..." if len(native_id) > 30 else native_id
@@ -263,7 +255,7 @@ class ChromatogramPanel(BasePanel):
                 "y": 1.02,
                 "xanchor": "right",
                 "x": 1,
-                "font": {"size": 9}
+                "font": {"size": 9},
             },
             hovermode="x unified",
         )
@@ -299,9 +291,7 @@ class ChromatogramPanel(BasePanel):
     def _on_table_select(self, e):
         """Handle chromatogram selection from table."""
         if e.selection:
-            self.state.selected_chromatogram_indices = [
-                row["idx"] for row in e.selection if "idx" in row
-            ]
+            self.state.selected_chromatogram_indices = [row["idx"] for row in e.selection if "idx" in row]
             self.update()
 
     def _clear_selection(self):
@@ -356,7 +346,7 @@ class ChromatogramPanel(BasePanel):
         escaped_content = tsv_content.replace("`", "\\`")
 
         # Trigger download using JavaScript
-        ui.run_javascript(f'''
+        ui.run_javascript(f"""
             const blob = new Blob([`{escaped_content}`], {{type: "text/tab-separated-values"}});
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
@@ -364,5 +354,5 @@ class ChromatogramPanel(BasePanel):
             a.download = "chromatograms_table.tsv";
             a.click();
             URL.revokeObjectURL(url);
-        ''')
+        """)
         ui.notify(f"Exported {len(data)} rows", type="positive")

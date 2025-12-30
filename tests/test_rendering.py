@@ -129,9 +129,7 @@ class TestCoordinateTransform:
         x, y = transform.data_to_pixel(state_standard, rt=original_rt, mz=original_mz)
         # Add margins for pixel_to_data which expects absolute coordinates
         rt, mz = transform.pixel_to_data(
-            state_standard,
-            pixel_x=x + transform.margin_left,
-            pixel_y=y + transform.margin_top
+            state_standard, pixel_x=x + transform.margin_left, pixel_y=y + transform.margin_top
         )
 
         assert rt == pytest.approx(original_rt, rel=0.01)
@@ -144,9 +142,7 @@ class TestCoordinateTransform:
 
         x, y = transform.data_to_pixel(state_swapped, rt=original_rt, mz=original_mz)
         rt, mz = transform.pixel_to_data(
-            state_swapped,
-            pixel_x=x + transform.margin_left,
-            pixel_y=y + transform.margin_top
+            state_swapped, pixel_x=x + transform.margin_left, pixel_y=y + transform.margin_top
         )
 
         assert rt == pytest.approx(original_rt, rel=0.01)
@@ -246,9 +242,7 @@ class TestCoordinateTransformIM:
 
         x, y = transform.im_data_to_pixel(state_im, mz=original_mz, im=original_im)
         mz, im = transform.im_pixel_to_data(
-            state_im,
-            pixel_x=x + transform.margin_left,
-            pixel_y=y + transform.margin_top
+            state_im, pixel_x=x + transform.margin_left, pixel_y=y + transform.margin_top
         )
 
         assert mz == pytest.approx(original_mz, rel=0.01)
@@ -333,7 +327,7 @@ class TestCoordinateTransformDimensions:
             plot_width=500,
             plot_height=500,
             margin_left=100,  # Large left margin
-            margin_top=50,   # Different top margin
+            margin_top=50,  # Different top margin
         )
         state = ViewerState()
         state.rt_min = 0.0

@@ -130,9 +130,7 @@ class SpectrumPanel(BasePanel):
             The expansion element created
         """
         with container:
-            self.expansion = ui.expansion(
-                self.name, icon=self.icon, value=False
-            ).classes("w-full max-w-[1700px]")
+            self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
 
             with self.expansion:
                 with ui.column().classes("w-full items-center"):
@@ -148,27 +146,19 @@ class SpectrumPanel(BasePanel):
 
     def _build_navigation_row(self):
         """Build the navigation and controls row."""
-        with ui.row().classes("w-full items-center gap-2 mb-1").style(
-            f"max-width: {self.state.canvas_width}px;"
-        ):
+        with ui.row().classes("w-full items-center gap-2 mb-1").style(f"max-width: {self.state.canvas_width}px;"):
             # Navigation buttons
-            ui.button("|<", on_click=lambda: self._navigate_to(0)).props(
-                "dense size=sm"
-            ).tooltip("First")
+            ui.button("|<", on_click=lambda: self._navigate_to(0)).props("dense size=sm").tooltip("First")
 
             ui.button("< MS1", on_click=lambda: self._navigate_by_ms_level(-1, 1)).props(
                 "dense size=sm color=cyan"
             ).tooltip("Prev MS1")
 
-            ui.button("<", on_click=lambda: self._navigate(-1)).props(
-                "dense size=sm"
-            ).tooltip("Prev")
+            ui.button("<", on_click=lambda: self._navigate(-1)).props("dense size=sm").tooltip("Prev")
 
             self.nav_label = ui.label("No spectrum").classes("mx-2 text-gray-400 text-sm")
 
-            ui.button(">", on_click=lambda: self._navigate(1)).props(
-                "dense size=sm"
-            ).tooltip("Next")
+            ui.button(">", on_click=lambda: self._navigate(1)).props("dense size=sm").tooltip("Next")
 
             ui.button("MS1 >", on_click=lambda: self._navigate_by_ms_level(1, 1)).props(
                 "dense size=sm color=cyan"
@@ -176,9 +166,7 @@ class SpectrumPanel(BasePanel):
 
             ui.button(
                 ">|",
-                on_click=lambda: self._navigate_to(
-                    len(self.state.exp) - 1 if self.state.exp else 0
-                ),
+                on_click=lambda: self._navigate_to(len(self.state.exp) - 1 if self.state.exp else 0),
             ).props("dense size=sm").tooltip("Last")
 
             ui.label("|").classes("mx-1 text-gray-600")
@@ -199,9 +187,7 @@ class SpectrumPanel(BasePanel):
                 ["%", "abs"],
                 value="%" if self.state.spectrum_intensity_percent else "abs",
                 on_change=self._toggle_intensity_mode,
-            ).props("dense size=sm color=grey").tooltip(
-                "Toggle between relative (%) and absolute intensity"
-            )
+            ).props("dense size=sm color=grey").tooltip("Toggle between relative (%) and absolute intensity")
 
             # Auto-scale checkbox
             ui.checkbox(
@@ -212,12 +198,11 @@ class SpectrumPanel(BasePanel):
                 "Auto-scale Y-axis to fit visible peaks (highest peak at 95%)"
             )
 
-
             # Measurement mode toggle
-            self.measure_btn = ui.button(
-                "📏 Measure", on_click=self._toggle_measure_mode
-            ).props("dense size=sm color=grey").tooltip(
-                "Toggle measurement mode - click two peaks to measure Δm/z"
+            self.measure_btn = (
+                ui.button("📏 Measure", on_click=self._toggle_measure_mode)
+                .props("dense size=sm color=grey")
+                .tooltip("Toggle measurement mode - click two peaks to measure Δm/z")
             )
 
             ui.button(
@@ -228,10 +213,10 @@ class SpectrumPanel(BasePanel):
             ui.label("|").classes("mx-1 text-gray-600")
 
             # Annotation mode toggle
-            self.annotation_btn = ui.button(
-                "🏷️ Label", on_click=self._toggle_annotation_mode
-            ).props("dense size=sm color=grey").tooltip(
-                "Toggle label mode - click peaks to add/edit custom labels"
+            self.annotation_btn = (
+                ui.button("🏷️ Label", on_click=self._toggle_annotation_mode)
+                .props("dense size=sm color=grey")
+                .tooltip("Toggle label mode - click peaks to add/edit custom labels")
             )
 
             # Show m/z labels toggle
@@ -239,13 +224,11 @@ class SpectrumPanel(BasePanel):
                 "m/z",
                 value=self.state.show_mz_labels,
                 on_change=self._toggle_mz_labels,
-            ).props("dense size=sm color=grey").classes("text-xs").tooltip(
-                "Show m/z values on top peaks"
-            )
+            ).props("dense size=sm color=grey").classes("text-xs").tooltip("Show m/z values on top peaks")
 
-            ui.button("Clear 🏷️", on_click=self._clear_annotations).props(
-                "dense size=sm color=grey"
-            ).tooltip("Clear all labels for this spectrum")
+            ui.button("Clear 🏷️", on_click=self._clear_annotations).props("dense size=sm color=grey").tooltip(
+                "Clear all labels for this spectrum"
+            )
 
             # Show unmatched theoretical peaks toggle (for mirror mode)
             ui.checkbox(
@@ -258,9 +241,7 @@ class SpectrumPanel(BasePanel):
 
             ui.label("|").classes("mx-1 text-gray-600")
 
-            self.info_label = ui.label("Click TIC to select spectrum").classes(
-                "text-xs text-gray-500"
-            )
+            self.info_label = ui.label("Click TIC to select spectrum").classes("text-xs text-gray-500")
 
     def _build_spectrum_plot(self):
         """Build the spectrum plot area."""
@@ -309,16 +290,16 @@ class SpectrumPanel(BasePanel):
 
         # Check if there's a matching peptide ID for annotation
         matching_id_idx = self.state.find_matching_id_for_spectrum(spectrum_idx)
-        print(f"DEBUG show_spectrum: spectrum_idx={spectrum_idx}, ms_level={ms_level}, matching_id_idx={matching_id_idx}")
+        print(
+            f"DEBUG show_spectrum: spectrum_idx={spectrum_idx}, ms_level={ms_level}, matching_id_idx={matching_id_idx}"
+        )
 
         if matching_id_idx is not None:
             # Use annotated spectrum display (shows sequence in title even if peak coloring is off)
             pep_id = self.state.peptide_ids[matching_id_idx]
             hits = pep_id.getHits()
             if hits:
-                fig = self._create_annotated_spectrum_figure(
-                    spec, mz_array, int_array, spectrum_idx, matching_id_idx
-                )
+                fig = self._create_annotated_spectrum_figure(spec, mz_array, int_array, spectrum_idx, matching_id_idx)
                 # Update info label with ID info
                 if self.info_label is not None:
                     best_hit = hits[0]
@@ -353,11 +334,7 @@ class SpectrumPanel(BasePanel):
             self.nav_label.set_text(f"Spectrum {spectrum_idx + 1} of {len(self.state.exp)}")
 
     def _create_spectrum_figure(
-        self,
-        spec,
-        mz_array: np.ndarray,
-        int_array: np.ndarray,
-        spectrum_idx: int
+        self, spec, mz_array: np.ndarray, int_array: np.ndarray, spectrum_idx: int
     ) -> go.Figure:
         """Create a Plotly figure for the spectrum.
 
@@ -423,12 +400,7 @@ class SpectrumPanel(BasePanel):
 
         fig.add_trace(
             go.Scatter(
-                x=x_stems,
-                y=y_stems,
-                mode="lines",
-                line={"color": color, "width": 1},
-                hoverinfo="skip",
-                name="spectrum"
+                x=x_stems, y=y_stems, mode="lines", line={"color": color, "width": 1}, hoverinfo="skip", name="spectrum"
             )
         )
 
@@ -449,7 +421,9 @@ class SpectrumPanel(BasePanel):
             if is_downsampled:
                 title = f"Spectrum #{spectrum_idx} | MS{ms_level} | RT={rt:.2f}s | {visible_peaks:,}/{total_peaks:,} peaks ({len(mz_display):,} shown)"
             else:
-                title = f"Spectrum #{spectrum_idx} | MS{ms_level} | RT={rt:.2f}s | {visible_peaks:,}/{total_peaks:,} peaks"
+                title = (
+                    f"Spectrum #{spectrum_idx} | MS{ms_level} | RT={rt:.2f}s | {visible_peaks:,}/{total_peaks:,} peaks"
+                )
         elif is_downsampled:
             title = f"Spectrum #{spectrum_idx} | MS{ms_level} | RT={rt:.2f}s | {total_peaks:,} peaks ({len(mz_display):,} shown)"
         else:
@@ -461,10 +435,7 @@ class SpectrumPanel(BasePanel):
             if precursors:
                 prec_mz = precursors[0].getMZ()
                 fig.add_vline(
-                    x=prec_mz,
-                    line_dash="dash",
-                    line_color="orange",
-                    annotation_text=f"Precursor ({prec_mz:.2f})"
+                    x=prec_mz, line_dash="dash", line_color="orange", annotation_text=f"Precursor ({prec_mz:.2f})"
                 )
                 title += f" | Precursor: {prec_mz:.4f}"
 
@@ -625,11 +596,7 @@ class SpectrumPanel(BasePanel):
         return fig
 
     def _add_measurements_to_figure(
-        self,
-        fig: go.Figure,
-        spectrum_idx: int,
-        mz_array: np.ndarray,
-        int_array: np.ndarray
+        self, fig: go.Figure, spectrum_idx: int, mz_array: np.ndarray, int_array: np.ndarray
     ):
         """Add stored measurements to the figure.
 
@@ -704,11 +671,7 @@ class SpectrumPanel(BasePanel):
             )
 
     def _add_annotations_to_figure(
-        self,
-        fig: go.Figure,
-        spectrum_idx: int,
-        mz_array: np.ndarray,
-        int_array: np.ndarray
+        self, fig: go.Figure, spectrum_idx: int, mz_array: np.ndarray, int_array: np.ndarray
     ):
         """Add peak annotations to the figure.
 
@@ -832,12 +795,7 @@ class SpectrumPanel(BasePanel):
                 font={"color": "#888", "size": 9},
             )
 
-    def _add_highlight_to_figure(
-        self,
-        fig: go.Figure,
-        mz_array: np.ndarray,
-        int_array: np.ndarray
-    ):
+    def _add_highlight_to_figure(self, fig: go.Figure, mz_array: np.ndarray, int_array: np.ndarray):
         """Add hover highlight marker and measurement preview to figure.
 
         Matches old implementation behavior for snap-to-peak highlighting.
@@ -1071,9 +1029,7 @@ class SpectrumPanel(BasePanel):
                 spectrum_idx = self.state.selected_spectrum_idx
                 if spectrum_idx not in self.state.spectrum_measurements:
                     self.state.spectrum_measurements[spectrum_idx] = []
-                self.state.spectrum_measurements[spectrum_idx].append(
-                    (start_mz, start_int, snapped_mz, snapped_int)
-                )
+                self.state.spectrum_measurements[spectrum_idx].append((start_mz, start_int, snapped_mz, snapped_int))
 
                 delta_mz = abs(snapped_mz - start_mz)
                 ui.notify(f"Δm/z = {delta_mz:.4f}", type="positive")
@@ -1085,11 +1041,7 @@ class SpectrumPanel(BasePanel):
             pass
 
     def _snap_to_peak(
-        self,
-        target_mz: float,
-        mz_array: np.ndarray,
-        int_array: np.ndarray,
-        target_int: Optional[float] = None
+        self, target_mz: float, mz_array: np.ndarray, int_array: np.ndarray, target_int: Optional[float] = None
     ) -> Optional[tuple[float, float]]:
         """Snap to the nearest peak using 2D distance (m/z and intensity).
 
@@ -1138,11 +1090,7 @@ class SpectrumPanel(BasePanel):
         return (snapped_mz, snapped_int)
 
     def _find_measurement_at_position(
-        self,
-        mz: float,
-        y: float,
-        mz_array: np.ndarray,
-        int_array: np.ndarray
+        self, mz: float, y: float, mz_array: np.ndarray, int_array: np.ndarray
     ) -> Optional[int]:
         """Find if a click position is near an existing measurement line.
 
@@ -1217,6 +1165,7 @@ class SpectrumPanel(BasePanel):
             ).classes("w-full")
 
             with ui.row().classes("w-full justify-end gap-2 mt-4"):
+
                 def delete_annotation():
                     self._remove_peak_annotation(spectrum_idx, mz)
                     dialog.close()
@@ -1238,13 +1187,7 @@ class SpectrumPanel(BasePanel):
 
         dialog.open()
 
-    def _add_or_edit_peak_annotation(
-        self,
-        spectrum_idx: int,
-        mz: float,
-        intensity: float,
-        label: Optional[str] = None
-    ):
+    def _add_or_edit_peak_annotation(self, spectrum_idx: int, mz: float, intensity: float, label: Optional[str] = None):
         """Add or edit a peak annotation.
 
         Args:
@@ -1266,11 +1209,7 @@ class SpectrumPanel(BasePanel):
                 return
 
         # Add new annotation
-        annotations.append({
-            "mz": mz,
-            "intensity": intensity,
-            "label": label if label is not None else f"{mz:.4f}"
-        })
+        annotations.append({"mz": mz, "intensity": intensity, "label": label if label is not None else f"{mz:.4f}"})
 
     def _remove_peak_annotation(self, spectrum_idx: int, mz: float):
         """Remove a peak annotation at the given m/z.
@@ -1283,9 +1222,7 @@ class SpectrumPanel(BasePanel):
             return
 
         annotations = self.state.peak_annotations[spectrum_idx]
-        self.state.peak_annotations[spectrum_idx] = [
-            ann for ann in annotations if abs(ann["mz"] - mz) >= 0.01
-        ]
+        self.state.peak_annotations[spectrum_idx] = [ann for ann in annotations if abs(ann["mz"] - mz) >= 0.01]
 
     def _on_plot_relayout(self, e):
         """Handle zoom/pan changes on spectrum plot."""
@@ -1297,7 +1234,9 @@ class SpectrumPanel(BasePanel):
             if xmin is not None and xmax is not None:
                 self.state.spectrum_zoom_range = (xmin, xmax)
                 # Re-render to apply auto-scale, re-downsample, or update m/z labels for visible range
-                if (self.state.spectrum_auto_scale or self.state.peakmap_downsampling or self.state.show_mz_labels) and self.state.selected_spectrum_idx is not None:
+                if (
+                    self.state.spectrum_auto_scale or self.state.peakmap_downsampling or self.state.show_mz_labels
+                ) and self.state.selected_spectrum_idx is not None:
                     self.show_spectrum(self.state.selected_spectrum_idx)
                 # Sync m/z range to IM peakmap if linking is enabled
                 if self.state.link_spectrum_mz_to_im and self.state.has_ion_mobility:
@@ -1307,7 +1246,9 @@ class SpectrumPanel(BasePanel):
             elif e.args.get("xaxis.autorange"):
                 self.state.spectrum_zoom_range = None
                 # Re-render to reset y-axis, re-downsample full spectrum, or update m/z labels
-                if (self.state.spectrum_auto_scale or self.state.peakmap_downsampling or self.state.show_mz_labels) and self.state.selected_spectrum_idx is not None:
+                if (
+                    self.state.spectrum_auto_scale or self.state.peakmap_downsampling or self.state.show_mz_labels
+                ) and self.state.selected_spectrum_idx is not None:
                     self.show_spectrum(self.state.selected_spectrum_idx)
                 # Reset IM m/z range if linking is enabled
                 if self.state.link_spectrum_mz_to_im and self.state.has_ion_mobility:

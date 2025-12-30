@@ -176,9 +176,7 @@ class PeakMapRenderer:
 
         # Upscale if fast mode
         if fast and resolution_factor > 1:
-            plot_img = plot_img.resize(
-                (self.plot_width, self.plot_height), Image.Resampling.NEAREST
-            )
+            plot_img = plot_img.resize((self.plot_width, self.plot_height), Image.Resampling.NEAREST)
 
         # Draw overlays on plot image (features, IDs, spectrum markers)
         plot_img_rgba = plot_img.convert("RGBA")
@@ -284,9 +282,7 @@ class PeakMapRenderer:
                     bbox = draw.textbbox((0, 0), label, font=font)
                     label_width = bbox[2] - bbox[0]
                     label_height = bbox[3] - bbox[1]
-                    draw.text(
-                        (plot_left - label_width - 10, y - label_height // 2), label, fill=label_color, font=font
-                    )
+                    draw.text((plot_left - label_width - 10, y - label_height // 2), label, fill=label_color, font=font)
 
             y_title = "RT (min)" if state.rt_in_minutes else "RT (s)"
         else:
@@ -335,9 +331,7 @@ class PeakMapRenderer:
                     bbox = draw.textbbox((0, 0), label, font=font)
                     label_width = bbox[2] - bbox[0]
                     label_height = bbox[3] - bbox[1]
-                    draw.text(
-                        (plot_left - label_width - 10, y - label_height // 2), label, fill=label_color, font=font
-                    )
+                    draw.text((plot_left - label_width - 10, y - label_height // 2), label, fill=label_color, font=font)
 
             y_title = "m/z"
 
@@ -588,9 +582,7 @@ class IMPeakMapRenderer:
                 bbox = draw.textbbox((0, 0), label, font=font)
                 label_width = bbox[2] - bbox[0]
                 label_height = bbox[3] - bbox[1]
-                draw.text(
-                    (plot_left - label_width - 10, y - label_height // 2), label, fill=label_color, font=font
-                )
+                draw.text((plot_left - label_width - 10, y - label_height // 2), label, fill=label_color, font=font)
 
         # Y-axis title with unit
         y_title = f"IM ({state.im_unit})" if state.im_unit else "Ion Mobility"
@@ -620,9 +612,7 @@ class IMPeakMapRenderer:
         draw = ImageDraw.Draw(canvas)
 
         # Get mobilogram data
-        im_values, intensities = self._extract_mobilogram(
-            state, view_mz_min, view_mz_max, view_im_min, view_im_max
-        )
+        im_values, intensities = self._extract_mobilogram(state, view_mz_min, view_mz_max, view_im_min, view_im_max)
         if len(im_values) == 0 or len(intensities) == 0:
             return canvas
 

@@ -109,17 +109,17 @@ def generate_theoretical_spectrum(
         else:
             continue  # Skip peaks without ion names
 
-        ions.append(TheoreticalIon(
-            mz=mz,
-            name=ion_name,
-            ion_type=ion_type,
-            intensity=intensity if intensity > 0 else 1.0,
-        ))
+        ions.append(
+            TheoreticalIon(
+                mz=mz,
+                name=ion_name,
+                ion_type=ion_type,
+                intensity=intensity if intensity > 0 else 1.0,
+            )
+        )
 
     return TheoreticalSpectrum(
         ions=ions,
         sequence=sequence.toString(),
         charge=charge,
     )
-
-

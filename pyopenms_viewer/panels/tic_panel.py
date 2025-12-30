@@ -45,14 +45,10 @@ class TICPanel(BasePanel):
 
     def build(self, container: ui.element) -> ui.expansion:
         with container:
-            self.expansion = ui.expansion(
-                self.name, icon=self.icon, value=False
-            ).classes("w-full max-w-[1700px]")
+            self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
 
             with self.expansion:
-                ui.label("Click to view spectrum, drag to zoom RT range").classes(
-                    "text-xs text-gray-500 mb-1"
-                )
+                ui.label("Click to view spectrum, drag to zoom RT range").classes("text-xs text-gray-500 mb-1")
                 self.plot = ui.plotly(self._figure_with_config(self._create_figure())).classes("w-full")
                 # Only register events we actually need to avoid large websocket messages
                 self.plot.on("plotly_click", self._on_click)
@@ -89,15 +85,17 @@ class TICPanel(BasePanel):
         display_rt = self.state.tic_rt / rt_divisor
 
         # Main TIC trace
-        fig.add_trace(go.Scatter(
-            x=display_rt,
-            y=self.state.tic_intensity,
-            mode="lines",
-            name=self.state.tic_source,
-            line={"color": "#00d4ff", "width": 1},
-            fill="tozeroy",
-            fillcolor="rgba(0, 212, 255, 0.2)",
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=display_rt,
+                y=self.state.tic_intensity,
+                mode="lines",
+                name=self.state.tic_source,
+                line={"color": "#00d4ff", "width": 1},
+                fill="tozeroy",
+                fillcolor="rgba(0, 212, 255, 0.2)",
+            )
+        )
 
         # Add view range indicator
         view_rt_min = self.state.view_rt_min if self.state.view_rt_min is not None else self.state.rt_min
@@ -234,10 +232,7 @@ class TICPanel(BasePanel):
 
                 # Clamp to data bounds and update view
                 self._updating_from_tic = True
-                self.state.set_view(
-                    rt_min=max(self.state.rt_min, rt_min),
-                    rt_max=min(self.state.rt_max, rt_max)
-                )
+                self.state.set_view(rt_min=max(self.state.rt_min, rt_min), rt_max=min(self.state.rt_max, rt_max))
                 self._updating_from_tic = False
 
             elif e.args.get("xaxis.autorange"):

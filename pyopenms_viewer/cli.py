@@ -65,7 +65,8 @@ def _run_embedded_python_snippet(argv: list[str]) -> bool:
     return False
 
 # Set OpenMP threads for pyOpenMS
-os.environ.setdefault("OMP_NUM_THREADS", str(os.cpu_count()))
+cpu_count = os.cpu_count() or 1
+os.environ.setdefault("OMP_NUM_THREADS", str(cpu_count))
 
 # Global for CLI files and options (loaded after UI starts)
 _cli_files = {"mzml": None, "featurexml": None, "idxml": None}
@@ -96,7 +97,7 @@ def _check_native_available() -> bool:
 @click.argument("files", nargs=-1, type=click.Path(exists=True))
 @click.option("--port", "-p", default=8080, help="Port to run the server on")
 @click.option("--host", "-H", default="0.0.0.0", help="Host to bind to")
-@click.option("--open/--no-open", "-o/-n", default=True, help="Open browser automatically")
+@click.option("--open/--no-open", "-o/-n", "open_browser", default=True, help="Open browser automatically")
 @click.option("--native/--browser", default=True, help="Run in native window (default) or browser mode")
 @click.option("--dark/--light", default=True, help="Use dark mode (default) or light mode")
 @click.option(
@@ -110,7 +111,7 @@ def _check_native_available() -> bool:
     default=None,
     help="Directory for cache files (default: temp directory)",
 )
-def main(files, port, host, open, native, dark, out_of_core, cache_dir):
+def main(files, port, host, open_browser, native, dark, out_of_core, cache_dir):
     """pyopenms-viewer - Fast visualization of mass spectrometry data.
 
     Load mzML, featureXML, and idXML files for visualization.
@@ -156,7 +157,7 @@ def main(files, port, host, open, native, dark, out_of_core, cache_dir):
     from nicegui import ui
     from nicegui.core import sio
 
-    from pyopenms_viewer.app import create_ui
+    import pyopenms_viewer.app  # noqa: F401
 
     # Increase Socket.IO buffer size for large Plotly figure updates
     # Default is 1MB, increase to 10MB for spectra with many peaks
@@ -171,7 +172,7 @@ def main(files, port, host, open, native, dark, out_of_core, cache_dir):
         host=host,
         port=port,
         reload=False,
-        show=open and not use_native,
+        show=open_browser and not use_native,
         native=use_native,
         window_size=(1400, 900) if use_native else None,
         dark=dark,

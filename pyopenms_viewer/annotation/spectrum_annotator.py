@@ -139,17 +139,19 @@ def compute_spectrum_annotation(
                         matched_theo_mz.add(theo_ion.mz)
                         break
 
-                matched_ions.append(MatchedIon(
-                    exp_mz=exp_mz_val,
-                    exp_intensity=exp_int_val,
-                    exp_intensity_pct=exp_int_pct_val,
-                    exp_peak_idx=peak_idx,
-                    theo_mz=theo_mz_val,
-                    theo_intensity=theo_int_val,
-                    ion_name=ion_name,
-                    ion_type=ion_type,
-                    mz_error=mz_error,
-                ))
+                matched_ions.append(
+                    MatchedIon(
+                        exp_mz=exp_mz_val,
+                        exp_intensity=exp_int_val,
+                        exp_intensity_pct=exp_int_pct_val,
+                        exp_peak_idx=peak_idx,
+                        theo_mz=theo_mz_val,
+                        theo_intensity=theo_int_val,
+                        ion_name=ion_name,
+                        ion_type=ion_type,
+                        mz_error=mz_error,
+                    )
+                )
     else:
         # Match theoretical ions to experimental peaks
         for theo_ion in theo_spec.ions:
@@ -162,17 +164,19 @@ def compute_spectrum_annotation(
 
             if diffs[min_idx] <= tolerance_da:
                 matched_theo_mz.add(theo_ion.mz)
-                matched_ions.append(MatchedIon(
-                    exp_mz=float(exp_mz[min_idx]),
-                    exp_intensity=float(exp_int[min_idx]),
-                    exp_intensity_pct=float(exp_int_pct[min_idx]),
-                    exp_peak_idx=min_idx,
-                    theo_mz=theo_ion.mz,
-                    theo_intensity=theo_ion.intensity,
-                    ion_name=theo_ion.name,
-                    ion_type=theo_ion.ion_type,
-                    mz_error=float(exp_mz[min_idx]) - theo_ion.mz,
-                ))
+                matched_ions.append(
+                    MatchedIon(
+                        exp_mz=float(exp_mz[min_idx]),
+                        exp_intensity=float(exp_int[min_idx]),
+                        exp_intensity_pct=float(exp_int_pct[min_idx]),
+                        exp_peak_idx=min_idx,
+                        theo_mz=theo_ion.mz,
+                        theo_intensity=theo_ion.intensity,
+                        ion_name=theo_ion.name,
+                        ion_type=theo_ion.ion_type,
+                        mz_error=float(exp_mz[min_idx]) - theo_ion.mz,
+                    )
+                )
 
     # Find unmatched theoretical ions
     for theo_ion in theo_spec.ions:
@@ -181,12 +185,14 @@ def compute_spectrum_annotation(
             for m in matched_theo_mz
         )
         if not is_matched:
-            unmatched_ions.append(UnmatchedIon(
-                theo_mz=theo_ion.mz,
-                theo_intensity=theo_ion.intensity,
-                ion_name=theo_ion.name,
-                ion_type=theo_ion.ion_type,
-            ))
+            unmatched_ions.append(
+                UnmatchedIon(
+                    theo_mz=theo_ion.mz,
+                    theo_intensity=theo_ion.intensity,
+                    ion_name=theo_ion.name,
+                    ion_type=theo_ion.ion_type,
+                )
+            )
 
     n_theoretical = len(theo_spec.ions)
     n_matched = len(matched_ions)
@@ -885,19 +891,38 @@ def _add_annotations_from_data(
             # Mirror mode: draw matched peaks both upward (experimental) and downward (theoretical)
             # Top half: experimental intensities with labels (what we measured)
             _draw_matched_ions(
-                fig, ions, exp_intensities, color, f"{ion_type}-ions",
-                flip=False, show_in_legend=True, is_theoretical=False, show_labels=True
+                fig,
+                ions,
+                exp_intensities,
+                color,
+                f"{ion_type}-ions",
+                flip=False,
+                show_in_legend=True,
+                is_theoretical=False,
+                show_labels=True,
             )
             # Bottom half: theoretical intensities without labels (what was predicted)
             _draw_matched_ions(
-                fig, ions, theo_intensities, color, f"{ion_type}-ions",
-                flip=True, show_in_legend=False, is_theoretical=True, show_labels=False
+                fig,
+                ions,
+                theo_intensities,
+                color,
+                f"{ion_type}-ions",
+                flip=True,
+                show_in_legend=False,
+                is_theoretical=True,
+                show_labels=False,
             )
         else:
             # Non-mirror: draw upward with experimental intensities only
             _draw_matched_ions(
-                fig, ions, exp_intensities, color, f"{ion_type}-ions",
-                flip=False, show_in_legend=True, is_theoretical=False, show_labels=True
+                fig,
+                ions,
+                exp_intensities,
+                color,
+                f"{ion_type}-ions",
+                flip=False,
+                show_in_legend=True,
+                is_theoretical=False,
+                show_labels=True,
             )
-
-

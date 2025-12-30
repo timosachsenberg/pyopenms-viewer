@@ -1,7 +1,7 @@
 """FeatureXML file loading and processing."""
 
-from pathlib import Path
 from typing import Any
+
 from pyopenms import FeatureMap, FeatureXMLFile
 
 from pyopenms_viewer.core.state import ViewerState
@@ -41,16 +41,18 @@ def extract_feature_data(state: ViewerState) -> list[dict[str, Any]]:
                 rt_width = max(rt_coords) - min(rt_coords)
                 mz_width = max(mz_coords) - min(mz_coords)
 
-        data.append({
-            "idx": idx,
-            "rt": round(rt, 2),
-            "mz": round(mz, 4),
-            "intensity": f"{intensity:.2e}",
-            "charge": charge if charge != 0 else "-",
-            "quality": round(quality, 3) if quality > 0 else "-",
-            "rt_width": round(rt_width, 2) if rt_width > 0 else "-",
-            "mz_width": round(mz_width, 4) if mz_width > 0 else "-",
-        })
+        data.append(
+            {
+                "idx": idx,
+                "rt": round(rt, 2),
+                "mz": round(mz, 4),
+                "intensity": f"{intensity:.2e}",
+                "charge": charge if charge != 0 else "-",
+                "quality": round(quality, 3) if quality > 0 else "-",
+                "rt_width": round(rt_width, 2) if rt_width > 0 else "-",
+                "mz_width": round(mz_width, 4) if mz_width > 0 else "-",
+            }
+        )
 
     return data
 

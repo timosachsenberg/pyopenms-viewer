@@ -48,18 +48,15 @@ class FAIMSPanel:
 
             with self.card:
                 with ui.row().classes("w-full items-center mb-2"):
-                    ui.label("FAIMS Compensation Voltage Peak Maps").classes(
-                        "text-lg font-semibold text-purple-300"
-                    )
+                    ui.label("FAIMS Compensation Voltage Peak Maps").classes("text-lg font-semibold text-purple-300")
                     ui.element("div").classes("flex-grow")
-                    ui.button(
-                        icon="download",
-                        on_click=self._save_all_png
-                    ).props("dense flat size=sm").tooltip("Save all FAIMS peak maps as PNG")
+                    ui.button(icon="download", on_click=self._save_all_png).props("dense flat size=sm").tooltip(
+                        "Save all FAIMS peak maps as PNG"
+                    )
 
-                ui.label(
-                    "Separate peak maps for each CV value - zoom/pan is synchronized"
-                ).classes("text-xs text-gray-500 mb-2")
+                ui.label("Separate peak maps for each CV value - zoom/pan is synchronized").classes(
+                    "text-xs text-gray-500 mb-2"
+                )
 
                 # Container for dynamic FAIMS images
                 self.images_row = ui.row().classes("w-full gap-1 flex-wrap justify-center")
@@ -119,8 +116,7 @@ class FAIMSPanel:
                     ui.label(f"CV: {cv:.1f}V").classes("text-sm text-purple-400 mb-1")
                     # Image element
                     img = ui.image().style(
-                        f"width: {panel_width}px; height: {panel_height}px; "
-                        f"background: rgba(30,30,30,0.8);"
+                        f"width: {panel_width}px; height: {panel_height}px; background: rgba(30,30,30,0.8);"
                     )
                     self.cv_images[cv] = img
 

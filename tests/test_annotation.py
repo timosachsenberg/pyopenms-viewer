@@ -1,18 +1,16 @@
 """Tests for the pyopenms_viewer annotation module."""
 
 import numpy as np
-import pytest
 
 from pyopenms_viewer.annotation.spectrum_annotator import (
     MatchedIon,
-    UnmatchedIon,
     SpectrumAnnotationData,
-    compute_spectrum_annotation,
-    format_ion_label_with_superscript,
-    _parse_charge_string,
+    UnmatchedIon,
     _format_charge_only,
     _get_ion_type,
-    parse_fragment_annotation_string,
+    _parse_charge_string,
+    compute_spectrum_annotation,
+    format_ion_label_with_superscript,
 )
 from pyopenms_viewer.annotation.theoretical_spectrum import (
     TheoreticalIon,
@@ -21,10 +19,10 @@ from pyopenms_viewer.annotation.theoretical_spectrum import (
 )
 from pyopenms_viewer.annotation.tick_formatter import (
     calculate_nice_ticks,
-    format_tick_label,
-    format_rt_label,
-    format_mz_label,
     format_intensity,
+    format_mz_label,
+    format_rt_label,
+    format_tick_label,
 )
 
 
@@ -243,14 +241,26 @@ class TestSpectrumAnnotationData:
         """Test filtering matched ions by type."""
         matched = [
             MatchedIon(
-                exp_mz=200.0, exp_intensity=1000, exp_intensity_pct=50,
-                exp_peak_idx=0, theo_mz=200.01, theo_intensity=1.0,
-                ion_name="b2", ion_type="b", mz_error=-0.01
+                exp_mz=200.0,
+                exp_intensity=1000,
+                exp_intensity_pct=50,
+                exp_peak_idx=0,
+                theo_mz=200.01,
+                theo_intensity=1.0,
+                ion_name="b2",
+                ion_type="b",
+                mz_error=-0.01,
             ),
             MatchedIon(
-                exp_mz=300.0, exp_intensity=2000, exp_intensity_pct=100,
-                exp_peak_idx=1, theo_mz=300.02, theo_intensity=1.0,
-                ion_name="y3", ion_type="y", mz_error=-0.02
+                exp_mz=300.0,
+                exp_intensity=2000,
+                exp_intensity_pct=100,
+                exp_peak_idx=1,
+                theo_mz=300.02,
+                theo_intensity=1.0,
+                ion_name="y3",
+                ion_type="y",
+                mz_error=-0.02,
             ),
         ]
         data = SpectrumAnnotationData(
@@ -296,7 +306,8 @@ class TestComputeSpectrumAnnotation:
         exp_mz = np.array([])
         exp_int = np.array([])
         result = compute_spectrum_annotation(
-            exp_mz, exp_int,
+            exp_mz,
+            exp_int,
             sequence_str="PEPTIDE",
             charge=2,
             precursor_mz=400.5,
@@ -310,7 +321,8 @@ class TestComputeSpectrumAnnotation:
         exp_mz = np.array([200.0, 300.0, 400.0])
         exp_int = np.array([100.0, 200.0, 150.0])
         result = compute_spectrum_annotation(
-            exp_mz, exp_int,
+            exp_mz,
+            exp_int,
             sequence_str="INVALID!!!",  # Invalid sequence
             charge=2,
             precursor_mz=400.5,
@@ -326,7 +338,8 @@ class TestComputeSpectrumAnnotation:
         exp_int = np.array([100, 200, 150, 300, 250, 180])
 
         result = compute_spectrum_annotation(
-            exp_mz, exp_int,
+            exp_mz,
+            exp_int,
             sequence_str="PEPTIDE",
             charge=2,
             precursor_mz=400.5,
@@ -377,6 +390,7 @@ class TestTheoreticalSpectrum:
     def test_generate_theoretical_spectrum(self):
         """Test generating theoretical spectrum from AASequence."""
         from pyopenms import AASequence
+
         seq = AASequence.fromString("PEPTIDE")
         spec = generate_theoretical_spectrum(seq, charge=2)
 

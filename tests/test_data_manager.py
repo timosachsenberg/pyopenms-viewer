@@ -15,12 +15,14 @@ def sample_peak_df():
     """Create a sample peak DataFrame for testing."""
     np.random.seed(42)
     n_peaks = 1000
-    return pd.DataFrame({
-        "rt": np.random.uniform(0, 3600, n_peaks),
-        "mz": np.random.uniform(100, 2000, n_peaks),
-        "intensity": np.random.uniform(100, 100000, n_peaks),
-        "log_intensity": np.log1p(np.random.uniform(100, 100000, n_peaks)),
-    })
+    return pd.DataFrame(
+        {
+            "rt": np.random.uniform(0, 3600, n_peaks),
+            "mz": np.random.uniform(100, 2000, n_peaks),
+            "intensity": np.random.uniform(100, 100000, n_peaks),
+            "log_intensity": np.log1p(np.random.uniform(100, 100000, n_peaks)),
+        }
+    )
 
 
 @pytest.fixture
@@ -28,12 +30,14 @@ def sample_im_df():
     """Create a sample ion mobility DataFrame for testing."""
     np.random.seed(42)
     n_peaks = 500
-    return pd.DataFrame({
-        "mz": np.random.uniform(100, 2000, n_peaks),
-        "im": np.random.uniform(0.5, 1.5, n_peaks),
-        "intensity": np.random.uniform(100, 100000, n_peaks),
-        "log_intensity": np.log1p(np.random.uniform(100, 100000, n_peaks)),
-    })
+    return pd.DataFrame(
+        {
+            "mz": np.random.uniform(100, 2000, n_peaks),
+            "im": np.random.uniform(0.5, 1.5, n_peaks),
+            "intensity": np.random.uniform(100, 100000, n_peaks),
+            "log_intensity": np.log1p(np.random.uniform(100, 100000, n_peaks)),
+        }
+    )
 
 
 @pytest.fixture
@@ -41,13 +45,15 @@ def sample_cv_df():
     """Create a sample peak DataFrame with CV values for FAIMS testing."""
     np.random.seed(42)
     n_peaks = 1000
-    return pd.DataFrame({
-        "rt": np.random.uniform(0, 3600, n_peaks),
-        "mz": np.random.uniform(100, 2000, n_peaks),
-        "intensity": np.random.uniform(100, 100000, n_peaks),
-        "log_intensity": np.log1p(np.random.uniform(100, 100000, n_peaks)),
-        "cv": np.random.choice([-40, -50, -60], n_peaks),
-    })
+    return pd.DataFrame(
+        {
+            "rt": np.random.uniform(0, 3600, n_peaks),
+            "mz": np.random.uniform(100, 2000, n_peaks),
+            "intensity": np.random.uniform(100, 100000, n_peaks),
+            "log_intensity": np.log1p(np.random.uniform(100, 100000, n_peaks)),
+            "cv": np.random.choice([-40, -50, -60], n_peaks),
+        }
+    )
 
 
 class TestDataManagerInMemory:
@@ -86,8 +92,10 @@ class TestDataManagerInMemory:
         dm.register_peaks(sample_peak_df, "test.mzML")
 
         result = dm.query_peaks_in_view(
-            rt_min=500, rt_max=1000,
-            mz_min=200, mz_max=500,
+            rt_min=500,
+            rt_max=1000,
+            mz_min=200,
+            mz_max=500,
         )
 
         assert isinstance(result, pd.DataFrame)
@@ -107,8 +115,10 @@ class TestDataManagerInMemory:
 
         # Query with bounds outside data range
         result = dm.query_peaks_in_view(
-            rt_min=10000, rt_max=20000,
-            mz_min=5000, mz_max=6000,
+            rt_min=10000,
+            rt_max=20000,
+            mz_min=5000,
+            mz_max=6000,
         )
 
         assert isinstance(result, pd.DataFrame)
@@ -118,8 +128,10 @@ class TestDataManagerInMemory:
         """Test querying when no peaks are registered."""
         dm = DataManager(out_of_core=False)
         result = dm.query_peaks_in_view(
-            rt_min=0, rt_max=100,
-            mz_min=0, mz_max=1000,
+            rt_min=0,
+            rt_max=100,
+            mz_min=0,
+            mz_max=1000,
         )
         assert isinstance(result, pd.DataFrame)
         assert len(result) == 0
@@ -130,8 +142,10 @@ class TestDataManagerInMemory:
         dm.register_im_peaks(sample_im_df, "test.mzML")
 
         result = dm.query_im_peaks_in_view(
-            mz_min=200, mz_max=500,
-            im_min=0.6, im_max=1.2,
+            mz_min=200,
+            mz_max=500,
+            im_min=0.6,
+            im_max=1.2,
         )
 
         assert isinstance(result, pd.DataFrame)
@@ -154,12 +168,14 @@ class TestDataManagerInMemory:
     def test_query_peaks_for_minimap_small_dataset(self):
         """Test minimap query with small dataset (no downsampling needed)."""
         dm = DataManager(out_of_core=False)
-        small_df = pd.DataFrame({
-            "rt": [100, 200, 300],
-            "mz": [500, 600, 700],
-            "intensity": [1000, 2000, 3000],
-            "log_intensity": [3.0, 3.3, 3.5],
-        })
+        small_df = pd.DataFrame(
+            {
+                "rt": [100, 200, 300],
+                "mz": [500, 600, 700],
+                "intensity": [1000, 2000, 3000],
+                "log_intensity": [3.0, 3.3, 3.5],
+            }
+        )
         dm.register_peaks(small_df, "test.mzML")
 
         result = dm.query_peaks_for_minimap(minimap_pixels=80000)
@@ -259,12 +275,14 @@ class TestDataManagerInMemory:
         dm.register_peaks(sample_peak_df, "test1.mzML")
 
         # Create new DataFrame with different data
-        new_df = pd.DataFrame({
-            "rt": [1, 2, 3],
-            "mz": [100, 200, 300],
-            "intensity": [1000, 2000, 3000],
-            "log_intensity": [3.0, 3.3, 3.5],
-        })
+        new_df = pd.DataFrame(
+            {
+                "rt": [1, 2, 3],
+                "mz": [100, 200, 300],
+                "intensity": [1000, 2000, 3000],
+                "log_intensity": [3.0, 3.3, 3.5],
+            }
+        )
         dm.register_peaks(new_df, "test2.mzML")
 
         assert dm.get_peak_count() == 3
@@ -300,8 +318,10 @@ class TestDataManagerOutOfCore:
             dm.register_peaks(sample_peak_df, "test.mzML")
 
             result = dm.query_peaks_in_view(
-                rt_min=500, rt_max=1000,
-                mz_min=200, mz_max=500,
+                rt_min=500,
+                rt_max=1000,
+                mz_min=200,
+                mz_max=500,
             )
 
             assert isinstance(result, pd.DataFrame)
