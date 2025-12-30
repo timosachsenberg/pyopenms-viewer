@@ -41,8 +41,30 @@ if getattr(sys, 'frozen', False):
     debug_print("[pyi_rth_pyopenms] Runtime hook starting...")
     
     # sys._MEIPASS is PyInstaller's temporary extraction directory
-    exe_dir = sys._MEIPASS
-    debug_print(f"[pyi_rth_pyopenms] Extraction directory: {exe_dir}")
+    try:
+        exe_dir = sys._MEIPASS
+        debug_print(f"[pyi_rth_pyopenms] Extraction directory: {exe_dir}")
+        
+        # Verify the extraction directory exists and is accessible
+        if not os.path.exists(exe_dir):
+            debug_print(f"[pyi_rth_pyopenms] ERROR: Extraction directory does not exist: {exe_dir}")
+            # Try to wait a moment for extraction to complete
+            import time
+            time.sleep(0.5)
+            if not os.path.exists(exe_dir):
+                debug_print(f"[pyi_rth_pyopenms] ERROR: Extraction directory still does not exist after waiting")
+                exe_dir = None
+    except AttributeError:
+        debug_print("[pyi_rth_pyopenms] ERROR: sys._MEIPASS not available")
+        exe_dir = None
+    except Exception as e:
+        debug_print(f"[pyi_rth_pyopenms] ERROR: Failed to access extraction directory: {e}")
+        exe_dir = None
+    
+    if exe_dir is None:
+        debug_print("[pyi_rth_pyopenms] Runtime hook aborting - no extraction directory available")
+        # Exit early if we can't access the extraction directory
+        sys.exit(1)
     
     # STEP 1: PREPEND exe_dir to PATH FIRST (before any file operations)
     # This ensures pyopenms DLLs are found before PyQt6's
@@ -79,14 +101,18 @@ if getattr(sys, 'frozen', False):
             os.environ['PATH'] = os.pathsep.join(filtered_parts)
             debug_print(f"[pyi_rth_pyopenms] Removed PyQt6 from PATH")
         
-        # Only try to delete if we're confident it's safe (wait a bit for extraction to complete)
+        # Only try to delete if we're confident it's safe (wait longer for extraction to complete)
         import time
-        time.sleep(0.2)  # Give extraction a moment to complete
+        time.sleep(1.0)  # Give extraction more time to complete
         
         import shutil
         try:
-            shutil.rmtree(pyqt6_qt_dir)
-            debug_print(f"[pyi_rth_pyopenms] Successfully removed PyQt6 Qt6/bin directory")
+            # Check if directory is still accessible
+            if os.path.exists(pyqt6_qt_dir):
+                shutil.rmtree(pyqt6_qt_dir)
+                debug_print(f"[pyi_rth_pyopenms] Successfully removed PyQt6 Qt6/bin directory")
+            else:
+                debug_print(f"[pyi_rth_pyopenms] PyQt6 Qt6/bin directory no longer exists")
         except Exception as e:
             debug_print(f"[pyi_rth_pyopenms] WARNING: Could not remove PyQt6 Qt6/bin: {e}")
             # If deletion fails, at least we've removed it from PATH
