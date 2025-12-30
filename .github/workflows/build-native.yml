@@ -49,13 +49,7 @@ jobs:
           pyinstaller --noconfirm pyopenms-viewer-windows.spec
       - name: Build native app (macOS)
         if: runner.os == 'macOS' && (github.event_name != 'workflow_dispatch' || github.event.inputs.smoke != 'windows')
-        run: |
-          python -m PyInstaller --noconfirm --onedir --windowed --name pyopenms-viewer \
-            --collect-all pyopenms --collect-all plotly \
-            --collect-binaries pyopenms --collect-binaries PyQt6 \
-            --additional-hooks-dir=. \
-            pyopenms_viewer/__main__.py
-          ls -lh dist/
+        run: python -m PyInstaller --noconfirm pyopenms-viewer-macos.spec
       - name: Configure Windows code signing certificate
         if: runner.os == 'Windows' && env.WINDOWS_CERT_BASE64 != ''
         shell: pwsh
@@ -116,7 +110,7 @@ jobs:
           mv dist/pyopenms-viewer dist/pyopenms-viewer-linux
       - name: Archive build artifacts
         uses: actions/upload-artifact@v4
-        if: runner.os == 'Windows' || github.event_name != 'workflow_dispatch'
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.smoke != 'windows'
         with:
           name: pyopenms-viewer-${{ matrix.os }}
           path: dist/
