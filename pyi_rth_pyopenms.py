@@ -40,6 +40,10 @@ def debug_print(msg):
 if getattr(sys, 'frozen', False):
     debug_print("[pyi_rth_pyopenms] Runtime hook starting...")
     
+    # Wait for PyInstaller to set up the extraction environment
+    import time
+    time.sleep(0.5)  # Give PyInstaller time to create the temp directory
+    
     # sys._MEIPASS is PyInstaller's temporary extraction directory
     try:
         exe_dir = sys._MEIPASS
@@ -48,9 +52,7 @@ if getattr(sys, 'frozen', False):
         # Verify the extraction directory exists and is accessible
         if not os.path.exists(exe_dir):
             debug_print(f"[pyi_rth_pyopenms] ERROR: Extraction directory does not exist: {exe_dir}")
-            # Try to wait a moment for extraction to complete
-            import time
-            time.sleep(0.5)
+            time.sleep(1.0)  # Wait longer
             if not os.path.exists(exe_dir):
                 debug_print(f"[pyi_rth_pyopenms] ERROR: Extraction directory still does not exist after waiting")
                 exe_dir = None
@@ -63,23 +65,23 @@ if getattr(sys, 'frozen', False):
     
     if exe_dir is None:
         debug_print("[pyi_rth_pyopenms] Runtime hook aborting - no extraction directory available")
-        # Exit early if we can't access the extraction directory
-        sys.exit(1)
+        # Don't exit - let the app try to run anyway
+        pass  # Continue with minimal setup
     
-    # STEP 1: PREPEND exe_dir to PATH FIRST (before any file operations)
-    # This ensures pyopenms DLLs are found before PyQt6's
+    # CRITICAL: Set up PATH to ensure pyopenms DLLs are found FIRST
+    # This prevents Qt6 version conflicts between pyopenms and PyQt6
     current_path = os.environ.get('PATH', '')
     
-    # Remove any existing exe_dir from PATH to avoid duplicates
+    # Remove exe_dir from PATH if it already exists (avoid duplicates)
     path_parts = current_path.split(os.pathsep)
     filtered_parts = [p for p in path_parts if p != exe_dir]
     cleaned_path = os.pathsep.join(filtered_parts)
     
-    # Prepend exe_dir to ensure our DLLs are found first
+    # PREPEND exe_dir to ensure our DLLs are found first
     os.environ['PATH'] = exe_dir + os.pathsep + cleaned_path
     debug_print(f"[pyi_rth_pyopenms] PATH updated (exe_dir prepended)")
     
-    # STEP 2: Use Windows DLL search path API (Python 3.8+)
+    # Use Windows DLL search path API (Python 3.8+)
     if hasattr(os, 'add_dll_directory'):
         try:
             os.add_dll_directory(exe_dir)
@@ -87,58 +89,11 @@ if getattr(sys, 'frozen', False):
         except Exception as e:
             debug_print(f"[pyi_rth_pyopenms] WARNING: add_dll_directory() failed: {e}")
     
-    # STEP 3: Handle PyQt6 Qt6 conflicts (more carefully)
-    # Instead of deleting immediately, try to hide PyQt6 paths from PATH
-    pyqt6_qt_dir = os.path.join(exe_dir, 'PyQt6', 'Qt6', 'bin')
-    if os.path.exists(pyqt6_qt_dir):
-        debug_print(f"[pyi_rth_pyopenms] Found PyQt6 Qt6 directory, attempting to mitigate conflicts")
-        
-        # First, try to remove PyQt6 paths from PATH
-        pyqt6_parent = os.path.join(exe_dir, 'PyQt6')
-        if pyqt6_parent in os.environ.get('PATH', ''):
-            path_parts = os.environ['PATH'].split(os.pathsep)
-            filtered_parts = [p for p in path_parts if pyqt6_parent not in p]
-            os.environ['PATH'] = os.pathsep.join(filtered_parts)
-            debug_print(f"[pyi_rth_pyopenms] Removed PyQt6 from PATH")
-        
-        # Only try to delete if we're confident it's safe (wait longer for extraction to complete)
-        import time
-        time.sleep(1.0)  # Give extraction more time to complete
-        
-        import shutil
-        try:
-            # Check if directory is still accessible
-            if os.path.exists(pyqt6_qt_dir):
-                shutil.rmtree(pyqt6_qt_dir)
-                debug_print(f"[pyi_rth_pyopenms] Successfully removed PyQt6 Qt6/bin directory")
-            else:
-                debug_print(f"[pyi_rth_pyopenms] PyQt6 Qt6/bin directory no longer exists")
-        except Exception as e:
-            debug_print(f"[pyi_rth_pyopenms] WARNING: Could not remove PyQt6 Qt6/bin: {e}")
-            # If deletion fails, at least we've removed it from PATH
-    
-    # STEP 4: Verify critical DLLs are present
-    critical_dlls = ['OpenMS.dll', 'Qt6Core.dll', 'Qt6Network.dll']
-    missing_dlls = []
-    found_dlls = []
-    
-    for dll in critical_dlls:
-        dll_path = os.path.join(exe_dir, dll)
-        if os.path.exists(dll_path):
-            found_dlls.append(dll)
-        else:
-            missing_dlls.append(dll)
-    
-    debug_print(f"[pyi_rth_pyopenms] Found {len(found_dlls)}/{len(critical_dlls)} critical DLLs")
-    if missing_dlls:
-        debug_print(f"[pyi_rth_pyopenms] WARNING: Missing: {', '.join(missing_dlls)}")
-    
-    # STEP 5: Check for Qt6 plugins directory
+    # Set Qt plugin path to our directory (if it exists)
     qt_plugins_dir = os.path.join(exe_dir, 'Qt6', 'plugins')
     if os.path.exists(qt_plugins_dir):
-        # Set Qt plugin path environment variable
         os.environ['QT_PLUGIN_PATH'] = qt_plugins_dir
         os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = qt_plugins_dir
         debug_print(f"[pyi_rth_pyopenms] QT_PLUGIN_PATH set to: {qt_plugins_dir}")
     
-    debug_print("[pyi_rth_pyopenms] Runtime hook completed successfully")
+    debug_print("[pyi_rth_pyopenms] Runtime hook completed - PATH setup only")
