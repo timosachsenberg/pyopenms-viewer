@@ -39,6 +39,9 @@ if sys.platform == 'win32':
     except Exception as e:
         print(f"[SPEC] ERROR: Failed to configure pyopenms paths: {e}", flush=True)
 
+# Get the directory containing this spec file (project root)
+spec_dir = os.path.dirname(os.path.abspath(SPEC))
+
 datas = []
 binaries = []
 hiddenimports = []
@@ -78,7 +81,7 @@ print(f"[SPEC] Starting Analysis with {len(binaries)} binaries, {len(datas)} dat
 
 a = Analysis(
     ['pyopenms_viewer/__main__.py'],
-    pathex=[os.path.abspath('.')],
+    pathex=[spec_dir],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
