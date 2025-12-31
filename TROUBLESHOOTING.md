@@ -12,7 +12,11 @@
 	xattr -dr com.apple.quarantine pyopenms-viewer.app
 	```
 - If the app fails to launch, check for missing modules or .dylib dependencies in the Console log. Recent builds bundle Plotly, but if you see `ModuleNotFoundError: plotly` reinstall the latest release or rebuild with the documented PyInstaller command.
+<<<<<<< HEAD
 - For full notarization configure the `APPLE_CERT_*` and `APPLE_NOTARIZATION_*` secrets so the automated build signs, notarizes, and staples the `.app` before release. Otherwise follow the Gatekeeper bypass steps above.
+=======
+- For full notarization, see Apple documentation (optional).
+>>>>>>> dc27305 (Bundle plotly and sanitize macOS args)
 
 ## Linux
 - If the AppImage does not launch, ensure you have GTK and WebKit2 runtime libraries installed.

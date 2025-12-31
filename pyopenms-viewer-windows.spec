@@ -78,7 +78,7 @@ print(f"[SPEC] Starting Analysis with {len(binaries)} binaries, {len(datas)} dat
 
 a = Analysis(
     ['pyopenms_viewer/__main__.py'],
-    pathex=[],
+    pathex=[os.path.abspath('.')],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
