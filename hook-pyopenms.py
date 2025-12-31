@@ -1,7 +1,15 @@
+# PyInstaller hook for pyopenms
+# Collect the entire package (dylibs, data files, hidden imports) WITHOUT importing it.
+# This avoids build-time DLL loading failures on Windows.
+
 from PyInstaller.utils.hooks import collect_all, collect_dynamic_libs, get_package_paths, collect_submodules
 import os
 import sys
 import glob
+
+# CRITICAL: DO NOT use collect_all() as it may try to import pyopenms
+# which fails on Windows due to DLL dependencies during build.
+# Instead, manually collect files without importing.
 
 datas = []
 binaries = []
@@ -26,11 +34,11 @@ try:
                     # Python source files go to pyopenms directory
                     datas.append((src, dest_dir))
                 elif file.endswith(('.pyd', '.dll', '.so', '.dylib')):
-                    # ALL binaries go to ROOT directory for DLL resolution
-                    # Qt6 DLLs MUST be next to OpenMS.dll for proper loading
-                    binaries.append((src, '.'))
+                    # Put pyopenms binaries in a subdirectory to avoid conflicts with PyQt6
+                    # This prevents Qt6 DLL conflicts between pyopenms and PyQt6
+                    binaries.append((src, 'pyopenms_dlls'))
                     if file.endswith('.dll'):
-                        print(f"hook-pyopenms: Found DLL: {file}")
+                        print(f"hook-pyopenms: Found DLL: {file} -> pyopenms_dlls/")
                 elif file.endswith(('.pyi', '.json', '.xml', '.txt', '.dat')):
                     # Data files preserve structure
                     datas.append((src, dest_dir))
@@ -57,9 +65,9 @@ try:
             for file in files:
                 src = os.path.join(root, file)
                 if file.endswith(('.dll', '.so', '.dylib')):
-                    # Share DLLs also go to root
-                    binaries.append((src, '.'))
-                    print(f"hook-pyopenms: Found share DLL: {file}")
+                    # Share DLLs go to pyopenms_dlls subdirectory to avoid conflicts
+                    binaries.append((src, 'pyopenms_dlls'))
+                    print(f"hook-pyopenms: Found share DLL: {file} -> pyopenms_dlls/")
                 else:
                     # Preserve directory structure for data files
                     rel_path = os.path.relpath(root, pkg_base)
@@ -108,3 +116,4 @@ hiddenimports += [
 # CRITICAL: Exclude imports that would trigger pyopenms to load during build
 # We only want to collect files, not actually import the module
 excludedimports = []
+

@@ -4,6 +4,8 @@ All notable changes to pyopenms-viewer are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-12-30
+
 ### Added
 - **Native file dialog**: Added "Open Files..." button for opening mzML, featureXML, and idXML files directly from the filesystem using native OS file picker. Only available in native mode (`--native` flag). Uses pywebview's `create_file_dialog()` for native OS integration.
 

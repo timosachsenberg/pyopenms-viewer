@@ -35,10 +35,10 @@ def test_hook_no_import():
                             found_collect_all = True
     
     if found_collect_all:
-        print("  FAIL: hook still uses collect_all('pyopenms')")
+        print("  ❌ FAIL: hook still uses collect_all('pyopenms')")
         return False
     
-    print("  PASS: hook doesn't call collect_all('pyopenms')")
+    print("  ✅ PASS: hook doesn't call collect_all('pyopenms')")
     return True
 
 def test_runtime_hook_ascii():
@@ -56,12 +56,12 @@ def test_runtime_hook_ascii():
             unicode_chars.append((i, char, hex(ord(char))))
     
     if unicode_chars:
-        print(f"  FAIL: Found {len(unicode_chars)} non-ASCII characters:")
+        print(f"  ❌ FAIL: Found {len(unicode_chars)} non-ASCII characters:")
         for pos, char, code in unicode_chars[:5]:  # Show first 5
             print(f"    Position {pos}: '{char}' ({code})")
         return False
     
-    print("  PASS: Runtime hook uses only ASCII characters")
+    print("  ✅ PASS: Runtime hook uses only ASCII characters")
     return True
 
 def test_spec_no_collect_all_pyopenms():
@@ -81,15 +81,15 @@ def test_spec_no_collect_all_pyopenms():
             code_part = line
         
         # Check for problematic patterns in code (not comments)
-        if "collect_all('pyopenms')" in line or 'collect_all("pyopenms")' in line:
-            print(f"  FAIL: Line {i+1} uses collect_all('pyopenms'): {line.strip()}")
+        if "collect_all('pyopenms')" in code_part or 'collect_all("pyopenms")' in code_part:
+            print(f"  ❌ FAIL: Line {i+1} uses collect_all('pyopenms'): {line.strip()}")
             return False
         
-        if "collect_dynamic_libs('pyopenms')" in line or 'collect_dynamic_libs("pyopenms")' in line:
-            print(f"  FAIL: Line {i+1} uses collect_dynamic_libs('pyopenms'): {line.strip()}")
+        if "collect_dynamic_libs('pyopenms')" in code_part or 'collect_dynamic_libs("pyopenms")' in code_part:
+            print(f"  ❌ FAIL: Line {i+1} uses collect_dynamic_libs('pyopenms'): {line.strip()}")
             return False
     
-    print("  PASS: spec file doesn't call collect functions on pyopenms")
+    print("  ✅ PASS: spec file doesn't call collect functions on pyopenms")
     return True
 
 def test_hook_collects_dlls():
@@ -113,10 +113,10 @@ def test_hook_collects_dlls():
             missing.append(pattern)
     
     if missing:
-        print(f"  FAIL: Missing required patterns: {missing}")
+        print(f"  ❌ FAIL: Missing required patterns: {missing}")
         return False
     
-    print("  PASS: Hook has DLL collection logic")
+    print("  ✅ PASS: Hook has DLL collection logic")
     return True
 
 def test_runtime_hook_qt_isolation():
@@ -141,10 +141,10 @@ def test_runtime_hook_qt_isolation():
             missing.append(pattern)
     
     if missing:
-        print(f"  FAIL: Missing required patterns: {missing}")
+        print(f"  ❌ FAIL: Missing required patterns: {missing}")
         return False
     
-    print("  PASS: Runtime hook has Qt6 isolation logic")
+    print("  ✅ PASS: Runtime hook has Qt6 isolation logic")
     return True
 
 def main():

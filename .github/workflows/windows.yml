@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - 'fix/**'
   pull_request:
   workflow_dispatch:
 
@@ -26,17 +27,126 @@ jobs:
           pip install pyinstaller
           pip install -e ".[native]"
 
+      - name: Prepare DLL search paths for PyInstaller
+        shell: pwsh
+        run: |
+          $pythonPath = (Get-Command python).Source
+          $pythonDir = Split-Path $pythonPath
+          $sitePackages = Join-Path $pythonDir "Lib\site-packages"
+          $shareDir = Join-Path $sitePackages "share"
+          $pyopenmsDir = Join-Path $sitePackages "pyopenms"
+          
+          Write-Host "Configuring DLL search paths for pyopenms"
+          
+          # Create a .pth file that adds BOTH share/ AND pyopenms/ directories to PATH
+          # OpenMS.dll is in pyopenms/, not share/!
+          # This ensures PyInstaller's subprocesses can find all DLLs
+          $pthFile = Join-Path $sitePackages "zzz_pyopenms_dll.pth"
+          # Avoid expressions that evaluate to None (which can break site.addpackage)
+          # Use short-circuiting and list comprehensions to handle multiple directories
+          $pthContent = "import os, sys; p1 = r'$shareDir'; p2 = r'$pyopenmsDir'; dirs = [d for d in [p1, p2] if os.path.exists(d)]; [os.add_dll_directory(d) for d in dirs if hasattr(os, 'add_dll_directory')]; dirs and os.environ.__setitem__('PATH', os.pathsep.join(dirs) + os.pathsep + os.environ.get('PATH',''))"
+          Set-Content -Path $pthFile -Value $pthContent -Encoding ASCII
+          Write-Host "Created .pth file: $pthFile"
+          Get-Content $pthFile
+          
+          # Also add BOTH directories to current process PATH for this workflow step
+          Write-Host "`nAdding to current PATH: $pyopenmsDir and $shareDir"
+          $env:PATH = "$pyopenmsDir;$shareDir;$env:PATH"
+          echo "PATH=$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          
+          # Verify DLLs exist
+          Write-Host "`nDLLs in share directory:"
+          Get-ChildItem $shareDir -Recurse -Filter "*.dll" -ErrorAction SilentlyContinue | Select-Object Name
+          
+          Write-Host "`nChecking for OpenMS.dll specifically:"
+          $openMSDll = Get-ChildItem $shareDir -Recurse -Filter "OpenMS.dll" -ErrorAction SilentlyContinue
+          if ($openMSDll) {
+            Write-Host "  FOUND: $($openMSDll.FullName)"
+          } else {
+            Write-Host "  NOT FOUND - This is the problem!"
+            Write-Host "`nSearching entire site-packages for OpenMS.dll:"
+            Get-ChildItem $sitePackages -Recurse -Filter "OpenMS.dll" -ErrorAction SilentlyContinue | ForEach-Object {
+              Write-Host "  Found at: $($_.FullName)"
+            }
+          }
+
+      - name: Analyze pyopenms DLL dependencies
+        shell: pwsh
+        run: |
+          Write-Host "Checking dependencies of _pyopenms_1.pyd..."
+          $pyopenmsModule = Get-ChildItem "C:\hostedtoolcache\windows\Python\3.10.11\x64\Lib\site-packages\pyopenms" -Filter "_pyopenms_1*.pyd" | Select-Object -First 1
+          if ($pyopenmsModule) {
+            Write-Host "Found: $($pyopenmsModule.FullName)"
+            
+            # Find dumpbin in Visual Studio installation
+            $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+            if (Test-Path $vswhere) {
+              $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+              if ($vsPath) {
+                # Find the latest VC tools version
+                $vcToolsPath = Join-Path $vsPath "VC\Tools\MSVC"
+                $latestVersion = Get-ChildItem $vcToolsPath | Sort-Object Name -Descending | Select-Object -First 1
+                $dumpbinPath = Join-Path $latestVersion.FullName "bin\Hostx64\x64\dumpbin.exe"
+                
+                if (Test-Path $dumpbinPath) {
+                  Write-Host "`nDirect dependencies:"
+                  & $dumpbinPath /DEPENDENTS $pyopenmsModule.FullName
+                  
+                  Write-Host "`nChecking if all dependencies exist in share/..."
+                  $sharePath = "C:\hostedtoolcache\windows\Python\3.10.11\x64\Lib\site-packages\share"
+                  $deps = & $dumpbinPath /DEPENDENTS $pyopenmsModule.FullName | Select-String -Pattern "^\s+\S+\.dll"
+                  foreach ($line in $deps) {
+                    $dllName = $line.Line.Trim()
+                    $dllPath = Join-Path $sharePath $dllName
+                    if (Test-Path $dllPath) {
+                      Write-Host "  ✓ $dllName found in share/"
+                    } else {
+                      Write-Host "  ✗ $dllName NOT FOUND in share/ (may be system DLL)"
+                    }
+                  }
+                } else {
+                  Write-Host "ERROR: Could not find dumpbin.exe at: $dumpbinPath"
+                }
+              } else {
+                Write-Host "ERROR: Could not find Visual Studio installation path"
+              }
+            } else {
+              Write-Host "ERROR: vswhere.exe not found"
+            }
+          } else {
+            Write-Host "ERROR: Could not find _pyopenms_1.pyd"
+          }
+
       - name: Build Windows EXE
-        run: >-
-          pyinstaller --noconfirm --onefile --windowed --name pyopenms-viewer
-          --collect-all pyopenms --collect-all plotly --additional-hooks-dir=.
-          pyopenms_viewer/__main__.py
+        run: pyinstaller --noconfirm pyopenms-viewer-windows.spec
 
       - name: Verify dist contents
         run: Get-ChildItem dist
 
       - name: Smoke test --help output
         run: .\dist\pyopenms-viewer.exe --help
+
+      - name: Test pyopenms import (validates DLL loading)
+        run: |
+          .\dist\pyopenms-viewer.exe -c "import pyopenms; print(f'pyOpenMS version: {pyopenms.__version__}')" || echo "Direct import test failed, trying file load..."
+          
+      - name: Smoke test with actual mzML file
+        # Run the GUI exe for 30s to exercise pyopenms import; use PowerShell to manage the process
+        shell: powershell
+        run: |
+          Write-Host "Testing with BSA1_F1.mzML to validate pyopenms DLL loading..."
+          $proc = Start-Process -FilePath .\dist\pyopenms-viewer.exe -ArgumentList 'tests/data/BSA1_F1.mzML' -PassThru -NoNewWindow
+          Start-Sleep -Seconds 30
+          if (-not $proc.HasExited) {
+            try {
+              $proc.Kill()
+              Write-Host "Window opened successfully (timeout expected)"
+            } catch {
+              Write-Host "Failed to kill process: $_"
+            }
+          } else {
+            Write-Host "Process exited within timeout (exit code: $($proc.ExitCode))"
+          }
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4

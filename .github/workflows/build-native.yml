@@ -7,9 +7,16 @@ on:
   push:
     branches:
       - main
+      - fix/windows-pyinstaller-dll
+      - windows-pyinstaller-native-fix
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      smoke:
+        description: 'Run smoke test on Windows only. Set to "windows" to run windows-only smoke test.'
+        required: false
+        default: ''
 
 jobs:
   build:
@@ -39,17 +46,10 @@ jobs:
       - name: Build native app (Windows)
         if: runner.os == 'Windows'
         run: >-
-          python -m PyInstaller --noconfirm --onedir --windowed --name pyopenms-viewer \
-            --collect-all pyopenms --collect-all plotly --additional-hooks-dir=. \
-            pyopenms_viewer/__main__.py
-          powershell Compress-Archive -Path dist\* -DestinationPath dist\pyopenms-viewer-windows.zip
+          pyinstaller --noconfirm pyopenms-viewer-windows.spec
       - name: Build native app (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          python -m PyInstaller --noconfirm --onedir --windowed --name pyopenms-viewer \
-            --collect-all pyopenms --collect-all plotly --additional-hooks-dir=. \
-            pyopenms_viewer/__main__.py
-          ls -lh dist/
+        if: runner.os == 'macOS' && (github.event_name != 'workflow_dispatch' || github.event.inputs.smoke != 'windows')
+        run: python -m PyInstaller --noconfirm pyopenms-viewer-macos.spec
       - name: Configure Windows code signing certificate
         if: runner.os == 'Windows' && env.WINDOWS_CERT_BASE64 != ''
         shell: pwsh
@@ -104,14 +104,13 @@ jobs:
         run: |
           ditto -c -k --sequesterRsrc --keepParent dist/pyopenms-viewer.app dist/pyopenms-viewer-macos.zip
       - name: Build native app (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && (github.event_name != 'workflow_dispatch' || github.event.inputs.smoke != 'windows')
         run: |
-          python -m PyInstaller --noconfirm --onefile --windowed --name pyopenms-viewer \
-            --collect-all pyopenms --collect-all plotly --additional-hooks-dir=. \
-            pyopenms_viewer/__main__.py
+          python -m PyInstaller --noconfirm pyopenms-viewer-linux.spec
           mv dist/pyopenms-viewer dist/pyopenms-viewer-linux
       - name: Archive build artifacts
         uses: actions/upload-artifact@v4
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.smoke != 'windows'
         with:
           name: pyopenms-viewer-${{ matrix.os }}
           path: dist/
@@ -126,7 +125,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/pyopenms-viewer-windows.zip
+            dist/pyopenms-viewer.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Create GitHub Release (macOS)
