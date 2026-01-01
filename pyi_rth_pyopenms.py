@@ -8,6 +8,11 @@
 #
 # SOLUTION: Ensure pyopenms's DLLs (especially Qt6) are loaded FIRST by modifying
 # PATH before any imports happen.
+#
+# TROUBLESHOOTING: If app fails on second run:
+# 1. Check Task Manager for running pyopenms-viewer.exe processes
+# 2. Delete %TEMP%\_MEI* directories
+# 3. Temporarily disable antivirus and try again
 import os
 import sys
 
@@ -23,11 +28,9 @@ def debug_print(msg):
 if getattr(sys, 'frozen', False):
     debug_print("[pyi_rth_pyopenms] Runtime hook starting...")
     
-    # Wait for PyInstaller to set up the extraction environment
-    import time
-    time.sleep(0.5)  # Give PyInstaller time to create the temp directory
-    
     # sys._MEIPASS is PyInstaller's temporary extraction directory
+    # NOTE: No sleep needed - PyInstaller ensures extraction is complete before running hooks
+    exe_dir = None
     try:
         exe_dir = sys._MEIPASS
         debug_print(f"[pyi_rth_pyopenms] Extraction directory: {exe_dir}")
@@ -35,10 +38,10 @@ if getattr(sys, 'frozen', False):
         # Verify the extraction directory exists and is accessible
         if not os.path.exists(exe_dir):
             debug_print(f"[pyi_rth_pyopenms] ERROR: Extraction directory does not exist: {exe_dir}")
-            time.sleep(1.0)  # Wait longer
-            if not os.path.exists(exe_dir):
-                debug_print(f"[pyi_rth_pyopenms] ERROR: Extraction directory still does not exist after waiting")
-                exe_dir = None
+            exe_dir = None
+        elif not os.access(exe_dir, os.R_OK):
+            debug_print(f"[pyi_rth_pyopenms] ERROR: Extraction directory not readable: {exe_dir}")
+            exe_dir = None
     except AttributeError:
         debug_print("[pyi_rth_pyopenms] ERROR: sys._MEIPASS not available")
         exe_dir = None
@@ -49,7 +52,6 @@ if getattr(sys, 'frozen', False):
     if exe_dir is None:
         debug_print("[pyi_rth_pyopenms] Runtime hook aborting - no extraction directory available")
         # Don't exit - let the app try to run anyway
-        pass  # Continue with minimal setup
     
     # CRITICAL: Set up PATH to ensure pyopenms DLLs are found FIRST
     # This prevents Qt6 version conflicts between pyopenms and PyQt6
