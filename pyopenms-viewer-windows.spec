@@ -48,7 +48,39 @@ hiddenimports = []
 
 # DO NOT use collect_all('pyopenms') here - it will try to import pyopenms
 # which fails on Windows due to DLL issues during build.
-# Instead, let hook-pyopenms.py do all the collection WITHOUT importing.
+# Instead, manually collect pyopenms files here AND in hook-pyopenms.py.
+
+# CRITICAL: Manually collect pyopenms binaries WITHOUT importing the module
+# This ensures DLLs are collected even if PyInstaller's binary analysis fails
+if sys.platform == 'win32':
+    try:
+        from PyInstaller.utils.hooks import get_package_paths
+        pkg_base, pkg_dir = get_package_paths('pyopenms')
+        
+        print(f"[SPEC] Manually collecting pyopenms binaries from {pkg_dir}", flush=True)
+        
+        for root, dirs, files in os.walk(pkg_dir):
+            for file in files:
+                src = os.path.join(root, file)
+                rel_path = os.path.relpath(root, pkg_dir)
+                dest_dir = os.path.join('pyopenms', rel_path) if rel_path != '.' else 'pyopenms'
+                
+                if file.endswith('.pyd'):
+                    # Python extension modules go to pyopenms/
+                    binaries.append((src, dest_dir))
+                    print(f"[SPEC] Collected .pyd: {file} -> {dest_dir}/", flush=True)
+                elif file.endswith('.dll'):
+                    # DLLs go to pyopenms_dlls/ to avoid Qt6 conflicts
+                    binaries.append((src, 'pyopenms_dlls'))
+                    print(f"[SPEC] Collected .dll: {file} -> pyopenms_dlls/", flush=True)
+                elif file.endswith('.py'):
+                    # Python source files
+                    datas.append((src, dest_dir))
+                    
+        print(f"[SPEC] Total binaries collected: {len(binaries)}", flush=True)
+        
+    except Exception as e:
+        print(f"[SPEC] WARNING: Could not collect pyopenms: {e}", flush=True)
 
 # Collect plotly resources (safe to import)
 tmp_ret = collect_all('plotly')
