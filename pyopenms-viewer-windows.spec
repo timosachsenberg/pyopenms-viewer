@@ -107,7 +107,15 @@ a = Analysis(
     hookspath=['.', 'pre_safe_import_module'],  # Include both standard hooks and pre-safe-import hooks
     hooksconfig={},
     runtime_hooks=['pyi_rth_pyopenms.py'],  # Re-enable runtime hook with updated logic
-    excludes=[],
+    excludes=[
+        # Exclude Qt6 WebEngine components - they are huge (~100MB+) and not needed for this app
+        # This also prevents extraction failures with Qt6WebEngineCore.dll
+        'PyQt6.QtWebEngine',
+        'PyQt6.QtWebEngineCore',
+        'PyQt6.QtWebEngineWidgets',
+        'PyQt6.QtWebChannel',
+        'PyQt6.QtPositioning',
+    ],
     noarchive=False,
     optimize=0,
 )
