@@ -31,10 +31,52 @@ jobs:
         run: pyinstaller --noconfirm pyopenms-viewer-windows.spec
 
       - name: Verify dist contents
-        run: Get-ChildItem dist
+        run: Get-ChildItem dist -Recurse | Select-Object FullName, Length
 
       - name: Smoke test --help output
-        run: .\dist\pyopenms-viewer.exe --help
+        run: |
+          # Run the EXE and capture output (works for GUI apps too)
+          $pinfo = New-Object System.Diagnostics.ProcessStartInfo
+          $pinfo.FileName = ".\dist\pyopenms-viewer.exe"
+          $pinfo.Arguments = "--help"
+          $pinfo.RedirectStandardOutput = $true
+          $pinfo.RedirectStandardError = $true
+          $pinfo.UseShellExecute = $false
+          $pinfo.CreateNoWindow = $true
+          
+          $process = New-Object System.Diagnostics.Process
+          $process.StartInfo = $pinfo
+          $process.Start() | Out-Null
+          
+          # Wait up to 60 seconds
+          $exited = $process.WaitForExit(60000)
+          
+          $stdout = $process.StandardOutput.ReadToEnd()
+          $stderr = $process.StandardError.ReadToEnd()
+          
+          Write-Host "=== STDOUT ==="
+          Write-Host $stdout
+          Write-Host "=== STDERR ==="
+          Write-Host $stderr
+          Write-Host "=== Exit Code: $($process.ExitCode) ==="
+          
+          if (-not $exited) {
+            Write-Host "ERROR: Process timed out"
+            $process.Kill()
+            exit 1
+          }
+          
+          if ($process.ExitCode -ne 0) {
+            Write-Host "ERROR: Process exited with code $($process.ExitCode)"
+            exit $process.ExitCode
+          }
+          
+          # Verify we got help output
+          if ($stdout -match "Usage:" -or $stdout -match "pyopenms-viewer") {
+            Write-Host "SUCCESS: Help output verified"
+          } else {
+            Write-Host "WARNING: Help output not found, but process succeeded"
+          }
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
