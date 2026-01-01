@@ -33,12 +33,16 @@ try:
                 if file.endswith('.py'):
                     # Python source files go to pyopenms directory
                     datas.append((src, dest_dir))
-                elif file.endswith(('.pyd', '.dll', '.so', '.dylib')):
-                    # Put pyopenms binaries in a subdirectory to avoid conflicts with PyQt6
-                    # This prevents Qt6 DLL conflicts between pyopenms and PyQt6
+                elif file.endswith(('.pyd', '.so')):
+                    # Python extension modules (.pyd on Windows, .so on Linux)
+                    # These MUST be in the pyopenms directory for Python to import them
+                    binaries.append((src, dest_dir))
+                    print(f"hook-pyopenms: Found extension module: {file} -> {dest_dir}/")
+                elif file.endswith(('.dll', '.dylib')):
+                    # DLLs go to a subdirectory to avoid conflicts with PyQt6's Qt6 DLLs
+                    # The runtime hook will add this directory to PATH
                     binaries.append((src, 'pyopenms_dlls'))
-                    if file.endswith('.dll'):
-                        print(f"hook-pyopenms: Found DLL: {file} -> pyopenms_dlls/")
+                    print(f"hook-pyopenms: Found DLL: {file} -> pyopenms_dlls/")
                 elif file.endswith(('.pyi', '.json', '.xml', '.txt', '.dat')):
                     # Data files preserve structure
                     datas.append((src, dest_dir))

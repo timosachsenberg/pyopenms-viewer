@@ -29,7 +29,6 @@ if getattr(sys, 'frozen', False):
     debug_print("[pyi_rth_pyopenms] Runtime hook starting...")
     
     # sys._MEIPASS is PyInstaller's temporary extraction directory
-    # NOTE: No sleep needed - PyInstaller ensures extraction is complete before running hooks
     exe_dir = None
     try:
         exe_dir = sys._MEIPASS
@@ -51,52 +50,70 @@ if getattr(sys, 'frozen', False):
     
     if exe_dir is None:
         debug_print("[pyi_rth_pyopenms] Runtime hook aborting - no extraction directory available")
-        # Don't exit - let the app try to run anyway
-    
-    # CRITICAL: Set up PATH to ensure pyopenms DLLs are found FIRST
-    # This prevents Qt6 version conflicts between pyopenms and PyQt6
-    current_path = os.environ.get('PATH', '')
-    
-    # Add pyopenms_dlls subdirectory to PATH (contains pyopenms DLLs)
-    pyopenms_dlls_dir = os.path.join(exe_dir, 'pyopenms_dlls')
-    if os.path.exists(pyopenms_dlls_dir):
-        # Remove existing pyopenms_dlls from PATH to avoid duplicates
-        path_parts = current_path.split(os.pathsep)
-        filtered_parts = [p for p in path_parts if not p.endswith('pyopenms_dlls')]
-        cleaned_path = os.pathsep.join(filtered_parts)
-        
-        # PREPEND pyopenms_dlls directory to ensure our DLLs are found first
-        os.environ['PATH'] = pyopenms_dlls_dir + os.pathsep + exe_dir + os.pathsep + cleaned_path
-        debug_print(f"[pyi_rth_pyopenms] PATH updated (pyopenms_dlls and exe_dir prepended)")
-        
-        # Use Windows DLL search path API
-        if hasattr(os, 'add_dll_directory'):
-            try:
-                os.add_dll_directory(pyopenms_dlls_dir)
-                os.add_dll_directory(exe_dir)
-                debug_print(f"[pyi_rth_pyopenms] Added DLL directories: pyopenms_dlls and exe_dir")
-            except Exception as e:
-                debug_print(f"[pyi_rth_pyopenms] WARNING: add_dll_directory() failed: {e}")
     else:
-        # Fallback: just prepend exe_dir
-        path_parts = current_path.split(os.pathsep)
-        filtered_parts = [p for p in path_parts if p != exe_dir]
-        cleaned_path = os.pathsep.join(filtered_parts)
-        os.environ['PATH'] = exe_dir + os.pathsep + cleaned_path
-        debug_print(f"[pyi_rth_pyopenms] PATH updated (exe_dir prepended, pyopenms_dlls not found)")
+        # CRITICAL: Set up PATH to ensure pyopenms DLLs are found FIRST
+        # This prevents Qt6 version conflicts between pyopenms and PyQt6
+        current_path = os.environ.get('PATH', '')
         
-        if hasattr(os, 'add_dll_directory'):
+        # Add pyopenms_dlls subdirectory to PATH (contains pyopenms DLLs)
+        pyopenms_dlls_dir = os.path.join(exe_dir, 'pyopenms_dlls')
+        
+        if os.path.exists(pyopenms_dlls_dir):
+            # List contents for debugging
             try:
-                os.add_dll_directory(exe_dir)
-                debug_print(f"[pyi_rth_pyopenms] Added DLL directory: {exe_dir}")
+                dlls = os.listdir(pyopenms_dlls_dir)
+                debug_print(f"[pyi_rth_pyopenms] Found {len(dlls)} files in pyopenms_dlls/")
             except Exception as e:
-                debug_print(f"[pyi_rth_pyopenms] WARNING: add_dll_directory() failed: {e}")
-    
-    # Set Qt plugin path to our directory (if it exists)
-    qt_plugins_dir = os.path.join(exe_dir, 'Qt6', 'plugins')
-    if os.path.exists(qt_plugins_dir):
-        os.environ['QT_PLUGIN_PATH'] = qt_plugins_dir
-        os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = qt_plugins_dir
-        debug_print(f"[pyi_rth_pyopenms] QT_PLUGIN_PATH set to: {qt_plugins_dir}")
-    
-    debug_print("[pyi_rth_pyopenms] Runtime hook completed - PATH setup only")
+                debug_print(f"[pyi_rth_pyopenms] WARNING: Could not list pyopenms_dlls: {e}")
+            
+            # Remove existing pyopenms_dlls from PATH to avoid duplicates
+            path_parts = current_path.split(os.pathsep)
+            filtered_parts = [p for p in path_parts if not p.endswith('pyopenms_dlls')]
+            cleaned_path = os.pathsep.join(filtered_parts)
+            
+            # PREPEND pyopenms_dlls directory to ensure our DLLs are found first
+            os.environ['PATH'] = pyopenms_dlls_dir + os.pathsep + exe_dir + os.pathsep + cleaned_path
+            debug_print(f"[pyi_rth_pyopenms] PATH updated (pyopenms_dlls and exe_dir prepended)")
+            
+            # Use Windows DLL search path API (Windows 10+)
+            if hasattr(os, 'add_dll_directory'):
+                try:
+                    os.add_dll_directory(pyopenms_dlls_dir)
+                    os.add_dll_directory(exe_dir)
+                    debug_print(f"[pyi_rth_pyopenms] Added DLL directories via add_dll_directory()")
+                except Exception as e:
+                    debug_print(f"[pyi_rth_pyopenms] WARNING: add_dll_directory() failed: {e}")
+        else:
+            debug_print(f"[pyi_rth_pyopenms] WARNING: pyopenms_dlls directory not found!")
+            # Fallback: just prepend exe_dir
+            path_parts = current_path.split(os.pathsep)
+            filtered_parts = [p for p in path_parts if p != exe_dir]
+            cleaned_path = os.pathsep.join(filtered_parts)
+            os.environ['PATH'] = exe_dir + os.pathsep + cleaned_path
+            debug_print(f"[pyi_rth_pyopenms] PATH updated (exe_dir prepended only)")
+            
+            if hasattr(os, 'add_dll_directory'):
+                try:
+                    os.add_dll_directory(exe_dir)
+                    debug_print(f"[pyi_rth_pyopenms] Added DLL directory: {exe_dir}")
+                except Exception as e:
+                    debug_print(f"[pyi_rth_pyopenms] WARNING: add_dll_directory() failed: {e}")
+        
+        # Also add the pyopenms package directory for finding .pyd files
+        pyopenms_pkg_dir = os.path.join(exe_dir, 'pyopenms')
+        if os.path.exists(pyopenms_pkg_dir):
+            if hasattr(os, 'add_dll_directory'):
+                try:
+                    os.add_dll_directory(pyopenms_pkg_dir)
+                    debug_print(f"[pyi_rth_pyopenms] Added pyopenms package to DLL directories")
+                except Exception as e:
+                    debug_print(f"[pyi_rth_pyopenms] WARNING: Could not add pyopenms pkg dir: {e}")
+        
+        # Set Qt plugin path to our directory (if it exists)
+        qt_plugins_dir = os.path.join(exe_dir, 'Qt6', 'plugins')
+        if os.path.exists(qt_plugins_dir):
+            os.environ['QT_PLUGIN_PATH'] = qt_plugins_dir
+            os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = qt_plugins_dir
+            debug_print(f"[pyi_rth_pyopenms] QT_PLUGIN_PATH set to: {qt_plugins_dir}")
+        
+        debug_print("[pyi_rth_pyopenms] Runtime hook completed successfully")
