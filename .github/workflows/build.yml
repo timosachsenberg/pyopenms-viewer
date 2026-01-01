@@ -50,6 +50,18 @@ jobs:
       - name: Build with PyInstaller spec file
         run: pyinstaller --noconfirm ${{ matrix.spec_file }}
 
+      - name: Smoke test --help (Windows)
+        if: runner.os == 'Windows'
+        run: .\dist\pyopenms-viewer.exe --help
+
+      - name: Smoke test --help (Linux)
+        if: runner.os == 'Linux'
+        run: ./dist/pyopenms-viewer --help
+
+      - name: Smoke test --help (macOS)
+        if: runner.os == 'macOS'
+        run: ./dist/pyopenms-viewer.app/Contents/MacOS/pyopenms-viewer --help
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
