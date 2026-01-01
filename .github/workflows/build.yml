@@ -14,12 +14,20 @@ jobs:
         include:
           - os: windows-latest
             asset_name: pyopenms-viewer-windows-x64.zip
+            spec_file: pyopenms-viewer-windows.spec
+            output_path: dist/pyopenms-viewer.exe
           - os: ubuntu-22.04
             asset_name: pyopenms-viewer-linux-x64.zip
+            spec_file: pyopenms-viewer-linux.spec
+            output_path: dist/pyopenms-viewer
           - os: macos-13
             asset_name: pyopenms-viewer-macos-x64.zip
+            spec_file: pyopenms-viewer-macos.spec
+            output_path: dist/pyopenms-viewer.app
           - os: macos-14
             asset_name: pyopenms-viewer-macos-arm64.zip
+            spec_file: pyopenms-viewer-macos.spec
+            output_path: dist/pyopenms-viewer.app
 
     runs-on: ${{ matrix.os }}
 
@@ -39,14 +47,14 @@ jobs:
           uv pip install --system ".[native]"
           uv pip install --system pyinstaller pyinstaller-hooks-contrib
 
-      - name: Build with nicegui pack
-        run: python -m nicegui.scripts.pack --name pyopenms-viewer --onedir --windowed pyopenms_viewer/__main__.py
+      - name: Build with PyInstaller spec file
+        run: pyinstaller --noconfirm ${{ matrix.spec_file }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
-          path: dist/pyopenms-viewer
+          path: ${{ matrix.output_path }}
 
   release:
     needs: build
