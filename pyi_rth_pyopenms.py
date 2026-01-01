@@ -1,20 +1,3 @@
-# PyInstaller runtime hook for pyopenms DLL loading
-import os
-import sys
-
-def _add_dll_dir():
-    # Find the directory containing pyopenms DLLs
-    try:
-        import pyopenms
-        dll_dir = os.path.dirname(pyopenms.__file__)
-        if hasattr(os, 'add_dll_directory'):
-            os.add_dll_directory(dll_dir)
-        else:
-            os.environ['PATH'] = dll_dir + os.pathsep + os.environ.get('PATH', '')
-    except Exception as e:
-        print(f"[pyi_rth_pyopenms] Could not set DLL directory: {e}", file=sys.stderr)
-
-_add_dll_dir()
 # PyInstaller runtime hook for pyopenms.
 #
 # This hook runs when the frozen application starts, BEFORE any user code.

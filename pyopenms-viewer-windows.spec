@@ -82,17 +82,48 @@ hiddenimports += [
     'pyopenms_viewer',
     'pyopenms_viewer.app',
     'pyopenms_viewer.cli',
+    # Core modules
     'pyopenms_viewer.core',
     'pyopenms_viewer.core.state',
     'pyopenms_viewer.core.events',
     'pyopenms_viewer.core.config',
     'pyopenms_viewer.core.data_manager',
+    # Loaders - ALL submodules
     'pyopenms_viewer.loaders',
+    'pyopenms_viewer.loaders.mzml_loader',
+    'pyopenms_viewer.loaders.feature_loader',
+    'pyopenms_viewer.loaders.id_loader',
+    'pyopenms_viewer.loaders.chromatogram_loader',
+    'pyopenms_viewer.loaders.ion_mobility_loader',
+    'pyopenms_viewer.loaders.spectrum_extractor',
+    # Panels - ALL submodules
     'pyopenms_viewer.panels',
+    'pyopenms_viewer.panels.base_panel',
+    'pyopenms_viewer.panels.spectrum_panel',
+    'pyopenms_viewer.panels.chromatogram_panel',
+    'pyopenms_viewer.panels.peak_map_panel',
+    'pyopenms_viewer.panels.tic_panel',
+    'pyopenms_viewer.panels.spectra_table_panel',
+    'pyopenms_viewer.panels.features_table_panel',
+    'pyopenms_viewer.panels.im_peak_map_panel',
+    'pyopenms_viewer.panels.faims_panel',
+    # Annotation - ALL submodules
     'pyopenms_viewer.annotation',
+    'pyopenms_viewer.annotation.spectrum_annotator',
+    'pyopenms_viewer.annotation.theoretical_spectrum',
+    'pyopenms_viewer.annotation.tick_formatter',
+    # Rendering - ALL submodules
     'pyopenms_viewer.rendering',
-    'pyopenms_viewer.utils',
+    'pyopenms_viewer.rendering.peak_map_renderer',
+    'pyopenms_viewer.rendering.axis_renderer',
+    'pyopenms_viewer.rendering.minimap_renderer',
+    'pyopenms_viewer.rendering.overlay_renderer',
+    # Components - ALL submodules
     'pyopenms_viewer.components',
+    'pyopenms_viewer.components.local_file_picker',
+    # Utils - ALL submodules
+    'pyopenms_viewer.utils',
+    'pyopenms_viewer.utils.coordinate_transform',
 ]
 
 print(f"[SPEC] Starting Analysis with {len(binaries)} binaries, {len(datas)} datas", flush=True)
