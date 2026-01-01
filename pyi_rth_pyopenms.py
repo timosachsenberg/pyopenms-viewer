@@ -6,8 +6,7 @@
 # CRITICAL PROBLEM: PyQt6 and pyopenms both bundle Qt6 DLLs. If both are in PATH,
 # Windows may load mismatched Qt6 versions causing symbol resolution failures.
 #
-# SOLUTION: Ensure pyopenms's DLLs (especially Qt6) are loaded FIRST by modifying
-# PATH before any imports happen.
+# SOLUTION: Pre-load pyopenms DLLs BEFORE any other imports to ensure correct versions.
 #
 # TROUBLESHOOTING: If app fails on second run:
 # 1. Check Task Manager for running pyopenms-viewer.exe processes
@@ -15,6 +14,7 @@
 # 3. Temporarily disable antivirus and try again
 import os
 import sys
+import ctypes
 
 def debug_print(msg):
     """Print with explicit flush and ASCII-only characters for Windows console."""
@@ -25,7 +25,7 @@ def debug_print(msg):
         # If even this fails, silently continue
         pass
 
-if getattr(sys, 'frozen', False):
+if getattr(sys, 'frozen', False) and sys.platform == 'win32':
     debug_print("[pyi_rth_pyopenms] Runtime hook starting...")
     
     # sys._MEIPASS is PyInstaller's temporary extraction directory
@@ -57,57 +57,90 @@ if getattr(sys, 'frozen', False):
         
         # Add pyopenms_dlls subdirectory to PATH (contains pyopenms DLLs)
         pyopenms_dlls_dir = os.path.join(exe_dir, 'pyopenms_dlls')
+        pyopenms_pkg_dir = os.path.join(exe_dir, 'pyopenms')
+        
+        # Collect all DLL directories we need
+        dll_dirs = []
         
         if os.path.exists(pyopenms_dlls_dir):
+            dll_dirs.append(pyopenms_dlls_dir)
             # List contents for debugging
             try:
                 dlls = os.listdir(pyopenms_dlls_dir)
                 debug_print(f"[pyi_rth_pyopenms] Found {len(dlls)} files in pyopenms_dlls/")
+                for dll in dlls:
+                    debug_print(f"[pyi_rth_pyopenms]   - {dll}")
             except Exception as e:
                 debug_print(f"[pyi_rth_pyopenms] WARNING: Could not list pyopenms_dlls: {e}")
-            
-            # Remove existing pyopenms_dlls from PATH to avoid duplicates
-            path_parts = current_path.split(os.pathsep)
-            filtered_parts = [p for p in path_parts if not p.endswith('pyopenms_dlls')]
-            cleaned_path = os.pathsep.join(filtered_parts)
-            
-            # PREPEND pyopenms_dlls directory to ensure our DLLs are found first
-            os.environ['PATH'] = pyopenms_dlls_dir + os.pathsep + exe_dir + os.pathsep + cleaned_path
-            debug_print(f"[pyi_rth_pyopenms] PATH updated (pyopenms_dlls and exe_dir prepended)")
-            
-            # Use Windows DLL search path API (Windows 10+)
-            if hasattr(os, 'add_dll_directory'):
-                try:
-                    os.add_dll_directory(pyopenms_dlls_dir)
-                    os.add_dll_directory(exe_dir)
-                    debug_print(f"[pyi_rth_pyopenms] Added DLL directories via add_dll_directory()")
-                except Exception as e:
-                    debug_print(f"[pyi_rth_pyopenms] WARNING: add_dll_directory() failed: {e}")
         else:
             debug_print(f"[pyi_rth_pyopenms] WARNING: pyopenms_dlls directory not found!")
-            # Fallback: just prepend exe_dir
-            path_parts = current_path.split(os.pathsep)
-            filtered_parts = [p for p in path_parts if p != exe_dir]
-            cleaned_path = os.pathsep.join(filtered_parts)
-            os.environ['PATH'] = exe_dir + os.pathsep + cleaned_path
-            debug_print(f"[pyi_rth_pyopenms] PATH updated (exe_dir prepended only)")
-            
-            if hasattr(os, 'add_dll_directory'):
-                try:
-                    os.add_dll_directory(exe_dir)
-                    debug_print(f"[pyi_rth_pyopenms] Added DLL directory: {exe_dir}")
-                except Exception as e:
-                    debug_print(f"[pyi_rth_pyopenms] WARNING: add_dll_directory() failed: {e}")
         
-        # Also add the pyopenms package directory for finding .pyd files
-        pyopenms_pkg_dir = os.path.join(exe_dir, 'pyopenms')
         if os.path.exists(pyopenms_pkg_dir):
-            if hasattr(os, 'add_dll_directory'):
+            dll_dirs.append(pyopenms_pkg_dir)
+            debug_print(f"[pyi_rth_pyopenms] Found pyopenms package directory")
+        
+        dll_dirs.append(exe_dir)
+        
+        # Remove existing references from PATH to avoid duplicates
+        path_parts = current_path.split(os.pathsep)
+        filtered_parts = [p for p in path_parts if p and p not in dll_dirs]
+        
+        # PREPEND our directories to PATH
+        new_path = os.pathsep.join(dll_dirs + filtered_parts)
+        os.environ['PATH'] = new_path
+        debug_print(f"[pyi_rth_pyopenms] PATH updated with {len(dll_dirs)} directories prepended")
+        
+        # Use Windows DLL search path API (Windows 10+)
+        # CRITICAL: Call add_dll_directory for EACH directory
+        if hasattr(os, 'add_dll_directory'):
+            for dll_dir in dll_dirs:
                 try:
-                    os.add_dll_directory(pyopenms_pkg_dir)
-                    debug_print(f"[pyi_rth_pyopenms] Added pyopenms package to DLL directories")
+                    os.add_dll_directory(dll_dir)
+                    debug_print(f"[pyi_rth_pyopenms] add_dll_directory: {dll_dir}")
                 except Exception as e:
-                    debug_print(f"[pyi_rth_pyopenms] WARNING: Could not add pyopenms pkg dir: {e}")
+                    debug_print(f"[pyi_rth_pyopenms] WARNING: add_dll_directory failed for {dll_dir}: {e}")
+        
+        # CRITICAL: Pre-load the OpenMS DLLs in the correct order BEFORE Python tries to import
+        # This ensures the correct versions are loaded from our directory
+        if os.path.exists(pyopenms_dlls_dir):
+            # Load order matters! Dependencies must be loaded before dependents
+            dll_load_order = [
+                # MSVC runtime (required by everything)
+                'vcruntime140.dll',
+                'vcruntime140_1.dll',
+                'msvcp140.dll',
+                'msvcp140_1.dll',
+                'msvcp140_2.dll',
+                'msvcp140_atomic_wait.dll',
+                'msvcp140_codecvt_ids.dll',
+                'concrt140.dll',
+                'vcomp140.dll',
+                # Other dependencies
+                'zlib.dll',
+                # Qt6 (pyopenms's version, not PyQt6's)
+                'Qt6Core.dll',
+                'Qt6Network.dll',
+                # OpenMS core libraries
+                'OpenSwathAlgo.dll',
+                'OpenMS.dll',
+            ]
+            
+            debug_print(f"[pyi_rth_pyopenms] Pre-loading DLLs from {pyopenms_dlls_dir}")
+            loaded_count = 0
+            for dll_name in dll_load_order:
+                dll_path = os.path.join(pyopenms_dlls_dir, dll_name)
+                if os.path.exists(dll_path):
+                    try:
+                        # Use LOAD_WITH_ALTERED_SEARCH_PATH to load from the DLL's directory
+                        ctypes.WinDLL(dll_path)
+                        loaded_count += 1
+                        debug_print(f"[pyi_rth_pyopenms]   Loaded: {dll_name}")
+                    except Exception as e:
+                        debug_print(f"[pyi_rth_pyopenms]   FAILED to load {dll_name}: {e}")
+                else:
+                    debug_print(f"[pyi_rth_pyopenms]   Not found: {dll_name}")
+            
+            debug_print(f"[pyi_rth_pyopenms] Pre-loaded {loaded_count} DLLs")
         
         # Set Qt plugin path to our directory (if it exists)
         qt_plugins_dir = os.path.join(exe_dir, 'Qt6', 'plugins')
