@@ -447,6 +447,291 @@ if os.path.exists('pyi_rth_pyopenms.py') and os.path.exists('pyopenms-viewer-win
         fail("Spec file must reference pyi_rth_pyopenms.py in runtime_hooks!")
 
 # =============================================================================
+# TEST 10: HOOK EXECUTION ORDER VERIFICATION
+# =============================================================================
+header("TEST 10: Hook Execution Order Verification")
+
+"""
+PyInstaller Hook Execution Order:
+=================================
+BUILD TIME (on developer machine):
+  1. pre_safe_import_module hooks - Run BEFORE PyInstaller tries to import a module
+  2. pre_find_module_path hooks - Modify module search paths
+  3. Standard hooks (hook-*.py) - Run AFTER module is found, collect files
+  4. post_safe_import_module hooks - Run after import
+
+RUNTIME (on user machine, when frozen app starts):
+  5. Runtime hooks (pyi_rth_*.py) - Run BEFORE user code, in order listed
+
+Our hooks:
+  - pre_safe_import_module/hook-pyopenms.py: Sets PATH before PyInstaller imports pyopenms
+  - hook-pyopenms.py: Collects pyopenms files WITHOUT importing
+  - pyi_rth_pyopenms.py: Sets DLL paths when frozen app starts
+"""
+
+print("   PyInstaller Hook Execution Order:")
+print("   ─────────────────────────────────────────────────────")
+print("   BUILD TIME:")
+print("   │")
+print("   ├─1. pre_safe_import_module/hook-pyopenms.py")
+print("   │     → Sets PATH so OpenMS.dll can be found")
+print("   │     → Runs BEFORE PyInstaller imports pyopenms")
+print("   │")
+print("   ├─2. hook-pyopenms.py (standard hook)")
+print("   │     → Collects .pyd, .dll, .py files")
+print("   │     → Does NOT import pyopenms (avoids DLL failure)")
+print("   │     → .pyd → pyopenms/, .dll → pyopenms_dlls/")
+print("   │")
+print("   ├─3. Analysis phase completes")
+print("   │     → All files collected into frozen bundle")
+print("   │")
+print("   RUNTIME (when user runs .exe):")
+print("   │")
+print("   └─4. pyi_rth_pyopenms.py (runtime hook)")
+print("         → Runs BEFORE any user code")
+print("         → Adds pyopenms_dlls/ to PATH")
+print("         → Calls os.add_dll_directory()")
+print("         → Then user code imports pyopenms successfully")
+print("   ─────────────────────────────────────────────────────")
+
+# Test 10.1: Verify pre_safe_import_module runs first (sets PATH for build)
+if os.path.exists('pre_safe_import_module/hook-pyopenms.py'):
+    with open('pre_safe_import_module/hook-pyopenms.py', 'r') as f:
+        presafe = f.read()
+    
+    # Must set PATH before any import happens
+    sets_path_early = "os.environ['PATH']" in presafe or 'os.environ["PATH"]' in presafe
+    has_presafe_func = "def pre_safe_import_module" in presafe
+    
+    if sets_path_early and has_presafe_func:
+        ok("pre_safe_import_module sets PATH before import (Step 1) ✓")
+    else:
+        all_passed = False
+        fail("pre_safe_import_module must set PATH in pre_safe_import_module() function")
+else:
+    all_passed = False
+    fail("pre_safe_import_module/hook-pyopenms.py missing!")
+
+# Test 10.2: Verify standard hook does NOT import pyopenms
+if os.path.exists('hook-pyopenms.py'):
+    with open('hook-pyopenms.py', 'r') as f:
+        hook = f.read()
+    
+    # Check for dangerous imports that would trigger DLL load
+    dangerous_imports = [
+        'import pyopenms',
+        'from pyopenms import',
+        'importlib.import_module("pyopenms")',
+        "importlib.import_module('pyopenms')",
+    ]
+    
+    has_dangerous_import = False
+    for pattern in dangerous_imports:
+        # Check if pattern exists outside of comments
+        for line in hook.split('\n'):
+            stripped = line.strip()
+            if stripped.startswith('#'):
+                continue
+            if pattern in line:
+                has_dangerous_import = True
+                break
+    
+    if not has_dangerous_import:
+        ok("hook-pyopenms.py does NOT import pyopenms (Step 2) ✓")
+    else:
+        all_passed = False
+        fail("hook-pyopenms.py must NOT import pyopenms - will fail on Windows!")
+    
+    # Verify it uses get_package_paths instead
+    if "get_package_paths('pyopenms')" in hook:
+        ok("hook-pyopenms.py uses get_package_paths() to find package safely ✓")
+    else:
+        warn("hook-pyopenms.py should use get_package_paths() to avoid importing")
+
+# Test 10.3: Verify runtime hook runs at frozen startup
+if os.path.exists('pyi_rth_pyopenms.py'):
+    with open('pyi_rth_pyopenms.py', 'r') as f:
+        rth = f.read()
+    
+    # Must check for frozen state first
+    checks_frozen = "getattr(sys, 'frozen', False)" in rth or "sys.frozen" in rth
+    uses_meipass = "sys._MEIPASS" in rth
+    sets_path = "os.environ['PATH']" in rth or 'os.environ["PATH"]' in rth
+    adds_dll_dir = "os.add_dll_directory" in rth
+    
+    if checks_frozen:
+        ok("Runtime hook checks sys.frozen (only runs when frozen) ✓")
+    else:
+        all_passed = False
+        fail("Runtime hook must check sys.frozen before executing")
+    
+    if uses_meipass:
+        ok("Runtime hook uses sys._MEIPASS to find extraction dir ✓")
+    else:
+        all_passed = False
+        fail("Runtime hook must use sys._MEIPASS")
+    
+    if sets_path and adds_dll_dir:
+        ok("Runtime hook sets PATH and calls add_dll_directory() (Step 4) ✓")
+    else:
+        all_passed = False
+        fail("Runtime hook must set PATH and call add_dll_directory()")
+
+# Test 10.4: Verify runtime hook is listed in spec (determines execution order)
+if os.path.exists('pyopenms-viewer-windows.spec'):
+    with open('pyopenms-viewer-windows.spec', 'r') as f:
+        spec = f.read()
+    
+    # Check runtime_hooks order - pyopenms should be first if there are multiple
+    rth_match = re.search(r"runtime_hooks\s*=\s*\[(.*?)\]", spec, re.DOTALL)
+    if rth_match:
+        rth_list = rth_match.group(1)
+        if 'pyi_rth_pyopenms.py' in rth_list:
+            # Check if it's first in the list
+            hooks_in_list = re.findall(r"['\"]([^'\"]+)['\"]", rth_list)
+            if hooks_in_list and hooks_in_list[0] == 'pyi_rth_pyopenms.py':
+                ok("pyi_rth_pyopenms.py is FIRST in runtime_hooks (correct order) ✓")
+            elif 'pyi_rth_pyopenms.py' in hooks_in_list:
+                warn("pyi_rth_pyopenms.py should be first in runtime_hooks for DLL priority")
+            else:
+                all_passed = False
+                fail("pyi_rth_pyopenms.py not found in runtime_hooks!")
+        else:
+            all_passed = False
+            fail("runtime_hooks must include pyi_rth_pyopenms.py!")
+    else:
+        all_passed = False
+        fail("Could not parse runtime_hooks from spec file")
+
+# Test 10.5: Verify no circular dependencies or import conflicts
+print("\n   Checking for import conflicts...")
+
+# The runtime hook must NOT import pyopenms before setting up PATH
+if os.path.exists('pyi_rth_pyopenms.py'):
+    with open('pyi_rth_pyopenms.py', 'r') as f:
+        rth_content = f.read()
+    
+    # Find where PATH is set vs where pyopenms might be imported
+    path_set_line = None
+    pyopenms_import_line = None
+    
+    for i, line in enumerate(rth_content.split('\n'), 1):
+        if "os.environ['PATH']" in line and '=' in line:
+            if path_set_line is None:
+                path_set_line = i
+        if 'import pyopenms' in line or 'from pyopenms' in line:
+            if not line.strip().startswith('#'):
+                pyopenms_import_line = i
+    
+    if pyopenms_import_line is None:
+        ok("Runtime hook does NOT import pyopenms (correct - avoids circular dep) ✓")
+    elif path_set_line and pyopenms_import_line > path_set_line:
+        ok("Runtime hook imports pyopenms AFTER setting PATH (safe order) ✓")
+    else:
+        all_passed = False
+        fail("Runtime hook imports pyopenms BEFORE setting PATH - will fail!")
+
+# Test 10.6: Verify hookspath order in spec
+if os.path.exists('pyopenms-viewer-windows.spec'):
+    with open('pyopenms-viewer-windows.spec', 'r') as f:
+        spec = f.read()
+    
+    hookspath_match = re.search(r"hookspath\s*=\s*\[(.*?)\]", spec, re.DOTALL)
+    if hookspath_match:
+        hookspath = hookspath_match.group(1)
+        has_current_dir = "'.'," in hookspath or "'.'" in hookspath
+        has_presafe = 'pre_safe_import_module' in hookspath
+        
+        if has_current_dir:
+            ok("hookspath includes '.' for standard hooks ✓")
+        else:
+            all_passed = False
+            fail("hookspath must include '.' to find hook-pyopenms.py")
+        
+        if has_presafe:
+            ok("hookspath includes 'pre_safe_import_module' directory ✓")
+        else:
+            warn("hookspath should include 'pre_safe_import_module' for pre-import hooks")
+
+# =============================================================================
+# TEST 11: DLL LOAD ORDER VERIFICATION
+# =============================================================================
+header("TEST 11: DLL Load Order Verification")
+
+"""
+Windows DLL Load Order (critical for Qt6 conflicts):
+====================================================
+When Python imports _pyopenms_1.pyd, Windows searches for DLLs in:
+  1. Directory containing the .exe
+  2. Directories in os.add_dll_directory() (Windows 10+)
+  3. System directories (System32, etc.)
+  4. Directories in PATH environment variable
+
+Our strategy:
+  - Put pyopenms DLLs in pyopenms_dlls/ (isolated from PyQt6)
+  - Add pyopenms_dlls/ FIRST to PATH
+  - Add pyopenms_dlls/ via add_dll_directory()
+  - This ensures pyopenms's Qt6 DLLs load before PyQt6's
+"""
+
+if os.path.exists('pyi_rth_pyopenms.py'):
+    with open('pyi_rth_pyopenms.py', 'r') as f:
+        rth = f.read()
+    
+    # Test 11.1: pyopenms_dlls is added FIRST to PATH (prepended, not appended)
+    # Look for pattern: PATH = pyopenms_dlls + ... + old_path
+    prepend_pattern = re.search(r"PATH.*=.*pyopenms_dlls.*\+.*pathsep", rth, re.IGNORECASE)
+    append_pattern = re.search(r"PATH.*=.*\+.*pyopenms_dlls", rth, re.IGNORECASE)
+    
+    if prepend_pattern:
+        ok("pyopenms_dlls is PREPENDED to PATH (loaded first) ✓")
+    elif append_pattern:
+        all_passed = False
+        fail("pyopenms_dlls is APPENDED to PATH - must be PREPENDED for priority!")
+    else:
+        warn("Could not verify PATH modification order")
+    
+    # Test 11.2: add_dll_directory is called for both directories
+    dll_dir_calls = rth.count('add_dll_directory(')
+    if dll_dir_calls >= 2:
+        ok(f"add_dll_directory() called {dll_dir_calls} times (pyopenms_dlls + exe_dir + pyopenms) ✓")
+    elif dll_dir_calls == 1:
+        warn("add_dll_directory() only called once - should add multiple directories")
+    else:
+        all_passed = False
+        fail("add_dll_directory() not called - required for Windows 10+")
+    
+    # Test 11.3: Check pyopenms_dlls is added before exe_dir
+    lines = rth.split('\n')
+    pyopenms_dlls_add_line = None
+    exe_dir_add_line = None
+    
+    for i, line in enumerate(lines):
+        if 'add_dll_directory' in line and 'pyopenms_dlls' in line:
+            pyopenms_dlls_add_line = i
+        if 'add_dll_directory' in line and 'exe_dir' in line and 'pyopenms' not in line:
+            exe_dir_add_line = i
+    
+    if pyopenms_dlls_add_line is not None:
+        ok("add_dll_directory() called for pyopenms_dlls ✓")
+    else:
+        warn("Could not verify add_dll_directory(pyopenms_dlls_dir)")
+
+# Test 11.4: Verify .pyd files are NOT in pyopenms_dlls (would break imports)
+if os.path.exists('hook-pyopenms.py'):
+    with open('hook-pyopenms.py', 'r') as f:
+        hook = f.read()
+    
+    # Check that .pyd files go to pyopenms/, not pyopenms_dlls/
+    pyd_to_dlls = re.search(r"\.pyd.*pyopenms_dlls", hook)
+    
+    if pyd_to_dlls:
+        all_passed = False
+        fail("CRITICAL: .pyd files go to pyopenms_dlls/ - breaks imports!")
+    else:
+        ok(".pyd files go to pyopenms/ (not pyopenms_dlls/) ✓")
+
+# =============================================================================
 # FINAL SUMMARY
 # =============================================================================
 header("FINAL SUMMARY")
