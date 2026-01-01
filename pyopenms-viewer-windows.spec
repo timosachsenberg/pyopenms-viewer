@@ -76,6 +76,25 @@ hiddenimports += [
     'pyopenms.plotting',
 ]
 
+# Add explicit hidden imports for pyopenms_viewer package
+# This ensures all submodules are bundled even if not directly imported at top level
+hiddenimports += [
+    'pyopenms_viewer',
+    'pyopenms_viewer.app',
+    'pyopenms_viewer.cli',
+    'pyopenms_viewer.core',
+    'pyopenms_viewer.core.state',
+    'pyopenms_viewer.core.events',
+    'pyopenms_viewer.core.config',
+    'pyopenms_viewer.core.data_manager',
+    'pyopenms_viewer.loaders',
+    'pyopenms_viewer.panels',
+    'pyopenms_viewer.annotation',
+    'pyopenms_viewer.rendering',
+    'pyopenms_viewer.utils',
+    'pyopenms_viewer.components',
+]
+
 print(f"[SPEC] Starting Analysis with {len(binaries)} binaries, {len(datas)} datas", flush=True)
 
 
