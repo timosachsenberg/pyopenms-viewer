@@ -18,6 +18,10 @@ on:
         required: false
         default: ''
 
+# Permissions required for creating releases and pushing artifacts
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -34,6 +38,8 @@ jobs:
         os: [windows-latest, ubuntu-latest, macos-15]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for proper git operations
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
