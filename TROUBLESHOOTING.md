@@ -22,3 +22,5 @@
 - If native file dialogs do not appear, ensure pywebview is bundled and working.
 - For browser fallback, run with `--browser` instead of `--native`.
 - If you encounter issues, please open an issue on GitHub with your OS and error details.
+- For browser fallback, run with `--browser` instead of `--native`.
+- If you encounter issues, please open an issue on GitHub with your OS and error details.

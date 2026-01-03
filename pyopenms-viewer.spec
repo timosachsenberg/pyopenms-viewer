@@ -24,6 +24,13 @@ hiddenimports += tmp_ret[2]
 # Add explicit hidden imports for pyopenms extension modules
 hiddenimports += [
     'pyopenms._pyopenms_1',
+    'pyopenms._pyopenms_2',
+    'pyopenms._pyopenms_3',
+    'pyopenms._pyopenms_4',
+    'pyopenms._pyopenms_5',
+    'pyopenms._pyopenms_6',
+    'pyopenms._pyopenms_7',
+    'pyopenms._pyopenms_8',
     'pyopenms.version',
 ]
 
@@ -36,7 +43,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=['.'],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=['pyi_rth_pyopenms.py'],
     excludes=[],
     noarchive=False,
     optimize=0,

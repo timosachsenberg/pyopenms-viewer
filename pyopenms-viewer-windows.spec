@@ -39,13 +39,48 @@ if sys.platform == 'win32':
     except Exception as e:
         print(f"[SPEC] ERROR: Failed to configure pyopenms paths: {e}", flush=True)
 
+# Get the directory containing this spec file (project root)
+spec_dir = os.path.dirname(os.path.abspath(SPEC))
+
 datas = []
 binaries = []
 hiddenimports = []
 
 # DO NOT use collect_all('pyopenms') here - it will try to import pyopenms
 # which fails on Windows due to DLL issues during build.
-# Instead, let hook-pyopenms.py do all the collection WITHOUT importing.
+# Instead, manually collect pyopenms files here AND in hook-pyopenms.py.
+
+# CRITICAL: Manually collect pyopenms binaries WITHOUT importing the module
+# This ensures DLLs are collected even if PyInstaller's binary analysis fails
+if sys.platform == 'win32':
+    try:
+        from PyInstaller.utils.hooks import get_package_paths
+        pkg_base, pkg_dir = get_package_paths('pyopenms')
+        
+        print(f"[SPEC] Manually collecting pyopenms binaries from {pkg_dir}", flush=True)
+        
+        for root, dirs, files in os.walk(pkg_dir):
+            for file in files:
+                src = os.path.join(root, file)
+                rel_path = os.path.relpath(root, pkg_dir)
+                dest_dir = os.path.join('pyopenms', rel_path) if rel_path != '.' else 'pyopenms'
+                
+                if file.endswith('.pyd'):
+                    # Python extension modules go to pyopenms/
+                    binaries.append((src, dest_dir))
+                    print(f"[SPEC] Collected .pyd: {file} -> {dest_dir}/", flush=True)
+                elif file.endswith('.dll'):
+                    # DLLs go to pyopenms_dlls/ to avoid Qt6 conflicts
+                    binaries.append((src, 'pyopenms_dlls'))
+                    print(f"[SPEC] Collected .dll: {file} -> pyopenms_dlls/", flush=True)
+                elif file.endswith('.py'):
+                    # Python source files
+                    datas.append((src, dest_dir))
+                    
+        print(f"[SPEC] Total binaries collected: {len(binaries)}", flush=True)
+        
+    except Exception as e:
+        print(f"[SPEC] WARNING: Could not collect pyopenms: {e}", flush=True)
 
 # Collect plotly resources (safe to import)
 tmp_ret = collect_all('plotly')
@@ -68,9 +103,62 @@ hiddenimports += [
     'pyopenms._pyopenms_3',
     'pyopenms._pyopenms_4',
     'pyopenms._pyopenms_5',
+    'pyopenms._pyopenms_6',
+    'pyopenms._pyopenms_7',
+    'pyopenms._pyopenms_8',
     'pyopenms.version',
     'pyopenms.Constants',
     'pyopenms.plotting',
+]
+
+# Add explicit hidden imports for pyopenms_viewer package
+# This ensures all submodules are bundled even if not directly imported at top level
+hiddenimports += [
+    'pyopenms_viewer',
+    'pyopenms_viewer.app',
+    'pyopenms_viewer.cli',
+    # Core modules
+    'pyopenms_viewer.core',
+    'pyopenms_viewer.core.state',
+    'pyopenms_viewer.core.events',
+    'pyopenms_viewer.core.config',
+    'pyopenms_viewer.core.data_manager',
+    # Loaders - ALL submodules
+    'pyopenms_viewer.loaders',
+    'pyopenms_viewer.loaders.mzml_loader',
+    'pyopenms_viewer.loaders.feature_loader',
+    'pyopenms_viewer.loaders.id_loader',
+    'pyopenms_viewer.loaders.chromatogram_loader',
+    'pyopenms_viewer.loaders.ion_mobility_loader',
+    'pyopenms_viewer.loaders.spectrum_extractor',
+    # Panels - ALL submodules
+    'pyopenms_viewer.panels',
+    'pyopenms_viewer.panels.base_panel',
+    'pyopenms_viewer.panels.spectrum_panel',
+    'pyopenms_viewer.panels.chromatogram_panel',
+    'pyopenms_viewer.panels.peak_map_panel',
+    'pyopenms_viewer.panels.tic_panel',
+    'pyopenms_viewer.panels.spectra_table_panel',
+    'pyopenms_viewer.panels.features_table_panel',
+    'pyopenms_viewer.panels.im_peak_map_panel',
+    'pyopenms_viewer.panels.faims_panel',
+    # Annotation - ALL submodules
+    'pyopenms_viewer.annotation',
+    'pyopenms_viewer.annotation.spectrum_annotator',
+    'pyopenms_viewer.annotation.theoretical_spectrum',
+    'pyopenms_viewer.annotation.tick_formatter',
+    # Rendering - ALL submodules
+    'pyopenms_viewer.rendering',
+    'pyopenms_viewer.rendering.peak_map_renderer',
+    'pyopenms_viewer.rendering.axis_renderer',
+    'pyopenms_viewer.rendering.minimap_renderer',
+    'pyopenms_viewer.rendering.overlay_renderer',
+    # Components - ALL submodules
+    'pyopenms_viewer.components',
+    'pyopenms_viewer.components.local_file_picker',
+    # Utils - ALL submodules
+    'pyopenms_viewer.utils',
+    'pyopenms_viewer.utils.coordinate_transform',
 ]
 
 print(f"[SPEC] Starting Analysis with {len(binaries)} binaries, {len(datas)} datas", flush=True)
@@ -78,14 +166,22 @@ print(f"[SPEC] Starting Analysis with {len(binaries)} binaries, {len(datas)} dat
 
 a = Analysis(
     ['pyopenms_viewer/__main__.py'],
-    pathex=[],
+    pathex=[spec_dir],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=['.', 'pre_safe_import_module'],  # Include both standard hooks and pre-safe-import hooks
     hooksconfig={},
     runtime_hooks=['pyi_rth_pyopenms.py'],  # Re-enable runtime hook with updated logic
-    excludes=[],
+    excludes=[
+        # Exclude Qt6 WebEngine components - they are huge (~100MB+) and not needed for this app
+        # This also prevents extraction failures with Qt6WebEngineCore.dll
+        'PyQt6.QtWebEngine',
+        'PyQt6.QtWebEngineCore',
+        'PyQt6.QtWebEngineWidgets',
+        'PyQt6.QtWebChannel',
+        'PyQt6.QtPositioning',
+    ],
     noarchive=False,
     optimize=0,
 )

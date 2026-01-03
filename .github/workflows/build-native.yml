@@ -18,6 +18,10 @@ on:
         required: false
         default: ''
 
+# Permissions required for creating releases and pushing artifacts
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -34,6 +38,8 @@ jobs:
         os: [windows-latest, ubuntu-latest, macos-15]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for proper git operations
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -45,7 +51,8 @@ jobs:
           pip install -e ".[native]"
       - name: Build native app (Windows)
         if: runner.os == 'Windows'
-        run: >-
+        run: |
+          # Use the Windows-specific spec that avoids importing pyopenms during analysis
           pyinstaller --noconfirm pyopenms-viewer-windows.spec
       - name: Build native app (macOS)
         if: runner.os == 'macOS' && (github.event_name != 'workflow_dispatch' || github.event.inputs.smoke != 'windows')
@@ -102,11 +109,19 @@ jobs:
       - name: Package macOS app
         if: runner.os == 'macOS'
         run: |
+          # macOS packaging: build an app bundle and zip it for release
+          python -m PyInstaller --noconfirm --onedir --windowed --name pyopenms-viewer \
+            --collect-all plotly --additional-hooks-dir=. \
+            pyopenms_viewer/__main__.py
+          ls -lh dist/
           ditto -c -k --sequesterRsrc --keepParent dist/pyopenms-viewer.app dist/pyopenms-viewer-macos.zip
       - name: Build native app (Linux)
         if: runner.os == 'Linux' && (github.event_name != 'workflow_dispatch' || github.event.inputs.smoke != 'windows')
         run: |
-          python -m PyInstaller --noconfirm pyopenms-viewer-linux.spec
+          # Linux: produce a single-file executable
+          python -m PyInstaller --noconfirm --onefile --windowed --name pyopenms-viewer \
+            --collect-all plotly --additional-hooks-dir=. \
+            pyopenms_viewer/__main__.py
           mv dist/pyopenms-viewer dist/pyopenms-viewer-linux
       - name: Archive build artifacts
         uses: actions/upload-artifact@v4
