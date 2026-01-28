@@ -178,19 +178,22 @@ class MzMLLoader:
             intensities = np.empty(total_peaks, dtype=np.float32)
             cvs = np.empty(total_peaks, dtype=np.float32) if self.state.has_faims else None
 
-            # TIC computation
+            # TIC computation (MS1 only)
             tic_rts = []
             tic_intensities = []
             faims_tic_data = {cv: {"rt": [], "int": []} for cv in self.state.faims_cvs} if self.state.has_faims else {}
+
+            # Spectrum stats cache - avoids duplicate get_peaks() in extract_spectrum_data()
+            spectrum_stats = []
 
             if progress_callback:
                 progress_callback("Extracting peaks...", 0.1)
 
             idx = 0
-            ms1_count = 0
-            total_ms1 = sum(1 for spec in self.state.exp if spec.getMSLevel() == 1)
+            total_spectra = len(self.state.exp)
 
             # Determine TIC source: MS1 TIC or fallback to MS2+ BPC
+            total_ms1 = sum(1 for spec in self.state.exp if spec.getMSLevel() == 1)
             if total_ms1 > 0:
                 tic_ms_level = 1
                 self.state.tic_source = "MS1 TIC"
@@ -199,40 +202,51 @@ class MzMLLoader:
                 tic_ms_level = min(lv for lv in ms_levels if lv > 1) if ms_levels else 2
                 self.state.tic_source = f"MS{tic_ms_level} BPC"
 
-            total_tic_spectra = sum(1 for spec in self.state.exp if spec.getMSLevel() == tic_ms_level)
-
-            for spec in self.state.exp:
-                if spec.getMSLevel() != tic_ms_level:
-                    if tic_ms_level == 1 or spec.getMSLevel() != 1:
-                        continue
-
-                ms1_count += 1
-                if progress_callback and ms1_count % 100 == 0:
-                    progress = 0.1 + 0.6 * (ms1_count / max(total_tic_spectra, 1))
-                    progress_callback(f"Extracting peaks... {ms1_count:,}/{total_tic_spectra:,}", progress)
+            # Single pass through ALL spectra - extract peaks once, cache stats
+            for spec_idx, spec in enumerate(self.state.exp):
+                if progress_callback and spec_idx % 100 == 0:
+                    progress = 0.1 + 0.6 * (spec_idx / max(total_spectra, 1))
+                    progress_callback(f"Extracting peaks... {spec_idx:,}/{total_spectra:,}", progress)
 
                 rt = spec.getRT()
+                ms_level = spec.getMSLevel()
                 mz_array, int_array = spec.get_peaks()
                 n = len(mz_array)
 
                 cv = get_cv_from_spectrum(spec) if self.state.has_faims else None
 
+                # Compute and cache spectrum stats (used by extract_spectrum_data)
                 if n > 0:
-                    # Only add to peak map DataFrame if MS1
-                    if spec.getMSLevel() == 1:
-                        rts[idx : idx + n] = rt
-                        mzs[idx : idx + n] = mz_array
-                        intensities[idx : idx + n] = int_array
-                        if self.state.has_faims and cv is not None:
-                            cvs[idx : idx + n] = cv
-                        idx += n
+                    tic_value = float(np.sum(int_array))
+                    bpi_value = float(np.max(int_array))
+                    mz_min_value = float(mz_array.min())
+                    mz_max_value = float(mz_array.max())
+                else:
+                    tic_value = 0.0
+                    bpi_value = 0.0
+                    mz_min_value = 0.0
+                    mz_max_value = 0.0
 
-                    # TIC/BPC calculation
-                    if tic_ms_level == 1:
-                        tic_value = float(np.sum(int_array))
-                    else:
-                        tic_value = float(np.max(int_array))
+                spectrum_stats.append(
+                    {
+                        "tic": tic_value,
+                        "bpi": bpi_value,
+                        "mz_min": mz_min_value,
+                        "mz_max": mz_max_value,
+                        "cv": cv,
+                    }
+                )
 
+                # Only add MS1 peaks to peak map DataFrame
+                if ms_level == 1 and n > 0:
+                    rts[idx : idx + n] = rt
+                    mzs[idx : idx + n] = mz_array
+                    intensities[idx : idx + n] = int_array
+                    if self.state.has_faims and cv is not None:
+                        cvs[idx : idx + n] = cv
+                    idx += n
+
+                    # TIC for TIC plot (MS1 only)
                     tic_rts.append(rt)
                     tic_intensities.append(tic_value)
 
@@ -240,6 +254,10 @@ class MzMLLoader:
                     if self.state.has_faims and cv is not None:
                         faims_tic_data[cv]["rt"].append(rt)
                         faims_tic_data[cv]["int"].append(tic_value)
+                elif ms_level == tic_ms_level and tic_ms_level > 1:
+                    # Fallback: use MS2+ for TIC/BPC if no MS1 spectra
+                    tic_rts.append(rt)
+                    tic_intensities.append(bpi_value)  # BPC for MS2+
 
             # Trim arrays
             rts = rts[:idx]
@@ -285,10 +303,10 @@ class MzMLLoader:
             if progress_callback:
                 progress_callback("Extracting spectrum metadata...", 0.8)
 
-            # Extract spectrum metadata
+            # Extract spectrum metadata (using cached stats to avoid duplicate get_peaks() calls)
             from pyopenms_viewer.loaders.spectrum_extractor import extract_spectrum_data
 
-            self.state.spectrum_data = extract_spectrum_data(self.state)
+            self.state.spectrum_data = extract_spectrum_data(self.state, spectrum_stats)
 
             if progress_callback:
                 progress_callback("Creating DataFrame...", 0.85)

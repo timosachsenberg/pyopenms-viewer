@@ -1,14 +1,14 @@
 """Spectrum metadata extraction from mzML experiments."""
 
-from typing import Any
-
-import numpy as np
+from typing import Any, Optional
 
 from pyopenms_viewer.core.state import ViewerState
-from pyopenms_viewer.loaders.mzml_loader import get_cv_from_spectrum
 
 
-def extract_spectrum_data(state: ViewerState) -> list[dict[str, Any]]:
+def extract_spectrum_data(
+    state: ViewerState,
+    spectrum_stats: Optional[list[dict[str, Any]]] = None,
+) -> list[dict[str, Any]]:
     """Extract spectrum metadata for the unified spectrum table.
 
     Includes fields for ID info (sequence, score) which are populated
@@ -16,12 +16,20 @@ def extract_spectrum_data(state: ViewerState) -> list[dict[str, Any]]:
 
     Args:
         state: ViewerState with exp (MSExperiment) already loaded
+        spectrum_stats: Optional pre-computed stats from mzml_loader (tic, bpi, mz_min, mz_max, cv).
+                       If provided, avoids redundant get_peaks() calls.
 
     Returns:
         List of spectrum metadata dictionaries
     """
     if state.exp is None:
         return []
+
+    # Import here to avoid circular dependency (only needed if stats not provided)
+    if spectrum_stats is None:
+        import numpy as np
+
+        from pyopenms_viewer.loaders.mzml_loader import get_cv_from_spectrum
 
     data = []
     for idx in range(len(state.exp)):
@@ -30,14 +38,26 @@ def extract_spectrum_data(state: ViewerState) -> list[dict[str, Any]]:
         ms_level = spec.getMSLevel()
         n_peaks = len(spec)
 
-        # Get peaks for TIC and BPI calculation
-        mz_array, int_array = spec.get_peaks()
-        tic = float(np.sum(int_array)) if len(int_array) > 0 else 0
-        bpi = float(np.max(int_array)) if len(int_array) > 0 else 0
+        # Use pre-computed stats if available, otherwise compute (fallback)
+        if spectrum_stats is not None:
+            stats = spectrum_stats[idx]
+            tic = stats["tic"]
+            bpi = stats["bpi"]
+            mz_min = stats["mz_min"]
+            mz_max = stats["mz_max"]
+            cv = stats["cv"]
+        else:
+            # Fallback: compute stats (slower, requires get_peaks())
+            import numpy as np
 
-        # Get m/z range
-        mz_min = float(mz_array.min()) if len(mz_array) > 0 else 0
-        mz_max = float(mz_array.max()) if len(mz_array) > 0 else 0
+            from pyopenms_viewer.loaders.mzml_loader import get_cv_from_spectrum
+
+            mz_array, int_array = spec.get_peaks()
+            tic = float(np.sum(int_array)) if len(int_array) > 0 else 0
+            bpi = float(np.max(int_array)) if len(int_array) > 0 else 0
+            mz_min = float(mz_array.min()) if len(mz_array) > 0 else 0
+            mz_max = float(mz_array.max()) if len(mz_array) > 0 else 0
+            cv = get_cv_from_spectrum(spec)
 
         # Get precursor info for MS2+
         precursor_mz = "-"
@@ -48,9 +68,6 @@ def extract_spectrum_data(state: ViewerState) -> list[dict[str, Any]]:
                 precursor_mz = round(precursors[0].getMZ(), 4)
                 charge = precursors[0].getCharge()
                 precursor_charge = charge if charge > 0 else "-"
-
-        # Get FAIMS CV if available (stored as float, None if not available)
-        cv = get_cv_from_spectrum(spec)
 
         data.append(
             {
