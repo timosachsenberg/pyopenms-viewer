@@ -10,23 +10,13 @@ import io
 import datashader as ds
 import datashader.transfer_functions as tf
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from pyopenms_viewer.annotation.tick_formatter import calculate_nice_ticks, format_tick_label
 from pyopenms_viewer.core.config import COLORMAPS, get_colormap_background
 from pyopenms_viewer.core.state import ViewerState
+from pyopenms_viewer.rendering.fonts import get_font
 from pyopenms_viewer.rendering.overlay_renderer import OverlayRenderer
-
-
-def _get_font(size: int = 11):
-    """Get a font for rendering, with fallbacks."""
-    try:
-        return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
-    except OSError:
-        try:
-            return ImageFont.truetype("/usr/share/fonts/TTF/DejaVuSans.ttf", size)
-        except OSError:
-            return ImageFont.load_default()
 
 
 class PeakMapRenderer:
@@ -95,10 +85,9 @@ class PeakMapRenderer:
             Base64-encoded PNG string, or empty string if no data
         """
         # Get view bounds
-        view_rt_min = state.view_rt_min if state.view_rt_min is not None else state.rt_min
-        view_rt_max = state.view_rt_max if state.view_rt_max is not None else state.rt_max
-        view_mz_min = state.view_mz_min if state.view_mz_min is not None else state.mz_min
-        view_mz_max = state.view_mz_max if state.view_mz_max is not None else state.mz_max
+        bounds = state.get_view_bounds()
+        view_rt_min, view_rt_max = bounds.rt_min, bounds.rt_max
+        view_mz_min, view_mz_max = bounds.mz_min, bounds.mz_max
 
         # Get peaks in view - two paths for performance:
         #
@@ -219,8 +208,8 @@ class PeakMapRenderer:
             Modified canvas with axes drawn
         """
         draw = ImageDraw.Draw(canvas)
-        font = _get_font(11)
-        title_font = _get_font(12)
+        font = get_font(11)
+        title_font = get_font(12)
 
         axis_color = (136, 136, 136, 255)
         tick_color = (136, 136, 136, 255)
@@ -362,10 +351,9 @@ class PeakMapRenderer:
 
         cv_df = state.faims_data[cv]
 
-        view_rt_min = state.view_rt_min if state.view_rt_min is not None else state.rt_min
-        view_rt_max = state.view_rt_max if state.view_rt_max is not None else state.rt_max
-        view_mz_min = state.view_mz_min if state.view_mz_min is not None else state.mz_min
-        view_mz_max = state.view_mz_max if state.view_mz_max is not None else state.mz_max
+        bounds = state.get_view_bounds()
+        view_rt_min, view_rt_max = bounds.rt_min, bounds.rt_max
+        view_mz_min, view_mz_max = bounds.mz_min, bounds.mz_max
 
         mask = (
             (cv_df["rt"] >= view_rt_min)
@@ -442,10 +430,9 @@ class IMPeakMapRenderer:
         Returns:
             Base64-encoded PNG string
         """
-        view_mz_min = state.view_mz_min if state.view_mz_min is not None else state.mz_min
-        view_mz_max = state.view_mz_max if state.view_mz_max is not None else state.mz_max
-        view_im_min = state.view_im_min if state.view_im_min is not None else state.im_min
-        view_im_max = state.view_im_max if state.view_im_max is not None else state.im_max
+        bounds = state.get_view_bounds()
+        view_mz_min, view_mz_max = bounds.mz_min, bounds.mz_max
+        view_im_min, view_im_max = bounds.im_min, bounds.im_max
 
         # Get IM peaks in view - two paths for performance:
         #
@@ -530,8 +517,8 @@ class IMPeakMapRenderer:
             Modified canvas with axes drawn
         """
         draw = ImageDraw.Draw(canvas)
-        font = _get_font(11)
-        title_font = _get_font(12)
+        font = get_font(11)
+        title_font = get_font(12)
 
         axis_color = (136, 136, 136, 255)
         tick_color = (136, 136, 136, 255)
@@ -669,13 +656,7 @@ class IMPeakMapRenderer:
             draw.line(points, fill=(0, 200, 255, 255), width=2)
 
         # Draw axis label at top
-        try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10)
-        except OSError:
-            try:
-                font = ImageFont.truetype("/usr/share/fonts/TTF/DejaVuSans.ttf", 10)
-            except OSError:
-                font = ImageFont.load_default()
+        font = get_font(10)
 
         label = "Mobilogram"
         bbox = draw.textbbox((0, 0), label, font=font)

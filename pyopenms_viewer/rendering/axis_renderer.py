@@ -1,20 +1,10 @@
 """Axis rendering for peak maps and ion mobility plots."""
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from pyopenms_viewer.annotation.tick_formatter import calculate_nice_ticks, format_tick_label
 from pyopenms_viewer.core.state import ViewerState
-
-
-def get_font(size: int = 12):
-    """Get a font, falling back to default if system fonts not available."""
-    try:
-        return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
-    except OSError:
-        try:
-            return ImageFont.truetype("/usr/share/fonts/TTF/DejaVuSans.ttf", size)
-        except OSError:
-            return ImageFont.load_default()
+from pyopenms_viewer.rendering.fonts import get_font
 
 
 class AxisRenderer:
@@ -67,19 +57,20 @@ class AxisRenderer:
         )
 
         # Get view bounds
-        view_rt_min = state.view_rt_min if state.view_rt_min is not None else state.rt_min
-        view_rt_max = state.view_rt_max if state.view_rt_max is not None else state.rt_max
-        view_mz_min = state.view_mz_min if state.view_mz_min is not None else state.mz_min
-        view_mz_max = state.view_mz_max if state.view_mz_max is not None else state.mz_max
+        bounds = state.get_view_bounds()
 
         if state.swap_axes:
             # m/z on x-axis, RT on y-axis
-            self._draw_x_axis_mz(draw, font, title_font, state, view_mz_min, view_mz_max, plot_left, plot_bottom)
-            self._draw_y_axis_rt(draw, font, title_font, state, view_rt_min, view_rt_max, plot_left, plot_top, canvas)
+            self._draw_x_axis_mz(draw, font, title_font, state, bounds.mz_min, bounds.mz_max, plot_left, plot_bottom)
+            self._draw_y_axis_rt(
+                draw, font, title_font, state, bounds.rt_min, bounds.rt_max, plot_left, plot_top, canvas
+            )
         else:
             # RT on x-axis, m/z on y-axis
-            self._draw_x_axis_rt(draw, font, title_font, state, view_rt_min, view_rt_max, plot_left, plot_bottom)
-            self._draw_y_axis_mz(draw, font, title_font, state, view_mz_min, view_mz_max, plot_left, plot_top, canvas)
+            self._draw_x_axis_rt(draw, font, title_font, state, bounds.rt_min, bounds.rt_max, plot_left, plot_bottom)
+            self._draw_y_axis_mz(
+                draw, font, title_font, state, bounds.mz_min, bounds.mz_max, plot_left, plot_top, canvas
+            )
 
         return canvas
 
@@ -249,18 +240,15 @@ class IMAxisRenderer:
             width=1,
         )
 
-        view_mz_min = state.view_mz_min if state.view_mz_min is not None else state.mz_min
-        view_mz_max = state.view_mz_max if state.view_mz_max is not None else state.mz_max
-        view_im_min = state.view_im_min if state.view_im_min is not None else state.im_min
-        view_im_max = state.view_im_max if state.view_im_max is not None else state.im_max
+        bounds = state.get_view_bounds()
 
         # X-axis: m/z
-        mz_ticks = calculate_nice_ticks(view_mz_min, view_mz_max, num_ticks=8)
-        mz_range = view_mz_max - view_mz_min
+        mz_ticks = calculate_nice_ticks(bounds.mz_min, bounds.mz_max, num_ticks=8)
+        mz_range = bounds.mz_max - bounds.mz_min
 
         for tick_val in mz_ticks:
-            if view_mz_min <= tick_val <= view_mz_max:
-                x_frac = (tick_val - view_mz_min) / mz_range
+            if bounds.mz_min <= tick_val <= bounds.mz_max:
+                x_frac = (tick_val - bounds.mz_min) / mz_range
                 x = plot_left + int(x_frac * self.plot_width)
                 draw.line([(x, plot_bottom), (x, plot_bottom + 5)], fill=state.tick_color, width=1)
                 label = format_tick_label(tick_val, mz_range)
@@ -280,12 +268,12 @@ class IMAxisRenderer:
         )
 
         # Y-axis: IM
-        im_ticks = calculate_nice_ticks(view_im_min, view_im_max, num_ticks=8)
-        im_range = view_im_max - view_im_min
+        im_ticks = calculate_nice_ticks(bounds.im_min, bounds.im_max, num_ticks=8)
+        im_range = bounds.im_max - bounds.im_min
 
         for tick_val in im_ticks:
-            if view_im_min <= tick_val <= view_im_max:
-                y_frac = 1 - (tick_val - view_im_min) / im_range
+            if bounds.im_min <= tick_val <= bounds.im_max:
+                y_frac = 1 - (tick_val - bounds.im_min) / im_range
                 y = plot_top + int(y_frac * self.plot_height)
                 draw.line([(plot_left - 5, y), (plot_left, y)], fill=state.tick_color, width=1)
                 label = format_tick_label(tick_val, im_range)

@@ -1,19 +1,9 @@
 """Overlay rendering for features, IDs, and markers on peak maps."""
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from pyopenms_viewer.core.state import ViewerState
-
-
-def get_font(size: int = 12):
-    """Get a font, falling back to default if system fonts not available."""
-    try:
-        return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
-    except OSError:
-        try:
-            return ImageFont.truetype("/usr/share/fonts/TTF/DejaVuSans.ttf", size)
-        except OSError:
-            return ImageFont.load_default()
+from pyopenms_viewer.rendering.fonts import get_font
 
 
 class OverlayRenderer:
@@ -50,25 +40,22 @@ class OverlayRenderer:
         Returns:
             Tuple of (x, y) pixel coordinates within the plot area
         """
-        view_rt_min = state.view_rt_min if state.view_rt_min is not None else state.rt_min
-        view_rt_max = state.view_rt_max if state.view_rt_max is not None else state.rt_max
-        view_mz_min = state.view_mz_min if state.view_mz_min is not None else state.mz_min
-        view_mz_max = state.view_mz_max if state.view_mz_max is not None else state.mz_max
+        bounds = state.get_view_bounds()
 
-        rt_range = view_rt_max - view_rt_min
-        mz_range = view_mz_max - view_mz_min
+        rt_range = bounds.rt_max - bounds.rt_min
+        mz_range = bounds.mz_max - bounds.mz_min
 
         if rt_range == 0 or mz_range == 0:
             return (0, 0)
 
         if state.swap_axes:
             # m/z on x-axis, RT on y-axis (inverted)
-            x = int((mz - view_mz_min) / mz_range * self.plot_width)
-            y = int((1 - (rt - view_rt_min) / rt_range) * self.plot_height)
+            x = int((mz - bounds.mz_min) / mz_range * self.plot_width)
+            y = int((1 - (rt - bounds.rt_min) / rt_range) * self.plot_height)
         else:
             # RT on x-axis, m/z on y-axis (inverted)
-            x = int((rt - view_rt_min) / rt_range * self.plot_width)
-            y = int((1 - (mz - view_mz_min) / mz_range) * self.plot_height)
+            x = int((rt - bounds.rt_min) / rt_range * self.plot_width)
+            y = int((1 - (mz - bounds.mz_min) / mz_range) * self.plot_height)
 
         return (x, y)
 
@@ -76,12 +63,10 @@ class OverlayRenderer:
         self, state: ViewerState, rt_min: float, rt_max: float, mz_min: float, mz_max: float
     ) -> bool:
         """Check if a feature bounding box intersects the current view."""
-        view_rt_min = state.view_rt_min if state.view_rt_min is not None else state.rt_min
-        view_rt_max = state.view_rt_max if state.view_rt_max is not None else state.rt_max
-        view_mz_min = state.view_mz_min if state.view_mz_min is not None else state.mz_min
-        view_mz_max = state.view_mz_max if state.view_mz_max is not None else state.mz_max
-
-        return rt_max >= view_rt_min and rt_min <= view_rt_max and mz_max >= view_mz_min and mz_min <= view_mz_max
+        bounds = state.get_view_bounds()
+        return (
+            rt_max >= bounds.rt_min and rt_min <= bounds.rt_max and mz_max >= bounds.mz_min and mz_min <= bounds.mz_max
+        )
 
     def draw_features(self, img: Image.Image, state: ViewerState) -> Image.Image:
         """Draw feature overlays (centroids, bounding boxes, convex hulls).
@@ -241,12 +226,8 @@ class OverlayRenderer:
             mz = pep_id.getMZ()
 
             # Check if in view
-            view_rt_min = state.view_rt_min if state.view_rt_min is not None else state.rt_min
-            view_rt_max = state.view_rt_max if state.view_rt_max is not None else state.rt_max
-            view_mz_min = state.view_mz_min if state.view_mz_min is not None else state.mz_min
-            view_mz_max = state.view_mz_max if state.view_mz_max is not None else state.mz_max
-
-            if not (view_rt_min <= rt <= view_rt_max and view_mz_min <= mz <= view_mz_max):
+            bounds = state.get_view_bounds()
+            if not (bounds.rt_min <= rt <= bounds.rt_max and bounds.mz_min <= mz <= bounds.mz_max):
                 continue
 
             ids_drawn += 1
@@ -307,13 +288,10 @@ class OverlayRenderer:
                 precursor_mz = precursors[0].getMZ()
 
         # Check if in view
-        view_rt_min = state.view_rt_min if state.view_rt_min is not None else state.rt_min
-        view_rt_max = state.view_rt_max if state.view_rt_max is not None else state.rt_max
-        view_mz_min = state.view_mz_min if state.view_mz_min is not None else state.mz_min
-        view_mz_max = state.view_mz_max if state.view_mz_max is not None else state.mz_max
+        bounds = state.get_view_bounds()
 
-        rt_in_view = view_rt_min <= rt <= view_rt_max
-        mz_in_view = precursor_mz is not None and view_mz_min <= precursor_mz <= view_mz_max
+        rt_in_view = bounds.rt_min <= rt <= bounds.rt_max
+        mz_in_view = precursor_mz is not None and bounds.mz_min <= precursor_mz <= bounds.mz_max
 
         if not rt_in_view and not mz_in_view:
             return img
@@ -328,7 +306,7 @@ class OverlayRenderer:
 
         font = get_font(10)
 
-        x, y = self.data_to_plot_pixel(state, rt, view_mz_min if not state.swap_axes else view_mz_max)
+        x, y = self.data_to_plot_pixel(state, rt, bounds.mz_min if not state.swap_axes else bounds.mz_max)
 
         # Draw RT line
         if rt_in_view:
