@@ -140,6 +140,9 @@ class MzMLLoader:
         """Process parsed mzML data to extract peaks and create DataFrame.
 
         This is the second phase of loading - processes spectra with progress updates.
+        Uses a SINGLE PASS through all spectra to avoid redundant copies (pyOpenMS
+        creates new Python objects for each exp[i] access).
+
         All data is written directly to self.state.
 
         Args:
@@ -153,69 +156,75 @@ class MzMLLoader:
             if self.state.exp is None:
                 return False
 
-            total_peaks = sum(len(spec) for spec in self.state.exp)
+            if progress_callback:
+                progress_callback("Processing spectra...", 0.05)
 
-            if total_peaks == 0:
+            total_spectra = len(self.state.exp)
+            if total_spectra == 0:
                 return False
 
-            # First pass: detect FAIMS CVs
-            if progress_callback:
-                progress_callback("Detecting FAIMS CVs...", 0.05)
+            # =========================================================
+            # SINGLE PASS: Extract everything we need in one iteration
+            # This avoids multiple iterations that create redundant copies
+            # =========================================================
 
+            # Pre-allocate with estimated size (will trim later)
+            # Estimate: average 1000 peaks per MS1 spectrum, ~20% are MS1
+            estimated_ms1_peaks = total_spectra * 200
+            rts = np.empty(estimated_ms1_peaks, dtype=np.float32)
+            mzs = np.empty(estimated_ms1_peaks, dtype=np.float32)
+            intensities = np.empty(estimated_ms1_peaks, dtype=np.float32)
+            cvs_arr = np.empty(estimated_ms1_peaks, dtype=np.float32)
+
+            # Ion mobility data arrays
+            im_mz_list = []
+            im_im_list = []
+            im_int_list = []
+            detected_im_name = None
+            im_array_names = [
+                "ion mobility",
+                "inverse reduced ion mobility",
+                "drift time",
+                "ion mobility drift time",
+            ]
+
+            # Counters and collectors
+            peak_idx = 0
+            total_peaks = 0
+            ms1_count = 0
+            max_peaks_per_spectrum = 0
             cv_set = set()
-            for spec in self.state.exp:
-                if spec.getMSLevel() == 1:
-                    cv = get_cv_from_spectrum(spec)
-                    if cv is not None:
-                        cv_set.add(cv)
+            ms_levels = set()
 
-            self.state.has_faims = len(cv_set) > 1
-            self.state.faims_cvs = sorted(cv_set) if self.state.has_faims else []
-
-            # Data structures for peak extraction
-            rts = np.empty(total_peaks, dtype=np.float32)
-            mzs = np.empty(total_peaks, dtype=np.float32)
-            intensities = np.empty(total_peaks, dtype=np.float32)
-            cvs = np.empty(total_peaks, dtype=np.float32) if self.state.has_faims else None
-
-            # TIC computation (MS1 only)
+            # TIC data
             tic_rts = []
             tic_intensities = []
-            faims_tic_data = {cv: {"rt": [], "int": []} for cv in self.state.faims_cvs} if self.state.has_faims else {}
 
-            # Spectrum stats cache - avoids duplicate get_peaks() in extract_spectrum_data()
+            # Spectrum stats cache (for extract_spectrum_data)
             spectrum_stats = []
 
-            if progress_callback:
-                progress_callback("Extracting peaks...", 0.1)
+            # FAIMS per-CV TIC (will populate after we know all CVs)
+            cv_tic_data = {}  # cv -> {"rt": [], "int": []}
 
-            idx = 0
-            total_spectra = len(self.state.exp)
-
-            # Determine TIC source: MS1 TIC or fallback to MS2+ BPC
-            total_ms1 = sum(1 for spec in self.state.exp if spec.getMSLevel() == 1)
-            if total_ms1 > 0:
-                tic_ms_level = 1
-                self.state.tic_source = "MS1 TIC"
-            else:
-                ms_levels = {spec.getMSLevel() for spec in self.state.exp}
-                tic_ms_level = min(lv for lv in ms_levels if lv > 1) if ms_levels else 2
-                self.state.tic_source = f"MS{tic_ms_level} BPC"
-
-            # Single pass through ALL spectra - extract peaks once, cache stats
-            for spec_idx, spec in enumerate(self.state.exp):
+            for spec_idx in range(total_spectra):
                 if progress_callback and spec_idx % 100 == 0:
-                    progress = 0.1 + 0.6 * (spec_idx / max(total_spectra, 1))
-                    progress_callback(f"Extracting peaks... {spec_idx:,}/{total_spectra:,}", progress)
+                    progress = 0.05 + 0.65 * (spec_idx / total_spectra)
+                    progress_callback(f"Processing spectra... {spec_idx:,}/{total_spectra:,}", progress)
 
+                spec = self.state.exp[spec_idx]
                 rt = spec.getRT()
                 ms_level = spec.getMSLevel()
+                ms_levels.add(ms_level)
+
+                # Get peaks ONCE per spectrum
                 mz_array, int_array = spec.get_peaks()
                 n = len(mz_array)
+                total_peaks += n
 
-                cv = get_cv_from_spectrum(spec) if self.state.has_faims else None
+                if n > max_peaks_per_spectrum:
+                    max_peaks_per_spectrum = n
 
-                # Compute and cache spectrum stats (used by extract_spectrum_data)
+                # Compute spectrum stats
                 if n > 0:
                     tic_value = float(np.sum(int_array))
                     bpi_value = float(np.max(int_array))
@@ -227,6 +236,14 @@ class MzMLLoader:
                     mz_min_value = 0.0
                     mz_max_value = 0.0
 
+                # Get FAIMS CV (for MS1)
+                cv = None
+                if ms_level == 1:
+                    cv = get_cv_from_spectrum(spec)
+                    if cv is not None:
+                        cv_set.add(cv)
+
+                # Cache stats for extract_spectrum_data
                 spectrum_stats.append(
                     {
                         "tic": tic_value,
@@ -237,73 +254,131 @@ class MzMLLoader:
                     }
                 )
 
-                # Only add MS1 peaks to peak map DataFrame
-                if ms_level == 1 and n > 0:
-                    rts[idx : idx + n] = rt
-                    mzs[idx : idx + n] = mz_array
-                    intensities[idx : idx + n] = int_array
-                    if self.state.has_faims and cv is not None:
-                        cvs[idx : idx + n] = cv
-                    idx += n
+                # Process MS1 spectra
+                if ms_level == 1:
+                    ms1_count += 1
 
-                    # TIC for TIC plot (MS1 only)
-                    tic_rts.append(rt)
-                    tic_intensities.append(tic_value)
+                    if n > 0:
+                        # Grow arrays if needed
+                        if peak_idx + n > len(rts):
+                            new_size = max(len(rts) * 2, peak_idx + n)
+                            rts = np.resize(rts, new_size)
+                            mzs = np.resize(mzs, new_size)
+                            intensities = np.resize(intensities, new_size)
+                            cvs_arr = np.resize(cvs_arr, new_size)
 
-                    # Per-CV TIC
-                    if self.state.has_faims and cv is not None:
-                        faims_tic_data[cv]["rt"].append(rt)
-                        faims_tic_data[cv]["int"].append(tic_value)
-                elif ms_level == tic_ms_level and tic_ms_level > 1:
-                    # Fallback: use MS2+ for TIC/BPC if no MS1 spectra
-                    tic_rts.append(rt)
-                    tic_intensities.append(bpi_value)  # BPC for MS2+
+                        # Store peak data
+                        rts[peak_idx : peak_idx + n] = rt
+                        mzs[peak_idx : peak_idx + n] = mz_array
+                        intensities[peak_idx : peak_idx + n] = int_array
+                        if cv is not None:
+                            cvs_arr[peak_idx : peak_idx + n] = cv
+                        else:
+                            cvs_arr[peak_idx : peak_idx + n] = np.nan
+                        peak_idx += n
 
-            # Trim arrays
-            rts = rts[:idx]
-            mzs = mzs[:idx]
-            intensities = intensities[:idx]
-            if self.state.has_faims:
-                cvs = cvs[:idx]
+                        # TIC data
+                        tic_rts.append(rt)
+                        tic_intensities.append(tic_value)
+
+                        # Per-CV TIC (store for now, organize later)
+                        if cv is not None:
+                            if cv not in cv_tic_data:
+                                cv_tic_data[cv] = {"rt": [], "int": []}
+                            cv_tic_data[cv]["rt"].append(rt)
+                            cv_tic_data[cv]["int"].append(tic_value)
+
+                    # Ion mobility detection and extraction (MS1 only)
+                    if detected_im_name is None:
+                        # Try to detect IM array name
+                        float_arrays = spec.getFloatDataArrays()
+                        for fda in float_arrays:
+                            name = fda.getName().lower() if fda.getName() else ""
+                            for im_name in im_array_names:
+                                if im_name in name:
+                                    detected_im_name = fda.getName()
+                                    break
+                            if detected_im_name:
+                                break
+
+                    # Extract IM data if available
+                    if detected_im_name is not None and n > 0:
+                        float_arrays = spec.getFloatDataArrays()
+                        for fda in float_arrays:
+                            if fda.getName() == detected_im_name:
+                                im_array = np.array(fda.get_data(), dtype=np.float32)
+                                if len(im_array) == n:
+                                    # No .copy() needed - get_peaks() returns fresh arrays
+                                    im_mz_list.append(mz_array)
+                                    im_im_list.append(im_array)
+                                    im_int_list.append(int_array)
+                                break
+
+            # =========================================================
+            # Post-processing
+            # =========================================================
+
+            if total_peaks == 0:
+                return False
 
             if progress_callback:
-                progress_callback("Building TIC...", 0.75)
+                progress_callback("Building data structures...", 0.72)
+
+            # Trim peak arrays
+            rts = rts[:peak_idx]
+            mzs = mzs[:peak_idx]
+            intensities = intensities[:peak_idx]
+            cvs_arr = cvs_arr[:peak_idx]
+
+            # Determine FAIMS status
+            self.state.has_faims = len(cv_set) > 1
+            self.state.faims_cvs = sorted(cv_set) if self.state.has_faims else []
+
+            # Determine TIC source
+            if ms1_count > 0:
+                self.state.tic_source = "MS1 TIC"
+            else:
+                tic_ms_level = min(lv for lv in ms_levels if lv > 1) if ms_levels else 2
+                self.state.tic_source = f"MS{tic_ms_level} BPC"
 
             # Store TIC data (sorted by RT)
-            tic_rt_arr = np.array(tic_rts, dtype=np.float32)
-            tic_int_arr = np.array(tic_intensities, dtype=np.float32)
-            sort_idx = np.argsort(tic_rt_arr)
-            self.state.tic_rt = tic_rt_arr[sort_idx]
-            self.state.tic_intensity = tic_int_arr[sort_idx]
+            if tic_rts:
+                tic_rt_arr = np.array(tic_rts, dtype=np.float32)
+                tic_int_arr = np.array(tic_intensities, dtype=np.float32)
+                sort_idx = np.argsort(tic_rt_arr)
+                self.state.tic_rt = tic_rt_arr[sort_idx]
+                self.state.tic_intensity = tic_int_arr[sort_idx]
+            else:
+                self.state.tic_rt = np.array([], dtype=np.float32)
+                self.state.tic_intensity = np.array([], dtype=np.float32)
 
             # Store per-CV TIC data
             self.state.faims_tic = {}
             for cv in self.state.faims_cvs:
-                cv_rt = np.array(faims_tic_data[cv]["rt"], dtype=np.float32)
-                cv_int = np.array(faims_tic_data[cv]["int"], dtype=np.float32)
-                cv_sort_idx = np.argsort(cv_rt)
-                self.state.faims_tic[cv] = (cv_rt[cv_sort_idx], cv_int[cv_sort_idx])
+                if cv in cv_tic_data:
+                    cv_rt = np.array(cv_tic_data[cv]["rt"], dtype=np.float32)
+                    cv_int = np.array(cv_tic_data[cv]["int"], dtype=np.float32)
+                    cv_sort_idx = np.argsort(cv_rt)
+                    self.state.faims_tic[cv] = (cv_rt[cv_sort_idx], cv_int[cv_sort_idx])
 
             if progress_callback:
-                progress_callback("Extracting chromatograms...", 0.77)
+                progress_callback("Extracting chromatograms...", 0.75)
 
-            # Extract chromatograms
+            # Extract chromatograms (iterates over chromatograms, not spectra)
             from pyopenms_viewer.loaders.chromatogram_loader import extract_chromatograms
 
             extract_chromatograms(self.state)
 
             if progress_callback:
-                progress_callback("Extracting ion mobility data...", 0.78)
+                progress_callback("Processing ion mobility data...", 0.77)
 
-            # Extract ion mobility data
-            from pyopenms_viewer.loaders.ion_mobility_loader import extract_ion_mobility_data
-
-            extract_ion_mobility_data(self.state)
+            # Process ion mobility data (already extracted in main loop)
+            self._process_ion_mobility_data(im_mz_list, im_im_list, im_int_list, detected_im_name, filepath)
 
             if progress_callback:
                 progress_callback("Extracting spectrum metadata...", 0.8)
 
-            # Extract spectrum metadata (using cached stats to avoid duplicate get_peaks() calls)
+            # Extract spectrum metadata (using cached stats)
             from pyopenms_viewer.loaders.spectrum_extractor import extract_spectrum_data
 
             self.state.spectrum_data = extract_spectrum_data(self.state, spectrum_stats)
@@ -314,45 +389,40 @@ class MzMLLoader:
             # Create main DataFrame
             df = pd.DataFrame({"rt": rts, "mz": mzs, "intensity": intensities})
             if self.state.has_faims:
-                df["cv"] = cvs
+                df["cv"] = cvs_arr
             df["log_intensity"] = np.log1p(df["intensity"])
 
             if progress_callback:
                 progress_callback("Registering with data manager...", 0.88)
 
-            # Register DataFrame with data manager (handles both in-memory and out-of-core)
+            # Register DataFrame with data manager
             if self.state.data_manager is not None:
-                # data_manager.register_peaks returns DataFrame for in-memory, None for out-of-core
                 self.state.df = self.state.data_manager.register_peaks(df, filepath)
-
-                # Get bounds from data manager (works for both modes)
                 bounds = self.state.data_manager.get_bounds()
                 self.state.rt_min = bounds["rt_min"]
                 self.state.rt_max = bounds["rt_max"]
                 self.state.mz_min = bounds["mz_min"]
                 self.state.mz_max = bounds["mz_max"]
             else:
-                # Legacy: no data manager, keep DataFrame in state
                 self.state.df = df
 
             if progress_callback:
                 progress_callback("Finalizing...", 0.95)
 
-            # Create per-CV DataFrames for FAIMS view (only in-memory mode)
+            # Create per-CV DataFrames for FAIMS view
             self.state.faims_data = {}
             if self.state.has_faims and self.state.df is not None:
                 for cv in self.state.faims_cvs:
                     cv_df = self.state.df[self.state.df["cv"] == cv].copy()
                     self.state.faims_data[cv] = cv_df
 
-            # Set bounds from peak data (fallback if data_manager not used)
+            # Set bounds (fallback if data_manager not used)
             if self.state.data_manager is None and self.state.df is not None and len(self.state.df) > 0:
                 self.state.rt_min = float(self.state.df["rt"].min())
                 self.state.rt_max = float(self.state.df["rt"].max())
                 self.state.mz_min = float(self.state.df["mz"].min())
                 self.state.mz_max = float(self.state.df["mz"].max())
             elif self.state.data_manager is None:
-                # Fall back to IM data or spectrum metadata
                 if self.state.has_ion_mobility and self.state.im_df is not None and len(self.state.im_df) > 0:
                     self.state.mz_min = float(self.state.im_df["mz"].min())
                     self.state.mz_max = float(self.state.im_df["mz"].max())
@@ -376,8 +446,7 @@ class MzMLLoader:
             self.state.view_mz_min = self.state.mz_min
             self.state.view_mz_max = self.state.mz_max
 
-            # Auto-enable downsampling if any spectrum has more than 10000 peaks
-            max_peaks_per_spectrum = max((len(spec) for spec in self.state.exp), default=0)
+            # Auto-enable downsampling for high-res spectra
             if max_peaks_per_spectrum > 10000:
                 self.state.peakmap_downsampling = True
 
@@ -390,6 +459,88 @@ class MzMLLoader:
             print(f"Error processing mzML: {e}")
             traceback.print_exc()
             return False
+
+    def _process_ion_mobility_data(
+        self,
+        im_mz_list: list,
+        im_im_list: list,
+        im_int_list: list,
+        detected_im_name: Optional[str],
+        filepath: str,
+    ) -> None:
+        """Process pre-extracted ion mobility data.
+
+        Args:
+            im_mz_list: List of m/z arrays from IM spectra
+            im_im_list: List of IM value arrays
+            im_int_list: List of intensity arrays
+            detected_im_name: Name of the detected IM array, or None
+            filepath: Path to the mzML file (for data manager registration)
+        """
+        if not im_mz_list or detected_im_name is None:
+            self.state.has_ion_mobility = False
+            self.state.im_df = None
+            return
+
+        # Determine IM type and unit
+        name_lower = detected_im_name.lower()
+        if "inverse" in name_lower or "1/k0" in name_lower:
+            self.state.im_type = "inverse_k0"
+            self.state.im_unit = "Vs/cm²"
+        elif "drift" in name_lower:
+            self.state.im_type = "drift_time"
+            self.state.im_unit = "ms"
+        else:
+            self.state.im_type = "ion_mobility"
+            self.state.im_unit = ""
+
+        # Concatenate all arrays
+        mz_concat = np.concatenate(im_mz_list)
+        im_concat = np.concatenate(im_im_list)
+        int_concat = np.concatenate(im_int_list)
+
+        # Create DataFrame
+        im_df = pd.DataFrame(
+            {
+                "mz": mz_concat,
+                "im": im_concat,
+                "intensity": int_concat,
+            }
+        )
+        im_df["log_intensity"] = np.log1p(im_df["intensity"])
+
+        # Register with data manager
+        if self.state.data_manager is not None and filepath:
+            self.state.im_df = self.state.data_manager.register_im_peaks(im_df, filepath)
+            im_bounds = self.state.data_manager.get_im_bounds()
+            self.state.im_min = im_bounds["im_min"]
+            self.state.im_max = im_bounds["im_max"]
+            im_mz_min = im_bounds["mz_min"]
+            im_mz_max = im_bounds["mz_max"]
+        else:
+            self.state.im_df = im_df
+            self.state.im_min = float(im_df["im"].min())
+            self.state.im_max = float(im_df["im"].max())
+            im_mz_min = float(im_df["mz"].min())
+            im_mz_max = float(im_df["mz"].max())
+
+        # Ensure valid IM range
+        if self.state.im_max <= self.state.im_min:
+            self.state.im_max = self.state.im_min + 1.0
+        self.state.view_im_min = self.state.im_min
+        self.state.view_im_max = self.state.im_max
+
+        # Update mz bounds from IM data if needed
+        if self.state.mz_min == 0 or im_mz_min < self.state.mz_min:
+            self.state.mz_min = im_mz_min
+        if self.state.mz_max == 0 or im_mz_max > self.state.mz_max:
+            self.state.mz_max = im_mz_max
+        if self.state.view_mz_min is None or self.state.view_mz_min < self.state.mz_min:
+            self.state.view_mz_min = self.state.mz_min
+        if self.state.view_mz_max is None or self.state.view_mz_max > self.state.mz_max:
+            self.state.view_mz_max = self.state.mz_max
+
+        self.state.has_ion_mobility = True
 
     def load_sync(self, filepath: str) -> bool:
         """Load mzML file synchronously (for background thread).
