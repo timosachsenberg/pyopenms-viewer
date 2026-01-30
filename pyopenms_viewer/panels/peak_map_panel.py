@@ -22,9 +22,14 @@ class PeakMapPanel(BasePanel):
     Features:
     - Datashader-rendered peak map (RT vs m/z)
     - Feature/ID overlay options
-    - Mouse drag-to-zoom, shift+drag to measure, ctrl+drag to pan
-    - Mouse wheel zoom
-    - Minimap navigation
+    - Mouse interactions:
+      * Drag: Select rectangular region to zoom in
+      * Alt+Drag: Pan the view when zoomed in
+      * Shift+Drag: Measure distance (ΔRT and Δm/z) between two points
+      * Scroll wheel: Zoom in/out at cursor position
+      * Double-click: Reset to full view
+    - Minimap navigation: Click to center view
+    - Feature/ID overlay options
     - 3D view toggle
     """
 
@@ -175,12 +180,10 @@ class PeakMapPanel(BasePanel):
             )
 
             # Sequences checkbox
-            self.id_seq_cb = (
-                ui.checkbox("Sequences", value=False, on_change=self._toggle_id_sequences)
-                .props("dense")
-                .classes("text-orange-300")
-            )
-            ui.tooltip("Show peptide sequences on 2D peakmap")
+            with ui.checkbox("Sequences", value=False, on_change=self._toggle_id_sequences).props("dense").classes(
+                "text-orange-300"
+            ) as self.id_seq_cb:
+                ui.tooltip("Show peptide sequences on 2D peakmap")
 
             ui.label("|").classes("text-gray-600 mx-2")
             ui.label("Colormap:").classes("text-xs text-gray-400")
@@ -202,22 +205,18 @@ class PeakMapPanel(BasePanel):
             ui.label("|").classes("text-gray-600 mx-2")
 
             # Swap axes checkbox
-            self.swap_axes_cb = (
-                ui.checkbox("Swap Axes", value=self.state.swap_axes, on_change=self._toggle_swap_axes)
-                .props("dense")
-                .classes("text-purple-400")
-            )
-            ui.tooltip(
-                "When checked: m/z on x-axis, RT on y-axis (default). When unchecked: RT on x-axis, m/z on y-axis."
-            )
+            with ui.checkbox("Swap Axes", value=self.state.swap_axes, on_change=self._toggle_swap_axes).props(
+                "dense"
+            ).classes("text-purple-400") as self.swap_axes_cb:
+                ui.tooltip(
+                    "When checked: m/z on x-axis, RT on y-axis (default). When unchecked: RT on x-axis, m/z on y-axis."
+                )
 
             # Spectrum marker checkbox
-            self.spectrum_marker_cb = (
-                ui.checkbox("Marker", value=self.state.show_spectrum_marker, on_change=self._toggle_spectrum_marker)
-                .props("dense")
-                .classes("text-cyan-400")
-            )
-            ui.tooltip("Show/hide the spectrum position marker (crosshair) on the 2D peakmap.")
+            with ui.checkbox(
+                "Marker", value=self.state.show_spectrum_marker, on_change=self._toggle_spectrum_marker
+            ).props("dense").classes("text-cyan-400") as self.spectrum_marker_cb:
+                ui.tooltip("Show/hide the spectrum position marker (crosshair) on the 2D peakmap.")
 
             ui.element("div").classes("flex-grow")
 
@@ -338,8 +337,8 @@ class PeakMapPanel(BasePanel):
     def _build_help_text(self):
         """Build the help text."""
         ui.label(
-            "Scroll to zoom, drag to select region, Shift+drag to measure, double-click to reset, "
-            "click centroid to select feature"
+            "Scroll to zoom, drag to select region, Alt+drag to pan, Shift+drag to measure, "
+            "double-click to reset, click centroid to select feature"
         ).classes("text-xs text-gray-500 mb-1")
 
     def _build_peak_map_area(self):
@@ -830,12 +829,12 @@ class PeakMapPanel(BasePanel):
                 or self.state.view_mz_min > self.state.mz_min + 0.01
                 or self.state.view_mz_max < self.state.mz_max - 0.01
             )
-            self._drag_state["panning"] = e.ctrl and is_zoomed_in
+            self._drag_state["panning"] = e.alt and is_zoomed_in
             self._drag_state["start_x"] = e.image_x
             self._drag_state["start_y"] = e.image_y
 
             # Store initial view bounds for panning
-            if e.ctrl and is_zoomed_in:
+            if e.alt and is_zoomed_in:
                 self._drag_state["pan_rt_min"] = self.state.view_rt_min
                 self._drag_state["pan_rt_max"] = self.state.view_rt_max
                 self._drag_state["pan_mz_min"] = self.state.view_mz_min
@@ -1176,7 +1175,7 @@ class PeakMapPanel(BasePanel):
     def _on_keyup(self, e):
         """Handle key release during panning."""
         key = e.args.get("key", "")
-        if key == "Control" and self._drag_state["panning"]:
+        if key == "Alt" and self._drag_state["panning"]:
             self._drag_state["dragging"] = False
             self._drag_state["measuring"] = False
             self._drag_state["panning"] = False

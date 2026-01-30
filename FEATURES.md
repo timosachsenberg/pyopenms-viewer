@@ -37,7 +37,7 @@ Seven colormap options: **Jet**, **Hot**, **Fire**, **Viridis**, **Plasma**, **I
 |--------|-------------|
 | **Scroll wheel** | Zoom in/out at cursor position |
 | **Drag** | Select rectangular region to zoom |
-| **Ctrl+Drag** | Pan when zoomed in |
+| **Alt+Drag** | Pan the view when zoomed in |
 | **Shift+Drag** | Measure ΔRT and Δm/z between points |
 | **Double-click** | Reset to full view |
 | **Minimap click** | Center view at clicked location |
