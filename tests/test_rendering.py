@@ -1,9 +1,145 @@
 """Tests for the pyopenms_viewer rendering module."""
 
+import pandas as pd
 import pytest
 
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.utils.coordinate_transform import CoordinateTransform
+from pyopenms_viewer.utils.gpu import (
+    is_cudf_available,
+    is_dask_available,
+    is_dask_enabled,
+    is_gpu_enabled,
+    set_dask_enabled,
+    set_gpu_enabled,
+    to_accelerated_dataframe,
+    to_gpu_dataframe,
+)
+
+
+class TestAcceleration:
+    """Tests for GPU and Dask acceleration support."""
+
+    def test_cudf_availability_check(self):
+        """Test that cudf availability check works without crashing."""
+        # Should return a boolean, not crash
+        result = is_cudf_available()
+        assert isinstance(result, bool)
+
+    def test_dask_availability_check(self):
+        """Test that dask availability check works without crashing."""
+        result = is_dask_available()
+        assert isinstance(result, bool)
+
+    def test_gpu_enabled_check(self):
+        """Test that GPU enabled check works."""
+        result = is_gpu_enabled()
+        assert isinstance(result, bool)
+        # GPU enabled should be False if cudf is not available
+        if not is_cudf_available():
+            assert result is False
+
+    def test_dask_enabled_check(self):
+        """Test that Dask enabled check works."""
+        result = is_dask_enabled()
+        assert isinstance(result, bool)
+        # Dask enabled should be False if not available
+        if not is_dask_available():
+            assert result is False
+
+    def test_set_gpu_enabled(self):
+        """Test that GPU can be enabled/disabled."""
+        original = is_gpu_enabled()
+
+        # Disable GPU
+        set_gpu_enabled(False)
+        assert is_gpu_enabled() is False
+
+        # Enable GPU (will still be False if cudf not available)
+        set_gpu_enabled(True)
+        if is_cudf_available():
+            assert is_gpu_enabled() is True
+        else:
+            assert is_gpu_enabled() is False
+
+        # Restore original state
+        set_gpu_enabled(original or True)
+
+    def test_set_dask_enabled(self):
+        """Test that Dask can be enabled/disabled."""
+        original = is_dask_enabled()
+
+        # Disable Dask
+        set_dask_enabled(False)
+        assert is_dask_enabled() is False
+
+        # Enable Dask
+        set_dask_enabled(True)
+        if is_dask_available():
+            assert is_dask_enabled() is True
+        else:
+            assert is_dask_enabled() is False
+
+        # Restore original state
+        set_dask_enabled(original or True)
+
+    def test_to_gpu_dataframe_fallback(self):
+        """Test that to_gpu_dataframe returns pandas when GPU not available."""
+        df = pd.DataFrame({"rt": [1.0, 2.0, 3.0], "mz": [100.0, 200.0, 300.0], "intensity": [1e6, 2e6, 3e6]})
+
+        result = to_gpu_dataframe(df)
+
+        # Without cudf, should return the same pandas DataFrame
+        if not is_gpu_enabled():
+            assert result is df  # Same object, no copy
+            assert isinstance(result, pd.DataFrame)
+
+    def test_to_accelerated_dataframe_small(self):
+        """Test that small DataFrames stay as pandas."""
+        set_dask_enabled(True)
+        set_gpu_enabled(False)
+
+        df = pd.DataFrame({"a": [1, 2, 3]})
+        result = to_accelerated_dataframe(df)
+
+        # Small DataFrame should stay pandas (< 100k rows)
+        if not is_gpu_enabled():
+            assert result is df
+
+    def test_to_accelerated_dataframe_large(self):
+        """Test that large DataFrames use Dask when available."""
+        set_dask_enabled(True)
+        set_gpu_enabled(False)
+
+        # Create large DataFrame
+        df = pd.DataFrame({"a": range(200000), "b": range(200000)})
+        result = to_accelerated_dataframe(df)
+
+        # Should be Dask if available
+        if is_dask_enabled():
+            import dask.dataframe as dd
+
+            assert isinstance(result, dd.DataFrame)
+        else:
+            assert result is df
+
+        # Restore
+        set_dask_enabled(True)
+
+    def test_to_accelerated_dataframe_disabled(self):
+        """Test that acceleration respects disabled state."""
+        set_dask_enabled(False)
+        set_gpu_enabled(False)
+
+        df = pd.DataFrame({"a": range(200000)})
+        result = to_accelerated_dataframe(df)
+
+        # Should return same object when all disabled
+        assert result is df
+
+        # Re-enable for other tests
+        set_dask_enabled(True)
+        set_gpu_enabled(True)
 
 
 class TestCoordinateTransform:
