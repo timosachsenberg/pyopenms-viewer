@@ -6,12 +6,17 @@ using the modular panel architecture.
 
 import os
 import tempfile
+import asyncio
 from pathlib import Path
 
 from nicegui import app, run, ui
 
 from pyopenms_viewer.components.local_file_picker import LocalFilePicker
 from pyopenms_viewer.core.state import ViewerState
+
+# Map of filepath -> asyncio.Event used to signal completion of an in-progress load
+_LOAD_EVENTS: dict[str, asyncio.Event] = {}
+_LOAD_EVENTS_LOCK = asyncio.Lock()
 from pyopenms_viewer.loaders import FeatureLoader, IDLoader, MzMLLoader
 from pyopenms_viewer.panels import (
     ChromatogramPanel,
@@ -36,10 +41,39 @@ async def create_ui():
 
     cli_options = get_cli_options()
 
-    # Create shared state (single instance for all components)
-    state = ViewerState()
+    # Helper: safe UI interactions that may fail if client disconnected
+    def safe_notify(message: str, type: str = "info") -> None:
+        try:
+            ui.notify(message, type=type)
+        except Exception:
+            # Client may have disconnected; ignore UI errors
+            pass
 
-    # Initialize data manager with CLI options
+    def safe_set_label(label, text: str) -> None:
+        try:
+            if label:
+                label.set_text(text)
+        except Exception:
+            pass
+
+    # Create or reuse a shared state (persist across page reloads to avoid
+    # reloading large mzML/DFs when the frontend reconnects or times out).
+    # We keep a module-level singleton so repeated NiceGUI page handler
+    # invocations reuse the already-loaded data.
+    global _GLOBAL_VIEWER_STATE
+
+    try:
+        _GLOBAL_VIEWER_STATE
+    except NameError:
+        _GLOBAL_VIEWER_STATE = None
+
+    if _GLOBAL_VIEWER_STATE is None:
+        state = ViewerState()
+        _GLOBAL_VIEWER_STATE = state
+    else:
+        state = _GLOBAL_VIEWER_STATE
+
+    # Initialize or reconfigure data manager with CLI options (safe to call repeatedly)
     cache_dir = Path(cli_options["cache_dir"]) if cli_options["cache_dir"] else None
     state.init_data_manager(out_of_core=cli_options["out_of_core"], cache_dir=cache_dir)
 
@@ -89,14 +123,36 @@ async def create_ui():
             # Setup helper functions for file loading
 
             async def load_mzml(filepath: str, original_name: str = None):
-                """Load mzML file in background."""
+                """Load mzML file in background.
+
+                If the same file is already loaded into `state` we skip reloading
+                to avoid expensive repeated parses when the UI reconnects or
+                times out. If another coroutine is already loading the same
+                filepath, wait for it to complete and then reuse the loaded
+                data.
+                """
                 loader = MzMLLoader(state)
                 name = original_name or Path(filepath).name
-                ui.notify(f"Loading {name}...", type="info")
-                success = await run.io_bound(loader.load_sync, filepath)
-                if success:
+
+                # Normalize paths for comparison
+                try:
+                    new_fp = str(Path(filepath).resolve())
+                except Exception:
+                    new_fp = str(filepath)
+
+                cur_fp = None
+                if state.current_file:
+                    try:
+                        cur_fp = str(Path(state.current_file).resolve())
+                    except Exception:
+                        cur_fp = str(state.current_file)
+
+                # If same file already loaded and data present, skip reload
+                if cur_fp is not None and cur_fp == new_fp and (state.df is not None or state.data_manager is not None):
+                    # Re-emit events and update labels without reparsing file
                     if state.peptide_ids:
                         from pyopenms_viewer.loaders import link_ids_to_spectra
+
                         link_ids_to_spectra(state)
                         n_linked = sum(1 for s in state.spectrum_data if s.get("id_idx") is not None)
                         if id_info_label:
@@ -113,11 +169,102 @@ async def create_ui():
                         info_text += f" | FAIMS: {len(state.faims_cvs)} CVs"
                     if state.out_of_core:
                         info_text += " | Out-of-core"
-                    if info_label:
-                        info_label.set_text(info_text)
-                    ui.notify(f"Loaded {peak_count:,} peaks from {name}", type="positive")
+                    safe_set_label(info_label, info_text)
+                    safe_notify(f"File already loaded: {name}", type="info")
+                    return
+
+                # Atomically check/create an Event for this filepath so only one
+                # coroutine will perform the actual load. Others will wait on the
+                # same event.
+                async with _LOAD_EVENTS_LOCK:
+                    existing_event = _LOAD_EVENTS.get(new_fp)
+                    if existing_event is None:
+                        event = asyncio.Event()
+                        _LOAD_EVENTS[new_fp] = event
+                        is_loader = True
+                    else:
+                        event = existing_event
+                        is_loader = False
+
+                if not is_loader:
+                    # Wait for the original loader to finish
+                    await event.wait()
+                    # After wait, data should be available (or failed). Reuse if available.
+                    if state.current_file and cur_fp == new_fp and (state.df is not None or state.data_manager is not None):
+                        if state.peptide_ids:
+                            from pyopenms_viewer.loaders import link_ids_to_spectra
+
+                            link_ids_to_spectra(state)
+                            n_linked = sum(1 for s in state.spectrum_data if s.get("id_idx") is not None)
+                            safe_set_label(id_info_label, f"IDs: {len(state.peptide_ids):,} ({n_linked} linked)")
+                        state.emit_data_loaded("mzml")
+                        if state.data_manager is not None:
+                            peak_count = state.data_manager.get_peak_count()
+                        elif state.df is not None:
+                            peak_count = len(state.df)
+                        else:
+                            peak_count = 0
+                        info_text = f"Loaded: {name} | Spectra: {len(state.exp):,} | Peaks: {peak_count:,}"
+                        if state.has_faims:
+                            info_text += f" | FAIMS: {len(state.faims_cvs)} CVs"
+                        if state.out_of_core:
+                            info_text += " | Out-of-core"
+                        safe_set_label(info_label, info_text)
+                        safe_notify(f"File already loaded: {name}", type="info")
+                        return
+
+                # Mark file as loading in state to prevent other entrypoints
+                try:
+                    state._loading_files.add(new_fp)
+                except Exception:
+                    pass
+
+                # Progress callback updates shared state.load_progress so the UI
+                # can poll it and avoid pushing messages to disconnected clients.
+                def _progress_cb(message: str, progress: float) -> None:
+                    try:
+                        state.load_progress[new_fp] = (message, float(progress))
+                    except Exception:
+                        pass
+
+                safe_notify(f"Loading {name}...", type="info")
+                try:
+                    success = await run.io_bound(loader.load_sync, filepath, _progress_cb)
+                finally:
+                    # Signal any waiters that loading is finished
+                    ev = _LOAD_EVENTS.pop(new_fp, None)
+                    if ev is not None:
+                        ev.set()
+                    try:
+                        state._loading_files.discard(new_fp)
+                    except Exception:
+                        pass
+                    try:
+                        state.load_progress.pop(new_fp, None)
+                    except Exception:
+                        pass
+                if success:
+                    if state.peptide_ids:
+                        from pyopenms_viewer.loaders import link_ids_to_spectra
+                        link_ids_to_spectra(state)
+                        n_linked = sum(1 for s in state.spectrum_data if s.get("id_idx") is not None)
+                        safe_set_label(id_info_label, f"IDs: {len(state.peptide_ids):,} ({n_linked} linked)")
+                    state.emit_data_loaded("mzml")
+                    if state.data_manager is not None:
+                        peak_count = state.data_manager.get_peak_count()
+                    elif state.df is not None:
+                        peak_count = len(state.df)
+                    else:
+                        peak_count = 0
+                    info_text = f"Loaded: {name} | Spectra: {len(state.exp):,} | Peaks: {peak_count:,}"
+                    if state.has_faims:
+                        info_text += f" | FAIMS: {len(state.faims_cvs)} CVs"
+                    if state.out_of_core:
+                        info_text += " | Out-of-core"
+                    safe_set_label(info_label, info_text)
+                    safe_notify(f"Loaded {peak_count:,} peaks from {name}", type="positive")
                 else:
-                    ui.notify(f"Failed to load {name}", type="negative")
+                    safe_notify(f"Failed to load {name}", type="negative")
 
             # Store loaders in state for use by panels
             state._load_mzml = load_mzml
@@ -551,6 +698,29 @@ async def create_ui():
             id_info_label = ui.label("").classes("text-xs text-orange-400")
             faims_info_label = ui.label("").classes("text-xs text-purple-400")
             faims_info_label.set_visibility(False)
+            progress_label = ui.label("").classes("text-xs text-gray-400 ml-4")
+
+            # Poll load progress from the shared state without pushing from background threads
+            def _poll_progress():
+                try:
+                    # Prefer current_file progress, otherwise any active load
+                    fp = None
+                    if state.current_file and state.current_file in state.load_progress:
+                        fp = state.current_file
+                    elif state.load_progress:
+                        fp = next(iter(state.load_progress))
+
+                    if fp is None:
+                        text = ""
+                    else:
+                        msg, pr = state.load_progress.get(fp, ("", 0.0))
+                        pct = int(pr * 100)
+                        text = f"{msg} ({pct}%)" if msg else ""
+                    progress_label.set_text(text)
+                except Exception:
+                    pass
+
+            ui.timer(0.5, _poll_progress)
 
             # Store labels in state for updates
             state.info_label = info_label
@@ -775,7 +945,13 @@ async def create_ui():
                 state.emit_data_loaded("ids")
                 ui.notify("Loaded IDs", type="positive")
 
-    await load_cli_files()
+    # Start loading CLI files in background so the page handler returns
+    # immediately and avoids NiceGUI's "Response for / not ready after 3.0 seconds".
+    try:
+        asyncio.create_task(load_cli_files())
+    except Exception:
+        # Fallback to await if background task creation fails
+        await load_cli_files()
 
 
 # Register the page

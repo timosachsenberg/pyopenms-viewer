@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import numpy as np
 import pandas as pd
+import threading
 
 from pyopenms_viewer.core.config import (
     DEFAULT_PANEL_ORDER,
@@ -141,6 +142,13 @@ class ViewerState:
         self.current_file: Optional[str] = None
         self.features_file: Optional[str] = None
         self.id_file: Optional[str] = None
+        # Tracks files currently being loaded to avoid duplicate concurrent loads
+        self._loading_files: set[str] = set()
+        # Thread-safe events for threads waiting on an in-progress load
+        self._loading_events: dict[str, threading.Event] = {}
+        self._loading_events_lock = threading.Lock()
+        # Progress information for background loads: filepath -> (message, progress)
+        self.load_progress: dict[str, tuple[str, float]] = {}
 
         # ========== SELECTION STATE ==========
         self.selected_spectrum_idx: Optional[int] = None
