@@ -184,11 +184,9 @@ class PeakMapPanel(BasePanel):
             )
 
             # Sequences checkbox
-            with (
-                ui.checkbox("Sequences", value=False, on_change=self._toggle_id_sequences)
-                .props("dense")
-                .classes("text-orange-300") as self.id_seq_cb
-            ):
+            with ui.checkbox("Sequences", value=False, on_change=self._toggle_id_sequences).props("dense").classes(
+                "text-orange-300"
+            ) as self.id_seq_cb:
                 ui.tooltip("Show peptide sequences on 2D peakmap")
 
             ui.label("|").classes("text-gray-600 mx-2")
@@ -211,21 +209,17 @@ class PeakMapPanel(BasePanel):
             ui.label("|").classes("text-gray-600 mx-2")
 
             # Swap axes checkbox
-            with (
-                ui.checkbox("Swap Axes", value=self.state.swap_axes, on_change=self._toggle_swap_axes)
-                .props("dense")
-                .classes("text-purple-400") as self.swap_axes_cb
-            ):
+            with ui.checkbox("Swap Axes", value=self.state.swap_axes, on_change=self._toggle_swap_axes).props(
+                "dense"
+            ).classes("text-purple-400") as self.swap_axes_cb:
                 ui.tooltip(
                     "When checked: m/z on x-axis, RT on y-axis (default). When unchecked: RT on x-axis, m/z on y-axis."
                 )
 
             # Spectrum marker checkbox
-            with (
-                ui.checkbox("Marker", value=self.state.show_spectrum_marker, on_change=self._toggle_spectrum_marker)
-                .props("dense")
-                .classes("text-cyan-400") as self.spectrum_marker_cb
-            ):
+            with ui.checkbox(
+                "Marker", value=self.state.show_spectrum_marker, on_change=self._toggle_spectrum_marker
+            ).props("dense").classes("text-cyan-400") as self.spectrum_marker_cb:
                 ui.tooltip("Show/hide the spectrum position marker (crosshair) on the 2D peakmap.")
 
             ui.element("div").classes("flex-grow")

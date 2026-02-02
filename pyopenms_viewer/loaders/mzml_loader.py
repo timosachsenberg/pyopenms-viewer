@@ -17,6 +17,8 @@ from typing import Callable, Optional
 import numpy as np
 import pandas as pd
 from pyopenms import DriftTimeUnit, MSExperiment, MzMLFile
+import os
+import threading
 
 from pyopenms_viewer.core.state import ViewerState
 
@@ -125,14 +127,10 @@ class MzMLLoader:
         """
         try:
             filename = Path(filepath).name
-            print(
-                f"[PID:{os.getpid()} TID:{threading.get_ident()}] Reading {filename} with MzMLFile (this may take a while)..."
-            )
+            print(f"[PID:{os.getpid()} TID:{threading.get_ident()}] Reading {filename} with MzMLFile (this may take a while)...")
             self.state.exp = MSExperiment()
             MzMLFile().load(filepath, self.state.exp)
-            print(
-                f"[PID:{os.getpid()} TID:{threading.get_ident()}] Loaded {len(self.state.exp)} spectra from {filename}"
-            )
+            print(f"[PID:{os.getpid()} TID:{threading.get_ident()}] Loaded {len(self.state.exp)} spectra from {filename}")
             return len(self.state.exp) > 0
         except Exception as e:
             print(f"Error parsing mzML: {e}")
@@ -166,9 +164,7 @@ class MzMLLoader:
                 progress_callback("Processing spectra...", 0.05)
 
             total_spectra = len(self.state.exp)
-            print(
-                f"[PID:{os.getpid()} TID:{threading.get_ident()}] Starting processing of parsed data ({total_spectra} spectra)..."
-            )
+            print(f"[PID:{os.getpid()} TID:{threading.get_ident()}] Starting processing of parsed data ({total_spectra} spectra)...")
             if total_spectra == 0:
                 return False
 
@@ -615,11 +611,7 @@ class MzMLLoader:
             # Wait for the other loader to finish (avoid busy spin; timeout occasionally)
             waited = wait_event.wait(timeout=600)
             # After wait, determine if data is present
-            if (
-                state.current_file
-                and state.current_file == fp
-                and (state.df is not None or state.data_manager is not None)
-            ):
+            if state.current_file and state.current_file == fp and (state.df is not None or state.data_manager is not None):
                 return True
             # If waited and still nothing, fall through to attempt load
 

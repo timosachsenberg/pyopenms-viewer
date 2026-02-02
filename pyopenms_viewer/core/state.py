@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import numpy as np
 import pandas as pd
+import threading
 
 from pyopenms_viewer.core.config import (
     DEFAULT_PANEL_ORDER,

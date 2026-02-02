@@ -7,6 +7,7 @@ using the modular panel architecture.
 import asyncio
 import os
 import tempfile
+import asyncio
 from pathlib import Path
 
 from nicegui import app, run, ui
@@ -190,11 +191,7 @@ async def create_ui():
                     # Wait for the original loader to finish
                     await event.wait()
                     # After wait, data should be available (or failed). Reuse if available.
-                    if (
-                        state.current_file
-                        and cur_fp == new_fp
-                        and (state.df is not None or state.data_manager is not None)
-                    ):
+                    if state.current_file and cur_fp == new_fp and (state.df is not None or state.data_manager is not None):
                         if state.peptide_ids:
                             from pyopenms_viewer.loaders import link_ids_to_spectra
 
@@ -250,7 +247,6 @@ async def create_ui():
                 if success:
                     if state.peptide_ids:
                         from pyopenms_viewer.loaders import link_ids_to_spectra
-
                         link_ids_to_spectra(state)
                         n_linked = sum(1 for s in state.spectrum_data if s.get("id_idx") is not None)
                         safe_set_label(id_info_label, f"IDs: {len(state.peptide_ids):,} ({n_linked} linked)")
