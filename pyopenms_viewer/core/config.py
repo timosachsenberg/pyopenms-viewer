@@ -106,6 +106,11 @@ class DEFAULTS:
     CACHE_DIR = None  # Cache directory (None = temp dir)
     CACHE_COMPRESSION = "snappy"  # Compression: snappy, zstd, gzip, none
 
+    # Performance acceleration settings
+    USE_GPU_IF_AVAILABLE = True  # Use cuDF for GPU-accelerated rendering if available
+    USE_DASK_IF_AVAILABLE = True  # Use Dask for multi-threaded CPU rendering if available
+    DASK_N_PARTITIONS = 4  # Number of Dask partitions (typically set to CPU core count)
+
     # Colors (RGBA tuples)
     CENTROID_COLOR = (0, 255, 100, 255)
     HOVER_COLOR = (255, 200, 0, 255)  # Orange/yellow for hover highlight

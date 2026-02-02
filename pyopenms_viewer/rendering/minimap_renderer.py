@@ -13,6 +13,7 @@ import datashader.transfer_functions as tf
 from PIL import ImageDraw
 
 from pyopenms_viewer.core.config import COLORMAPS, get_colormap_background
+from pyopenms_viewer.utils.gpu import to_accelerated_dataframe
 
 
 class MinimapRenderer:
@@ -55,6 +56,9 @@ class MinimapRenderer:
 
         if minimap_df is None or len(minimap_df) == 0:
             return None
+
+        # Convert to accelerated DataFrame for faster rendering
+        minimap_df = to_accelerated_dataframe(minimap_df)
 
         # Create minimap canvas - swap axes to match main view
         if state.swap_axes:
@@ -211,6 +215,9 @@ class MinimapRenderer:
 
         if cv_df is None or len(cv_df) == 0:
             return None
+
+        # Convert to accelerated DataFrame if available
+        cv_df = to_accelerated_dataframe(cv_df)
 
         # Use smaller dimensions for CV minimaps
         render_width = width or self.width

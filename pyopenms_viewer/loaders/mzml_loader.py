@@ -15,6 +15,8 @@ from typing import Callable, Optional
 import numpy as np
 import pandas as pd
 from pyopenms import DriftTimeUnit, MSExperiment, MzMLFile
+import os
+import threading
 
 from pyopenms_viewer.core.state import ViewerState
 
@@ -123,10 +125,10 @@ class MzMLLoader:
         """
         try:
             filename = Path(filepath).name
-            print(f"Reading {filename} with MzMLFile (this may take a while)...")
+            print(f"[PID:{os.getpid()} TID:{threading.get_ident()}] Reading {filename} with MzMLFile (this may take a while)...")
             self.state.exp = MSExperiment()
             MzMLFile().load(filepath, self.state.exp)
-            print(f"Loaded {len(self.state.exp)} spectra from {filename}")
+            print(f"[PID:{os.getpid()} TID:{threading.get_ident()}] Loaded {len(self.state.exp)} spectra from {filename}")
             return len(self.state.exp) > 0
         except Exception as e:
             print(f"Error parsing mzML: {e}")
@@ -160,6 +162,7 @@ class MzMLLoader:
                 progress_callback("Processing spectra...", 0.05)
 
             total_spectra = len(self.state.exp)
+            print(f"[PID:{os.getpid()} TID:{threading.get_ident()}] Starting processing of parsed data ({total_spectra} spectra)...")
             if total_spectra == 0:
                 return False
 
@@ -408,6 +411,7 @@ class MzMLLoader:
 
             if progress_callback:
                 progress_callback("Finalizing...", 0.95)
+            print(f"[PID:{os.getpid()} TID:{threading.get_ident()}] Finished processing data; creating DataFrame...")
 
             # Create per-CV DataFrames for FAIMS view
             self.state.faims_data = {}
@@ -542,7 +546,7 @@ class MzMLLoader:
 
         self.state.has_ion_mobility = True
 
-    def load_sync(self, filepath: str) -> bool:
+    def load_sync(self, filepath: str, progress_callback: Optional[Callable[[str, float], None]] = None) -> bool:
         """Load mzML file synchronously (for background thread).
 
         Convenience method that calls both parse and process phases.
@@ -553,6 +557,46 @@ class MzMLLoader:
         Returns:
             True if successful
         """
-        if not self.parse(filepath):
-            return False
-        return self.process(filepath)
+        # Normalize filepath
+        try:
+            fp = str(Path(filepath).resolve())
+        except Exception:
+            fp = str(filepath)
+
+        # Use a thread-safe per-state event map so concurrent background
+        # threads wait for a single load instead of starting duplicate parses.
+        state = self.state
+        # First, acquire lock and check/create event
+        with state._loading_events_lock:
+            existing = state._loading_events.get(fp)
+            if existing is not None:
+                # Another thread is loading this file; wait for it to finish
+                wait_event = existing
+                should_load = False
+            else:
+                wait_event = threading.Event()
+                state._loading_events[fp] = wait_event
+                should_load = True
+
+        if not should_load:
+            # Wait for the other loader to finish (avoid busy spin; timeout occasionally)
+            waited = wait_event.wait(timeout=600)
+            # After wait, determine if data is present
+            if state.current_file and state.current_file == fp and (state.df is not None or state.data_manager is not None):
+                return True
+            # If waited and still nothing, fall through to attempt load
+
+        try:
+            # Pass the progress_callback through to `process` so it can update UI via shared state
+            if not self.parse(filepath):
+                return False
+            return self.process(filepath, progress_callback=progress_callback)
+        finally:
+            # Signal and clean up event
+            with state._loading_events_lock:
+                ev = state._loading_events.pop(fp, None)
+                if ev is not None:
+                    try:
+                        ev.set()
+                    except Exception:
+                        pass

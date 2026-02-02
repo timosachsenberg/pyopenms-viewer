@@ -17,6 +17,7 @@ from pyopenms_viewer.core.config import COLORMAPS, get_colormap_background
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.rendering.fonts import get_font
 from pyopenms_viewer.rendering.overlay_renderer import OverlayRenderer
+from pyopenms_viewer.utils.gpu import to_accelerated_dataframe
 
 
 class PeakMapRenderer:
@@ -135,6 +136,10 @@ class PeakMapRenderer:
             if len(view_df) > target_points:
                 sample_rate = len(view_df) // target_points
                 view_df = view_df.iloc[::sample_rate]
+
+        # Convert to accelerated DataFrame (GPU or Dask) for faster rendering.
+        # Datashader automatically uses optimized kernels for cuDF/Dask DataFrames.
+        view_df = to_accelerated_dataframe(view_df)
 
         if state.swap_axes:
             # m/z on x-axis, RT on y-axis
@@ -366,6 +371,9 @@ class PeakMapRenderer:
         if len(view_df) == 0:
             return ""
 
+        # Convert to accelerated DataFrame if available
+        view_df = to_accelerated_dataframe(view_df)
+
         # Smaller dimensions for FAIMS panels
         faims_width = self.plot_width // 2
         faims_height = self.plot_height // 2
@@ -458,6 +466,9 @@ class IMPeakMapRenderer:
 
         if view_df is None or len(view_df) == 0:
             return ""
+
+        # Convert to accelerated DataFrame if available
+        view_df = to_accelerated_dataframe(view_df)
 
         # m/z on x-axis, IM on y-axis
         ds_canvas = ds.Canvas(
