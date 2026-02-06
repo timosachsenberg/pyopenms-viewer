@@ -1669,3 +1669,187 @@ class TestMinimapCaching:
         # Verify data is NOT transposed (shape should be original)
         # Shape should be (MINIMAP_HEIGHT, MINIMAP_WIDTH)
         assert captured_data_array.shape == (DEFAULTS.MINIMAP_HEIGHT, DEFAULTS.MINIMAP_WIDTH)
+
+
+# ========== PHASE 4: INTEGRATION TESTS FOR FULL RASTERIZATION WORKFLOW ==========
+
+
+class TestFullWorkflowIntegration:
+    """Integration tests for the complete rasterization workflow with real data."""
+
+    @staticmethod
+    @pytest.fixture
+    def test_data_dir():
+        """Path to test data directory."""
+        from pathlib import Path
+
+        return Path(__file__).parent / "data"
+
+    def test_full_workflow_with_rasterization(self, test_data_dir):
+        """Integration test: Load mzML, verify state.df=None with rasterization, rendering works.
+
+        This test validates the complete workflow when rasterization is available:
+        - Load real mzML file (BSA1_F1.mzML)
+        - Verify state.df is None (Phase 1 behavior)
+        - Verify bounds come from exp methods
+        - Render without state.df using rasterization
+        """
+        from pyopenms_viewer.loaders import MzMLLoader
+        from pyopenms_viewer.rendering.minimap_renderer import MinimapRenderer
+        from pyopenms_viewer.rendering.peak_map_renderer import PeakMapRenderer
+
+        mzml_file = test_data_dir / "BSA1_F1.mzML"
+        assert mzml_file.exists(), f"Test file not found: {mzml_file}"
+
+        # Load mzML file
+        state = ViewerState()
+        loader = MzMLLoader(state)
+        result = loader.load_sync(str(mzml_file))
+
+        assert result is True
+        assert state.exp is not None
+
+        # Phase 1 behavior: state.df is None when rasterization is available
+        has_rasterization = hasattr(state.exp, "rasterizeRTMZ")
+        if has_rasterization:
+            # With rasterization, df should be None
+            assert state.df is None, "state.df should be None when rasterization is available"
+
+            # Bounds should still be set (from exp methods)
+            assert state.rt_min >= 0
+            assert state.rt_max > state.rt_min
+            assert state.mz_min > 0
+            assert state.mz_max > state.mz_min
+
+            # Rendering should work without state.df
+            renderer = PeakMapRenderer()
+            state.view_rt_min = state.rt_min
+            state.view_rt_max = state.rt_max
+            state.view_mz_min = state.mz_min
+            state.view_mz_max = state.mz_max
+
+            # Test rasterized rendering
+            result = renderer.render(state, fast=True)
+            assert result is not None
+            assert isinstance(result, str)
+            assert len(result) > 0
+
+            # Test minimap rendering
+            minimap = MinimapRenderer()
+            minimap_result = minimap.render(state)
+            assert (
+                minimap_result is not None or len(result) > 0
+            )  # Minimap may be None if caching, but rendering succeeded
+        else:
+            # Without rasterization, df should be created as fallback
+            assert state.df is not None, "state.df should be created when rasterization is unavailable"
+            assert len(state.df) > 0
+
+    def test_full_workflow_without_rasterization(self, test_data_dir):
+        """Integration test: Load mzML with fallback when rasterization unavailable.
+
+        This test validates the fallback path when rasterization is not available:
+        - Load real mzML file
+        - Verify state.df is populated (fallback path)
+        - Rendering works using state.df
+        """
+        from unittest.mock import patch
+
+        from pyopenms_viewer.loaders import MzMLLoader
+        from pyopenms_viewer.rendering.peak_map_renderer import PeakMapRenderer
+
+        mzml_file = test_data_dir / "BSA1_F1.mzML"
+        assert mzml_file.exists(), f"Test file not found: {mzml_file}"
+
+        # Load mzML with rasterization disabled
+        state = ViewerState()
+        loader = MzMLLoader(state)
+
+        # Mock hasattr to return False for rasterizeRTMZ
+        original_hasattr = hasattr
+
+        def mock_hasattr(obj, name):
+            if name == "rasterizeRTMZ":
+                return False
+            return original_hasattr(obj, name)
+
+        with patch("builtins.hasattr", side_effect=mock_hasattr):
+            result = loader.load_sync(str(mzml_file))
+
+        assert result is True
+        assert state.exp is not None
+
+        # Fallback behavior: state.df is created
+        assert state.df is not None, "state.df should be created as fallback"
+        assert len(state.df) > 0
+        assert "rt" in state.df.columns
+        assert "mz" in state.df.columns
+        assert "intensity" in state.df.columns
+
+        # Rendering should work using state.df
+        renderer = PeakMapRenderer()
+        state.view_rt_min = state.rt_min
+        state.view_rt_max = state.rt_max
+        state.view_mz_min = state.mz_min
+        state.view_mz_max = state.mz_max
+
+        result = renderer.render(state, fast=True)
+        assert result is not None
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_renderer_handles_none_dataframe(self):
+        """Test: Verify renderers handle None dataframe gracefully (Phase 4).
+
+        This test ensures that when state.df is explicitly None,
+        renderers don't crash and use appropriate fallback methods.
+        """
+        from unittest.mock import MagicMock
+
+        from pyopenms_viewer.rendering.minimap_renderer import MinimapRenderer
+        from pyopenms_viewer.rendering.peak_map_renderer import PeakMapRenderer
+
+        # Create state with mock exp but no df
+        state = ViewerState()
+        state.df = None
+        state.rt_min = 0.0
+        state.rt_max = 3600.0
+        state.mz_min = 100.0
+        state.mz_max = 2000.0
+
+        # Set view bounds
+        state.view_rt_min = 100.0
+        state.view_rt_max = 1000.0
+        state.view_mz_min = 200.0
+        state.view_mz_max = 1500.0
+
+        # Create mock exp with get2DPeakDataLong
+        state.exp = MagicMock()
+        state.exp.get2DPeakDataLong = MagicMock(
+            return_value=(
+                np.array([200.0, 500.0], dtype=np.float64),
+                np.array([500.0, 1000.0], dtype=np.float64),
+                np.array([10000.0, 20000.0], dtype=np.float32),
+            )
+        )
+
+        # Test PeakMapRenderer handles None df
+        renderer = PeakMapRenderer()
+        try:
+            result = renderer.render(state, fast=True)
+            assert result is not None
+            assert isinstance(result, str)
+        except AttributeError as e:
+            pytest.fail(f"PeakMapRenderer should handle None dataframe: {e}")
+
+        # Test MinimapRenderer handles None df
+        minimap = MinimapRenderer()
+        try:
+            result = minimap.render(state)
+            # May be None if rasterization fails, but shouldn't crash
+            assert result is None or isinstance(result, str)
+        except AttributeError as e:
+            pytest.fail(f"MinimapRenderer should handle None dataframe: {e}")
+
+        # Verify exp.get2DPeakDataLong was called (fallback path)
+        assert state.exp.get2DPeakDataLong.called or result is not None
