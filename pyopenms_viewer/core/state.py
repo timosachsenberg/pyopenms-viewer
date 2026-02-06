@@ -475,7 +475,6 @@ class ViewerState:
 
         # Use point rendering only if BOTH ranges are below threshold
         return rt_range < rt_threshold and mz_range < mz_threshold
-        return True
 
     # ========== VIEW MANIPULATION ==========
 

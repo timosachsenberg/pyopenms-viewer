@@ -305,6 +305,11 @@ class PeakMapRenderer:
         output_array = np.zeros((render_height, render_width), dtype=np.float32)
 
         try:
+            if not hasattr(state.exp, 'rasterizeRTMZ'):
+                # Method doesn't exist - fall back to point rendering
+                print("[PeakMapRenderer] rasterizeRTMZ not available, falling back to point rendering")
+                return self._render_points(state, fast, draw_overlays, draw_axes)
+            
             state.exp.rasterizeRTMZ(
                 output_array,
                 view_rt_min,
@@ -314,9 +319,16 @@ class PeakMapRenderer:
                 ms_level=1,
                 aggregation="sum",
             )
-        except Exception:
-            # Fall back to empty rasterization if rasterizeRTMZ fails
-            output_array.fill(0.0)
+            
+            # Check if rasterization produced any data
+            if output_array.max() == 0.0:
+                # No data in rasterization - fall back to point rendering
+                print("[PeakMapRenderer] Rasterization produced no data, falling back to point rendering")
+                return self._render_points(state, fast, draw_overlays, draw_axes)
+        except Exception as e:
+            # Rasterization failed - fall back to point rendering
+            print(f"[PeakMapRenderer] Rasterization failed: {e}, falling back to point rendering")
+            return self._render_points(state, fast, draw_overlays, draw_axes)
 
         # Convert to log intensity for better visualization
         # Add small epsilon to avoid log(0)

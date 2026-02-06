@@ -417,7 +417,7 @@ class MzMLLoader:
 
             if progress_callback:
                 progress_callback("Finalizing...", 0.95)
-            print(f"[PID:{os.getpid()} TID:{threading.get_ident()}] Finished processing data; creating DataFrame...")
+            print(f"[PID:{os.getpid()} TID:{threading.get_ident()}] Finished processing data...")
 
             # Create per-CV DataFrames for FAIMS view
             self.state.faims_data = {}
