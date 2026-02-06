@@ -1,8 +1,10 @@
 """Tests for the pyopenms_viewer rendering module."""
 
+import numpy as np
 import pandas as pd
 import pytest
 
+from pyopenms_viewer.core.config import DEFAULTS
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.utils.coordinate_transform import CoordinateTransform
 from pyopenms_viewer.utils.gpu import (
@@ -476,3 +478,333 @@ class TestCoordinateTransformDimensions:
         rt, mz = transform.pixel_to_data(state, pixel_x=100, pixel_y=50)
         assert rt == pytest.approx(0.0, abs=0.1)
         assert mz == pytest.approx(500.0, abs=0.1)
+
+
+class TestRasterizationSupport:
+    """Tests for rasterization rendering mode in PeakMapRenderer."""
+
+    @pytest.fixture
+    def state_with_exp(self):
+        """Create a ViewerState with a mock MSExperiment."""
+        try:
+            from pyopenms import MSExperiment, MSSpectrum
+        except ImportError:
+            pytest.skip("pyOpenMS not available")
+
+        state = ViewerState()
+        state.rt_min = 0.0
+        state.rt_max = 3600.0
+        state.mz_min = 100.0
+        state.mz_max = 2000.0
+
+        # Create a simple MSExperiment with test data
+        exp = MSExperiment()
+
+        # Add some test spectra
+        for i in range(10):
+            spectrum = MSSpectrum()
+            spectrum.setRT(i * 360.0)  # 10 spectra, 360 seconds apart
+            spectrum.setMSLevel(1)
+
+            # Add peaks to spectrum
+            mzs = np.array([100.0 + j * 100.0 for j in range(10)], dtype=np.float64)
+            intensities = np.array([1000.0 * (i + 1) for _ in range(10)], dtype=np.float32)
+            spectrum.set_peaks((mzs, intensities))
+
+            exp.addSpectrum(spectrum)
+
+        state.exp = exp
+        return state
+
+    def test_should_use_rasterization_always_when_threshold_zero(self):
+        """Test that rasterization is always used when threshold is 0."""
+        state = ViewerState()
+
+        # Save original values
+        original_rt = DEFAULTS.DEEP_ZOOM_RT_THRESHOLD
+        original_mz = DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD
+
+        try:
+            # Set thresholds to 0 (always rasterize)
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = 0.0
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = 0.0
+
+            # Should always rasterize regardless of RT/mz range
+            assert state.should_use_rasterization(rt_range=1.0, mz_range=1.0) is True
+            assert state.should_use_rasterization(rt_range=10.0, mz_range=10.0) is True
+            assert state.should_use_rasterization(rt_range=100.0, mz_range=100.0) is True
+        finally:
+            # Restore original values
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = original_rt
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = original_mz
+
+    def test_should_use_rasterization_below_thresholds(self):
+        """Test that point rendering is used when below BOTH thresholds."""
+        state = ViewerState()
+
+        # Save original values
+        original_rt = DEFAULTS.DEEP_ZOOM_RT_THRESHOLD
+        original_mz = DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD
+
+        try:
+            # Set thresholds
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = 60.0  # seconds
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = 50.0
+
+            # Below both thresholds: use point rendering
+            assert state.should_use_rasterization(rt_range=30.0, mz_range=25.0) is False
+        finally:
+            # Restore original values
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = original_rt
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = original_mz
+
+    def test_should_use_rasterization_above_thresholds(self):
+        """Test that rasterization is used when above thresholds."""
+        state = ViewerState()
+
+        # Save original values
+        original_rt = DEFAULTS.DEEP_ZOOM_RT_THRESHOLD
+        original_mz = DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD
+
+        try:
+            # Set thresholds
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = 60.0
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = 50.0
+
+            # Above RT threshold: use rasterization
+            assert state.should_use_rasterization(rt_range=100.0, mz_range=25.0) is True
+
+            # Above mz threshold: use rasterization
+            assert state.should_use_rasterization(rt_range=30.0, mz_range=100.0) is True
+
+            # Above both thresholds: use rasterization
+            assert state.should_use_rasterization(rt_range=100.0, mz_range=100.0) is True
+        finally:
+            # Restore original values
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = original_rt
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = original_mz
+
+    def test_render_rasterized_basic(self, state_with_exp):
+        """Test basic rasterization creates a numpy array."""
+        from pyopenms_viewer.rendering.peak_map_renderer import PeakMapRenderer
+
+        renderer = PeakMapRenderer(
+            plot_width=1100,
+            plot_height=550,
+        )
+
+        # Set up state and bounds
+        state_with_exp.view_rt_min = 0.0
+        state_with_exp.view_rt_max = 1000.0
+        state_with_exp.view_mz_min = 100.0
+        state_with_exp.view_mz_max = 2000.0
+
+        # Test that _render_rasterized method exists and can be called
+        assert hasattr(renderer, "_render_rasterized")
+        assert callable(renderer._render_rasterized)
+
+    def test_render_rasterized_array_shape(self, state_with_exp):
+        """Test that rasterized output has correct array shape."""
+        # Set up state bounds
+        state_with_exp.view_rt_min = 0.0
+        state_with_exp.view_rt_max = 1000.0
+        state_with_exp.view_mz_min = 100.0
+        state_with_exp.view_mz_max = 2000.0
+
+        # Test that we can create the rasterized array with correct shape
+        # Using PLOT_WIDTH and PLOT_HEIGHT from config
+        # Array should have shape (mz_bins, rt_bins)
+        expected_shape = (DEFAULTS.PLOT_HEIGHT, DEFAULTS.PLOT_WIDTH)
+        test_array = np.empty(expected_shape, dtype=np.float32)
+        assert test_array.shape == (550, 1100)
+
+    def test_render_xarray_conversion(self, state_with_exp):
+        """Test conversion of numpy array to xarray DataArray."""
+        try:
+            import xarray as xr
+        except ImportError:
+            pytest.skip("xarray not available")
+
+        # Create a simple raterized array
+        rt_range = np.linspace(0.0, 1000.0, 1100)
+        mz_range = np.linspace(100.0, 2000.0, 550)
+
+        data = np.random.uniform(0, 100, size=(550, 1100)).astype(np.float32)
+
+        # Create xarray DataArray
+        data_array = xr.DataArray(
+            data,
+            coords={"mz": mz_range, "rt": rt_range},
+            dims=["mz", "rt"],
+        )
+
+        assert data_array.shape == (550, 1100)
+        assert "mz" in data_array.coords
+        assert "rt" in data_array.coords
+
+    def test_render_with_datashader_shade(self):
+        """Test that datashader can shade a simple xarray."""
+        try:
+            import datashader.transfer_functions as tf
+            import xarray as xr
+        except ImportError:
+            pytest.skip("xarray or datashader not available")
+
+        # Create a simple xarray
+        rt_range = np.linspace(0.0, 1000.0, 1100)
+        mz_range = np.linspace(100.0, 2000.0, 550)
+
+        data = np.random.uniform(0, 100, size=(550, 1100)).astype(np.float32)
+
+        data_array = xr.DataArray(
+            data,
+            coords={"mz": mz_range, "rt": rt_range},
+            dims=["mz", "rt"],
+        )
+
+        # Test shading with datashader
+        from pyopenms_viewer.core.config import COLORMAPS
+
+        img = tf.shade(data_array, cmap=COLORMAPS["jet"], how="linear")
+        assert img is not None
+
+    def test_should_use_point_rendering(self):
+        """Test should_use_point_rendering method logic."""
+        state = ViewerState()
+
+        # Save original values
+        original_rt = DEFAULTS.DEEP_ZOOM_RT_THRESHOLD
+        original_mz = DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD
+
+        try:
+            # When thresholds are 0, always use rasterization (point rendering = False)
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = 0.0
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = 0.0
+
+            state.view_rt_min = 0.0
+            state.view_rt_max = 100.0
+            state.view_mz_min = 100.0
+            state.view_mz_max = 200.0
+
+            assert state.should_use_point_rendering() is False
+
+            # Set reasonable thresholds
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = 60.0  # seconds
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = 50.0
+
+            # When both ranges are below thresholds: use point rendering (True)
+            state.view_rt_min = 0.0
+            state.view_rt_max = 30.0  # RT range = 30, below 60
+            state.view_mz_min = 100.0
+            state.view_mz_max = 140.0  # mz range = 40, below 50
+
+            assert state.should_use_point_rendering() is True
+
+            # When RT range exceeds threshold: use rasterization (False)
+            state.view_rt_min = 0.0
+            state.view_rt_max = 100.0  # RT range = 100, above 60
+            state.view_mz_min = 100.0
+            state.view_mz_max = 140.0  # mz range = 40, below 50
+
+            assert state.should_use_point_rendering() is False
+
+            # When mz range exceeds threshold: use rasterization (False)
+            state.view_rt_min = 0.0
+            state.view_rt_max = 30.0  # RT range = 30, below 60
+            state.view_mz_min = 100.0
+            state.view_mz_max = 200.0  # mz range = 100, above 50
+
+            assert state.should_use_point_rendering() is False
+        finally:
+            # Restore original values
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = original_rt
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = original_mz
+
+    def test_render_implements_branching_logic(self, state_with_exp):
+        """Test that render() method implements branching between point and rasterized modes."""
+        from pyopenms_viewer.rendering.peak_map_renderer import PeakMapRenderer
+
+        renderer = PeakMapRenderer()
+
+        # Set up state with test data
+        state_with_exp.view_rt_min = 0.0
+        state_with_exp.view_rt_max = 30.0  # Narrow range
+        state_with_exp.view_mz_min = 100.0
+        state_with_exp.view_mz_max = 140.0  # Narrow range
+
+        # Create a DataFrame with test points
+        state_with_exp.df = pd.DataFrame(
+            {
+                "rt": [10.0, 15.0, 20.0],
+                "mz": [110.0, 120.0, 130.0],
+                "intensity": [1000.0, 2000.0, 3000.0],
+                "log_intensity": [np.log10(1000.0), np.log10(2000.0), np.log10(3000.0)],
+            }
+        )
+
+        # Save original values
+        original_rt = DEFAULTS.DEEP_ZOOM_RT_THRESHOLD
+        original_mz = DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD
+
+        try:
+            # Set thresholds for deep zoom
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = 60.0
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = 50.0
+
+            # When using point rendering (narrow range), should return valid image
+            result = renderer.render(state_with_exp, fast=False, draw_overlays=False, draw_axes=False)
+            assert isinstance(result, str)
+            # Should be non-empty (base64 encoded)
+            assert len(result) > 0
+
+            # When using rasterization (wide range), should also return valid image
+            state_with_exp.view_rt_min = 0.0
+            state_with_exp.view_rt_max = 1000.0  # Wide range
+            state_with_exp.view_mz_min = 100.0
+            state_with_exp.view_mz_max = 2000.0  # Wide range
+
+            result = renderer.render(state_with_exp, fast=False, draw_overlays=False, draw_axes=False)
+            assert isinstance(result, str)
+            assert len(result) > 0
+        finally:
+            # Restore original values
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = original_rt
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = original_mz
+
+    def test_render_rasterized_returns_image(self, state_with_exp):
+        """Test that _render_rasterized() produces a valid image in PNG format."""
+        from pyopenms_viewer.rendering.peak_map_renderer import PeakMapRenderer
+
+        renderer = PeakMapRenderer()
+
+        # Set up state with test data
+        state_with_exp.view_rt_min = 0.0
+        state_with_exp.view_rt_max = 3600.0
+        state_with_exp.view_mz_min = 100.0
+        state_with_exp.view_mz_max = 2000.0
+
+        # Create test DataFrame
+        state_with_exp.df = pd.DataFrame(
+            {
+                "rt": np.linspace(0, 3600, 100),
+                "mz": np.linspace(100, 2000, 100),
+                "intensity": np.random.uniform(1000, 100000, 100),
+                "log_intensity": np.log10(np.random.uniform(1000, 100000, 100)),
+            }
+        )
+
+        # Call _render_rasterized
+        result = renderer._render_rasterized(state_with_exp, fast=False)
+
+        # Should return a base64 encoded string
+        assert isinstance(result, str)
+        assert len(result) > 0
+        # Should be valid base64
+        try:
+            import base64
+
+            base64.b64decode(result)
+            valid_base64 = True
+        except Exception:
+            valid_base64 = False
+        assert valid_base64

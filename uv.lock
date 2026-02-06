@@ -2899,6 +2899,8 @@ dependencies = [
     { name = "pyimzml" },
     { name = "pyopenms" },
     { name = "pyopenms-viz" },
+    { name = "xarray", version = "2025.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "xarray", version = "2025.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 
 [package.optional-dependencies]
@@ -2943,6 +2945,7 @@ requires-dist = [
     { name = "pywebview", marker = "extra == 'native'", specifier = ">=4.0.0" },
     { name = "qtpy", marker = "extra == 'native'", specifier = ">=2.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
+    { name = "xarray", specifier = ">=2023.0.0" },
 ]
 provides-extras = ["native", "gpu", "dev"]
 

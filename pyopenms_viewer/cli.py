@@ -64,6 +64,7 @@ def _run_embedded_python_snippet(argv: list[str]) -> bool:
         return True
     return False
 
+
 # Set OpenMP threads for pyOpenMS
 cpu_count = os.cpu_count() or 1
 os.environ.setdefault("OMP_NUM_THREADS", str(cpu_count))

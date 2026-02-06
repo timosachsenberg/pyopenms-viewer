@@ -8,13 +8,13 @@ MEMORY SAFETY: Data structures are stored as references, never copied.
 Components access data via properties that return references or views (masks).
 """
 
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import numpy as np
 import pandas as pd
-import threading
 
 from pyopenms_viewer.core.config import (
     DEFAULT_PANEL_ORDER,
@@ -242,6 +242,12 @@ class ViewerState:
         self._updating_from_tic: bool = False
         self._hover_update_pending: bool = False
 
+        # ========== RASTERIZATION CACHE ==========
+        self.cached_minimap_raster: Optional[np.ndarray] = None  # Cached minimap rasterization
+        self.temp_peak_df: Optional[pd.DataFrame] = None  # Temporary DataFrame for deep zoom/3D view
+        self.last_3d_view_bounds: Optional[tuple] = None  # View bounds when 3D was last updated
+        self.is_3d_in_sync: bool = True  # Whether 3D view matches current 2D view
+
     # ========== COMPUTED PROPERTIES ==========
 
     @property
@@ -399,6 +405,65 @@ class ViewerState:
             im_min=self.im_min,
             im_max=self.im_max,
         )
+
+    def should_use_rasterization(self, rt_range: float, mz_range: float) -> bool:
+        """Determine if rasterization rendering should be used based on view range.
+
+        Implements the logic for choosing between rasterization and point rendering:
+        - If either threshold is 0: always use rasterization
+        - If RT range < threshold AND mz range < threshold: use point rendering (better for deep zoom)
+        - Otherwise: use rasterization (better for wide views)
+
+        Args:
+            rt_range: Current RT range in seconds (view_rt_max - view_rt_min)
+            mz_range: Current m/z range (view_mz_max - view_mz_min)
+
+        Returns:
+            True to use rasterization, False to use point rendering
+        """
+        rt_threshold = DEFAULTS.DEEP_ZOOM_RT_THRESHOLD
+        mz_threshold = DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD
+
+        # If threshold is 0, always rasterize
+        if rt_threshold == 0 or mz_threshold == 0:
+            return True
+
+        # Below both thresholds: use point rendering (more responsive for deep zoom)
+        if rt_range < rt_threshold and mz_range < mz_threshold:
+            return False
+
+        # Otherwise: use rasterization
+        return True
+
+    def should_use_point_rendering(self) -> bool:
+        """Return True if point rendering should be used, False if rasterization should be used.
+
+        Determines rendering mode based on current view bounds:
+        - If threshold is 0: never use points (always rasterize)
+        - If BOTH ranges are below their respective thresholds: use point rendering (better for deep zoom)
+        - Otherwise: use rasterization (better for wide views)
+
+        Returns:
+            True if point rendering should be used, False if rasterization should be used
+        """
+        rt_threshold = DEFAULTS.DEEP_ZOOM_RT_THRESHOLD
+        mz_threshold = DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD
+
+        # If threshold is 0, always use rasterization (point rendering = False)
+        if rt_threshold == 0 or mz_threshold == 0:
+            return False
+
+        # Calculate current ranges from view bounds
+        rt_range = (
+            self.view_rt_max - self.view_rt_min if self.view_rt_max is not None and self.view_rt_min is not None else 0
+        )
+        mz_range = (
+            self.view_mz_max - self.view_mz_min if self.view_mz_max is not None and self.view_mz_min is not None else 0
+        )
+
+        # Use point rendering only if BOTH ranges are below threshold
+        return rt_range < rt_threshold and mz_range < mz_threshold
+        return True
 
     # ========== VIEW MANIPULATION ==========
 
