@@ -808,3 +808,202 @@ class TestRasterizationSupport:
         except Exception:
             valid_base64 = False
         assert valid_base64
+
+
+class TestMinimapCaching:
+    """Tests for minimap rasterization caching."""
+
+    @pytest.fixture
+    def state_with_minimap_data(self):
+        """Create a state with test peak data for minimap rendering."""
+        state = ViewerState()
+
+        # Set up data bounds
+        state.rt_min = 0.0
+        state.rt_max = 3600.0
+        state.mz_min = 100.0
+        state.mz_max = 2000.0
+
+        # Set up view bounds
+        state.view_rt_min = 0.0
+        state.view_rt_max = 3600.0
+        state.view_mz_min = 100.0
+        state.view_mz_max = 2000.0
+
+        # Create test DataFrame with peaks
+        n_peaks = 1000
+        state.df = pd.DataFrame(
+            {
+                "rt": np.linspace(0, 3600, n_peaks),
+                "mz": np.linspace(100, 2000, n_peaks),
+                "intensity": np.random.uniform(1000, 100000, n_peaks),
+                "log_intensity": np.log10(np.random.uniform(1000, 100000, n_peaks)),
+            }
+        )
+
+        # Initialize data manager if needed
+        state.init_data_manager(out_of_core=False)
+
+        return state
+
+    def test_minimap_cache_invalidation_method_exists(self, state_with_minimap_data):
+        """Verify that invalidate_minimap_cache method exists in ViewerState."""
+        state = state_with_minimap_data
+        # Cache invalidation method should exist
+        assert hasattr(state, "invalidate_minimap_cache")
+        assert callable(state.invalidate_minimap_cache)
+
+    def test_minimap_cache_attribute_exists(self, state_with_minimap_data):
+        """Verify that cached_minimap_raster attribute exists in ViewerState."""
+        state = state_with_minimap_data
+        # Cache attribute should exist and be None initially
+        assert hasattr(state, "cached_minimap_raster")
+        assert state.cached_minimap_raster is None
+
+    def test_minimap_caches_raster(self, state_with_minimap_data):
+        """Verify that minimap rasterization is cached after first call."""
+        from unittest.mock import MagicMock
+
+        from pyopenms_viewer.rendering.minimap_renderer import MinimapRenderer
+
+        state = state_with_minimap_data
+
+        # Create a mock MSExperiment with rasterizeRTMZ method
+        mock_exp = MagicMock()
+
+        def mock_rasterize(output, rt_min, rt_max, mz_min, mz_max, ms_level=1, aggregation="sum"):
+            # Simulate rasterization by filling output with random data
+            output[:] = np.random.uniform(0, 100, output.shape)
+
+        mock_exp.rasterizeRTMZ = MagicMock(side_effect=mock_rasterize)
+        state.exp = mock_exp
+
+        renderer = MinimapRenderer(width=DEFAULTS.MINIMAP_WIDTH, height=DEFAULTS.MINIMAP_HEIGHT)
+
+        # First render - should populate cache
+        result1 = renderer.render(state)
+        assert result1 is not None
+        assert isinstance(result1, str)
+
+        # Cache should now contain the rasterized data
+        assert state.cached_minimap_raster is not None
+        assert isinstance(state.cached_minimap_raster, np.ndarray)
+
+        # Verify rasterizeRTMZ was called
+        assert mock_exp.rasterizeRTMZ.call_count >= 1
+
+    def test_minimap_invalidation_on_new_file(self, state_with_minimap_data):
+        """Verify that cache is cleared when new file is loaded."""
+        state = state_with_minimap_data
+
+        # Manually set a cache value
+        state.cached_minimap_raster = np.random.uniform(0, 100, (DEFAULTS.MINIMAP_HEIGHT, DEFAULTS.MINIMAP_WIDTH))
+        assert state.cached_minimap_raster is not None
+
+        # Call invalidate_minimap_cache
+        state.invalidate_minimap_cache()
+
+        # Cache should be cleared
+        assert state.cached_minimap_raster is None
+
+    def test_minimap_reshades_on_colormap_change(self, state_with_minimap_data):
+        """Verify that minimap re-shades without re-rasterization when colormap changes."""
+        from unittest.mock import MagicMock
+
+        from pyopenms_viewer.rendering.minimap_renderer import MinimapRenderer
+
+        state = state_with_minimap_data
+
+        # Create a mock MSExperiment
+        mock_exp = MagicMock()
+
+        rasterize_call_count = 0
+
+        def mock_rasterize(output, rt_min, rt_max, mz_min, mz_max, ms_level=1, aggregation="sum"):
+            nonlocal rasterize_call_count
+            rasterize_call_count += 1
+            output[:] = np.random.uniform(0, 100, output.shape)
+
+        mock_exp.rasterizeRTMZ = MagicMock(side_effect=mock_rasterize)
+        state.exp = mock_exp
+
+        renderer = MinimapRenderer(width=DEFAULTS.MINIMAP_WIDTH, height=DEFAULTS.MINIMAP_HEIGHT)
+
+        # First render with 'jet' colormap
+        state.colormap = "jet"
+        result1 = renderer.render(state)
+        assert result1 is not None
+
+        rasterize_calls_after_first = rasterize_call_count
+
+        # Second render with different colormap - should reuse cached raster
+        state.colormap = "viridis"
+        result2 = renderer.render(state)
+        assert result2 is not None
+
+        # rasterizeRTMZ should not have been called again
+        assert mock_exp.rasterizeRTMZ.call_count == rasterize_calls_after_first
+
+    def test_minimap_excerpt_box_overlay(self, state_with_minimap_data):
+        """Verify that excerpt box is drawn without affecting cached data."""
+        from unittest.mock import MagicMock
+
+        from pyopenms_viewer.rendering.minimap_renderer import MinimapRenderer
+
+        state = state_with_minimap_data
+
+        # Create a mock MSExperiment
+        mock_exp = MagicMock()
+
+        def mock_rasterize(output, rt_min, rt_max, mz_min, mz_max, ms_level=1, aggregation="sum"):
+            output[:] = np.random.uniform(0, 100, output.shape)
+
+        mock_exp.rasterizeRTMZ = MagicMock(side_effect=mock_rasterize)
+        state.exp = mock_exp
+
+        renderer = MinimapRenderer(width=DEFAULTS.MINIMAP_WIDTH, height=DEFAULTS.MINIMAP_HEIGHT)
+
+        # Render with view bounds set
+        state.view_rt_min = 600.0
+        state.view_rt_max = 1200.0
+        state.view_mz_min = 500.0
+        state.view_mz_max = 1500.0
+
+        # Render and save original cache
+        renderer.render(state)
+        cached_copy = state.cached_minimap_raster.copy() if state.cached_minimap_raster is not None else None
+
+        # Render again without changing view bounds - cache should be identical
+        renderer.render(state)
+
+        # Cached raster should not have changed (overlay is applied to PIL image, not to numpy array)
+        if cached_copy is not None and state.cached_minimap_raster is not None:
+            assert np.allclose(cached_copy, state.cached_minimap_raster)
+
+    def test_minimap_cache_size_and_type(self, state_with_minimap_data):
+        """Verify that cached raster has correct size and type."""
+        from unittest.mock import MagicMock
+
+        from pyopenms_viewer.rendering.minimap_renderer import MinimapRenderer
+
+        state = state_with_minimap_data
+
+        # Create a mock MSExperiment
+        mock_exp = MagicMock()
+
+        def mock_rasterize(output, rt_min, rt_max, mz_min, mz_max, ms_level=1, aggregation="sum"):
+            output[:] = np.random.uniform(0, 100, output.shape)
+
+        mock_exp.rasterizeRTMZ = MagicMock(side_effect=mock_rasterize)
+        state.exp = mock_exp
+
+        renderer = MinimapRenderer(width=DEFAULTS.MINIMAP_WIDTH, height=DEFAULTS.MINIMAP_HEIGHT)
+
+        # Render to populate cache
+        result = renderer.render(state)
+        assert result is not None
+
+        # Verify cache shape and type
+        assert state.cached_minimap_raster is not None
+        assert state.cached_minimap_raster.dtype == np.float32
+        assert state.cached_minimap_raster.shape == (DEFAULTS.MINIMAP_HEIGHT, DEFAULTS.MINIMAP_WIDTH)

@@ -1,7 +1,8 @@
 """Minimap renderer for overview navigation.
 
 Renders a small overview of the full data extent with a rectangle
-showing the current view bounds.
+showing the current view bounds. Supports cached rasterization for efficient
+re-shading with different colormaps.
 """
 
 import base64
@@ -10,6 +11,8 @@ from typing import Optional
 
 import datashader as ds
 import datashader.transfer_functions as tf
+import numpy as np
+import xarray as xr
 from PIL import ImageDraw
 
 from pyopenms_viewer.core.config import COLORMAPS, get_colormap_background
@@ -35,6 +38,79 @@ class MinimapRenderer:
 
     def render(self, state) -> Optional[str]:
         """Render the minimap showing full data extent with view rectangle overlay.
+
+        Uses cached rasterization when available for efficient re-shading with different
+        colormaps. Falls back to datashader point rendering if rasterization is not
+        available.
+
+        Args:
+            state: ViewerState with data and view bounds
+
+        Returns:
+            Base64-encoded PNG string, or None if no data
+        """
+        # Try rasterization-based approach first (cached)
+        if state.exp is not None and hasattr(state.exp, "rasterizeRTMZ"):
+            return self._render_with_rasterization(state)
+
+        # Fallback to datashader point rendering
+        return self._render_with_datashader(state)
+
+    def _render_with_rasterization(self, state) -> Optional[str]:
+        """Render minimap using cached rasterization from pyOpenMS.
+
+        Args:
+            state: ViewerState with data and view bounds
+
+        Returns:
+            Base64-encoded PNG string, or None if no data
+        """
+        # Check cache - if empty, rasterize
+        if state.cached_minimap_raster is None:
+            # Rasterize at full data extent
+            output = np.empty((self.height, self.width), dtype=np.float32)
+
+            try:
+                state.exp.rasterizeRTMZ(
+                    output,
+                    state.rt_min,
+                    state.rt_max,
+                    state.mz_min,
+                    state.mz_max,
+                    ms_level=1,
+                    aggregation="sum",
+                )
+                state.cached_minimap_raster = output
+            except Exception as e:
+                # If rasterization fails, fall back to datashader
+                print(f"Minimap rasterization failed: {e}, falling back to datashader")
+                return self._render_with_datashader(state)
+
+        # Create xarray DataArray from cached raster
+        xr_data = xr.DataArray(
+            state.cached_minimap_raster,
+            dims=["y", "x"],
+        )
+
+        # Apply colormap to create image
+        img = tf.shade(xr_data, cmap=COLORMAPS[state.colormap], how="linear")
+        img = tf.dynspread(img, threshold=0.5, max_px=2)
+        img = tf.set_background(img, get_colormap_background(state.colormap))
+
+        # Convert to PIL
+        plot_img = img.to_pil()
+
+        # Draw overlays (view rectangle and spectrum marker)
+        self._draw_view_rectangle(plot_img, state)
+        self._draw_spectrum_marker(plot_img, state)
+
+        # Convert to base64
+        buffer = io.BytesIO()
+        plot_img.save(buffer, format="PNG")
+        return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+    def _render_with_datashader(self, state) -> Optional[str]:
+        """Render minimap using datashader point rendering (fallback).
 
         Args:
             state: ViewerState with data and view bounds
