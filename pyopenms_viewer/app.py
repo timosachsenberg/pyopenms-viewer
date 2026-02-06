@@ -4,9 +4,9 @@ This module creates the NiceGUI interface and wires all components together
 using the modular panel architecture.
 """
 
+import asyncio
 import os
 import tempfile
-import asyncio
 from pathlib import Path
 
 from nicegui import app, run, ui

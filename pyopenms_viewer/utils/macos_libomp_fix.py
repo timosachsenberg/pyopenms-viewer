@@ -9,9 +9,8 @@ This module symlinks pyopenms's libomp.dylib to the Homebrew version to ensure o
 one copy is loaded.
 """
 
-import os
-import sys
 import subprocess
+import sys
 from pathlib import Path
 
 

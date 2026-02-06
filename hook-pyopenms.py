@@ -2,10 +2,9 @@
 # Collect the entire package (dylibs, data files, hidden imports) WITHOUT importing it.
 # This avoids build-time DLL loading failures on Windows.
 
-from PyInstaller.utils.hooks import collect_all, collect_dynamic_libs, get_package_paths, collect_submodules
 import os
-import sys
-import glob
+
+from PyInstaller.utils.hooks import get_package_paths
 
 # CRITICAL: DO NOT use collect_all() as it may try to import pyopenms
 # which fails on Windows due to DLL dependencies during build.
@@ -81,7 +80,7 @@ try:
     # This avoids the import-time DLL failure
     init_file = os.path.join(pkg_dir, "__init__.py")
     if os.path.exists(init_file):
-        with open(init_file, "r") as f:
+        with open(init_file) as f:
             content = f.read()
             # Look for common import patterns
             if "_pyopenms" in content:

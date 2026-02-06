@@ -30,7 +30,7 @@ dependencies = [
     "numpy>=1.24.0",
     "colorcet>=3.0.0",
     "pillow>=10.0.0",
-    "pyopenms>=3.5.0",
+    "pyopenms==3.6.0.dev20260205",
     "pyopenms-viz>=0.1.0",
     "click>=8.0.0",
     "plotly>=5.0.0",
@@ -84,3 +84,16 @@ target-version = "py39"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
 ignore = ["E501"]
+
+[tool.uv]
+# Use system TLS certificates for HTTPS (fixes UnknownIssuer for private index)
+native-tls = true
+
+[tool.uv.sources]
+# Pin `pyopenms` to the private Tuebingen index so it's always resolved from there
+pyopenms = { index = "tuebingen" }
+
+[[tool.uv.index]]
+name = "tuebingen"
+url = "https://pypi.cs.uni-tuebingen.de/simple/"
+authenticate = "never"

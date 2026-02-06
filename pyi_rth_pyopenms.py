@@ -12,9 +12,9 @@
 # 1. Check Task Manager for running pyopenms-viewer.exe processes
 # 2. Delete %TEMP%\_MEI* directories
 # 3. Temporarily disable antivirus and try again
+import ctypes
 import os
 import sys
-import ctypes
 
 
 def debug_print(msg):
@@ -75,11 +75,11 @@ if getattr(sys, "frozen", False) and sys.platform == "win32":
             except Exception as e:
                 debug_print(f"[pyi_rth_pyopenms] WARNING: Could not list pyopenms_dlls: {e}")
         else:
-            debug_print(f"[pyi_rth_pyopenms] WARNING: pyopenms_dlls directory not found!")
+            debug_print("[pyi_rth_pyopenms] WARNING: pyopenms_dlls directory not found!")
 
         if os.path.exists(pyopenms_pkg_dir):
             dll_dirs.append(pyopenms_pkg_dir)
-            debug_print(f"[pyi_rth_pyopenms] Found pyopenms package directory")
+            debug_print("[pyi_rth_pyopenms] Found pyopenms package directory")
 
         dll_dirs.append(exe_dir)
 

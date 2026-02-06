@@ -1,13 +1,14 @@
+import numpy as np
+import pandas as pd
+
 from pyopenms_viewer.utils.gpu import (
-    to_accelerated_dataframe,
     get_dataframe_type,
-    is_gpu_dataframe,
     is_dask_dataframe,
     is_dask_enabled,
+    is_gpu_dataframe,
     is_gpu_enabled,
+    to_accelerated_dataframe,
 )
-import pandas as pd
-import numpy as np
 
 # Create a large DataFrame (200k rows)
 n = 200000
