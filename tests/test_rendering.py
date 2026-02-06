@@ -1538,3 +1538,134 @@ class TestMinimapCaching:
         assert state.cached_minimap_raster is not None
         assert state.cached_minimap_raster.dtype == np.float32
         assert state.cached_minimap_raster.shape == (DEFAULTS.MINIMAP_HEIGHT, DEFAULTS.MINIMAP_WIDTH)
+
+    def test_minimap_rasterization_respects_swap_axes_true(self, state_with_minimap_data):
+        """Verify that minimap rasterization respects swap_axes=True.
+
+        When swap_axes=True, the minimap should:
+        - Transpose the log_intensity data
+        - Use dims=["rt", "mz"] instead of dims=["y", "x"]
+        """
+        from unittest.mock import MagicMock, patch
+
+        from pyopenms_viewer.rendering.minimap_renderer import MinimapRenderer
+
+        state = state_with_minimap_data
+        state.swap_axes = True
+
+        # Create a mock MSExperiment with rasterizeRTMZ method
+        mock_exp = MagicMock()
+
+        def mock_rasterize(output, rt_min, rt_max, mz_min, mz_max, ms_level=1, aggregation="sum"):
+            # Fill with distinct values so we can detect transposition
+            output[:] = np.arange(output.size, dtype=np.float32).reshape(output.shape)
+
+        mock_exp.rasterizeRTMZ = MagicMock(side_effect=mock_rasterize)
+        state.exp = mock_exp
+
+        renderer = MinimapRenderer(width=DEFAULTS.MINIMAP_WIDTH, height=DEFAULTS.MINIMAP_HEIGHT)
+
+        # Patch tf functions to capture the xarray DataArray passed to shade
+        captured_data_array = None
+
+        def capture_shade(data_array, **kwargs):
+            nonlocal captured_data_array
+            captured_data_array = data_array
+            # Return a mock image object
+            mock_image = MagicMock()
+            mock_pil_image = MagicMock()
+            mock_pil_image.save = MagicMock()
+            mock_image.to_pil.return_value = mock_pil_image
+            return mock_image
+
+        def pass_through_img(img, **kwargs):
+            # Just return the image as-is (for dynspread, set_background)
+            return img
+
+        def pass_through_set_bg(img, color=None, **kwargs):
+            # For set_background which takes an additional color argument
+            return img
+
+        with patch("pyopenms_viewer.rendering.minimap_renderer.tf.shade", side_effect=capture_shade):
+            with patch("pyopenms_viewer.rendering.minimap_renderer.tf.dynspread", side_effect=pass_through_img):
+                with patch(
+                    "pyopenms_viewer.rendering.minimap_renderer.tf.set_background", side_effect=pass_through_set_bg
+                ):
+                    renderer.render(state)
+
+        # Verify the captured xarray DataArray has correct dims for swap_axes=True
+        assert captured_data_array is not None
+        assert "rt" in captured_data_array.dims
+        assert "mz" in captured_data_array.dims
+        # When swap_axes=True, dims should be ["rt", "mz"]
+        assert list(captured_data_array.dims) == ["rt", "mz"]
+
+        # Verify data is transposed (shape should be swapped)
+        # Original cache shape is (height, width) = (MINIMAP_HEIGHT, MINIMAP_WIDTH)
+        # After transposition it should be (MINIMAP_WIDTH, MINIMAP_HEIGHT)
+        assert captured_data_array.shape == (DEFAULTS.MINIMAP_WIDTH, DEFAULTS.MINIMAP_HEIGHT)
+
+    def test_minimap_rasterization_respects_swap_axes_false(self, state_with_minimap_data):
+        """Verify that minimap rasterization respects swap_axes=False.
+
+        When swap_axes=False, the minimap should:
+        - Keep the log_intensity data as-is (not transposed)
+        - Use dims=["mz", "rt"] instead of dims=["y", "x"]
+        """
+        from unittest.mock import MagicMock, patch
+
+        from pyopenms_viewer.rendering.minimap_renderer import MinimapRenderer
+
+        state = state_with_minimap_data
+        state.swap_axes = False
+
+        # Create a mock MSExperiment with rasterizeRTMZ method
+        mock_exp = MagicMock()
+
+        def mock_rasterize(output, rt_min, rt_max, mz_min, mz_max, ms_level=1, aggregation="sum"):
+            # Fill with distinct values so we can detect transposition
+            output[:] = np.arange(output.size, dtype=np.float32).reshape(output.shape)
+
+        mock_exp.rasterizeRTMZ = MagicMock(side_effect=mock_rasterize)
+        state.exp = mock_exp
+
+        renderer = MinimapRenderer(width=DEFAULTS.MINIMAP_WIDTH, height=DEFAULTS.MINIMAP_HEIGHT)
+
+        # Patch tf functions to capture the xarray DataArray passed to shade
+        captured_data_array = None
+
+        def capture_shade(data_array, **kwargs):
+            nonlocal captured_data_array
+            captured_data_array = data_array
+            # Return a mock image object
+            mock_image = MagicMock()
+            mock_pil_image = MagicMock()
+            mock_pil_image.save = MagicMock()
+            mock_image.to_pil.return_value = mock_pil_image
+            return mock_image
+
+        def pass_through_img(img, **kwargs):
+            # Just return the image as-is (for dynspread, set_background)
+            return img
+
+        def pass_through_set_bg(img, color=None, **kwargs):
+            # For set_background which takes an additional color argument
+            return img
+
+        with patch("pyopenms_viewer.rendering.minimap_renderer.tf.shade", side_effect=capture_shade):
+            with patch("pyopenms_viewer.rendering.minimap_renderer.tf.dynspread", side_effect=pass_through_img):
+                with patch(
+                    "pyopenms_viewer.rendering.minimap_renderer.tf.set_background", side_effect=pass_through_set_bg
+                ):
+                    renderer.render(state)
+
+        # Verify the captured xarray DataArray has correct dims for swap_axes=False
+        assert captured_data_array is not None
+        assert "mz" in captured_data_array.dims
+        assert "rt" in captured_data_array.dims
+        # When swap_axes=False, dims should be ["mz", "rt"]
+        assert list(captured_data_array.dims) == ["mz", "rt"]
+
+        # Verify data is NOT transposed (shape should be original)
+        # Shape should be (MINIMAP_HEIGHT, MINIMAP_WIDTH)
+        assert captured_data_array.shape == (DEFAULTS.MINIMAP_HEIGHT, DEFAULTS.MINIMAP_WIDTH)

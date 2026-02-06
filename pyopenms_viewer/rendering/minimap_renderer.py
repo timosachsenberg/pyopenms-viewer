@@ -87,10 +87,19 @@ class MinimapRenderer:
                 return self._render_with_datashader(state)
 
         # Create xarray DataArray from cached raster
-        xr_data = xr.DataArray(
-            state.cached_minimap_raster,
-            dims=["y", "x"],
-        )
+        # Respect swap_axes flag: transpose data and swap dims if needed
+        if state.swap_axes:
+            # Transpose data and use RT x m/z orientation
+            xr_data = xr.DataArray(
+                state.cached_minimap_raster.T,
+                dims=["rt", "mz"],
+            )
+        else:
+            # Keep original orientation: m/z x RT
+            xr_data = xr.DataArray(
+                state.cached_minimap_raster,
+                dims=["mz", "rt"],
+            )
 
         # Apply colormap to create image
         img = tf.shade(xr_data, cmap=COLORMAPS[state.colormap], how="linear")
