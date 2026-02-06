@@ -121,35 +121,77 @@ class PeakMapRenderer:
         view_rt_min, view_rt_max = bounds.rt_min, bounds.rt_max
         view_mz_min, view_mz_max = bounds.mz_min, bounds.mz_max
 
-        # Get peaks in view - two paths for performance:
+        # Phase 4: Use hybrid approach with get2DPeakDataLong() for deep zoom point rendering
+        # This extracts peaks directly from MSExperiment using optimized C++ code,
+        # avoiding the need for full DataFrame filtering. The result is stored in temp_peak_df
+        # for potential reuse in 3D view rendering (Phase 5).
         #
-        # IN-MEMORY MODE (state.df is not None):
-        #   Use direct pandas boolean masking for best performance (~22ms for 5M peaks).
-        #   This is the fast path for datasets that fit in RAM.
+        # APPROACH:
+        # 1. Call exp.get2DPeakDataLong() to get raw numpy arrays (rt, mz, intensity)
+        # 2. Create a temporary DataFrame with required columns (rt, mz, intensity, log_intensity)
+        # 3. Store in state.temp_peak_df for 3D view reuse
+        # 4. Use this DataFrame for Datashader point canvas rendering
         #
-        # OUT-OF-CORE MODE (state.df is None):
-        #   Use state.get_peaks_in_view() which queries via DuckDB from Parquet files.
-        #   Slower (~74ms) but enables viewing datasets larger than available RAM.
-        #   The DataManager handles the DuckDB queries transparently.
-        #
-        if state.df is not None:
-            # Fast path: direct pandas filtering (in-memory mode)
-            # Determine which DataFrame to use (CV-filtered or full)
-            if state.has_faims and state.selected_faims_cv is not None and state.selected_faims_cv in state.faims_data:
-                source_df = state.faims_data[state.selected_faims_cv]
-            else:
-                source_df = state.df
+        if state.exp is not None:
+            # Use get2DPeakDataLong() to extract peaks for the current view
+            # This is more efficient for deep zoom as it avoids filtering large DataFrames
+            try:
+                rt_array, mz_array, intensity_array = state.exp.get2DPeakDataLong(
+                    view_rt_min, view_rt_max, view_mz_min, view_mz_max, ms_level=1
+                )
 
-            mask = (
-                (source_df["rt"] >= view_rt_min)
-                & (source_df["rt"] <= view_rt_max)
-                & (source_df["mz"] >= view_mz_min)
-                & (source_df["mz"] <= view_mz_max)
-            )
-            view_df = source_df[mask]
+                # Create temporary DataFrame from the returned arrays
+                view_df = pd.DataFrame({
+                    'rt': rt_array,
+                    'mz': mz_array,
+                    'intensity': intensity_array,
+                    'log_intensity': np.log10(intensity_array + 1),
+                })
+
+                # Store temporary DataFrame for potential 3D view reuse (Phase 5)
+                state.temp_peak_df = view_df.copy()
+            except Exception:
+                # Fallback: use traditional DataFrame filtering if get2DPeakDataLong fails
+                if state.df is not None:
+                    # Fast path: direct pandas filtering (in-memory mode)
+                    if state.has_faims and state.selected_faims_cv is not None and state.selected_faims_cv in state.faims_data:
+                        source_df = state.faims_data[state.selected_faims_cv]
+                    else:
+                        source_df = state.df
+
+                    mask = (
+                        (source_df["rt"] >= view_rt_min)
+                        & (source_df["rt"] <= view_rt_max)
+                        & (source_df["mz"] >= view_mz_min)
+                        & (source_df["mz"] <= view_mz_max)
+                    )
+                    view_df = source_df[mask]
+                    state.temp_peak_df = view_df.copy()
+                else:
+                    # Out-of-core path: query via DuckDB
+                    view_df = state.get_peaks_in_view()
+                    state.temp_peak_df = view_df.copy() if view_df is not None else None
         else:
-            # Out-of-core path: query via DuckDB (handles FAIMS CV filtering internally)
-            view_df = state.get_peaks_in_view()
+            # Fallback when exp is None - use traditional approach
+            if state.df is not None:
+                # Fast path: direct pandas filtering (in-memory mode)
+                if state.has_faims and state.selected_faims_cv is not None and state.selected_faims_cv in state.faims_data:
+                    source_df = state.faims_data[state.selected_faims_cv]
+                else:
+                    source_df = state.df
+
+                mask = (
+                    (source_df["rt"] >= view_rt_min)
+                    & (source_df["rt"] <= view_rt_max)
+                    & (source_df["mz"] >= view_mz_min)
+                    & (source_df["mz"] <= view_mz_max)
+                )
+                view_df = source_df[mask]
+                state.temp_peak_df = view_df.copy()
+            else:
+                # Out-of-core path: query via DuckDB (handles FAIMS CV filtering internally)
+                view_df = state.get_peaks_in_view()
+                state.temp_peak_df = view_df.copy() if view_df is not None else None
 
         if view_df is None or len(view_df) == 0:
             return ""
