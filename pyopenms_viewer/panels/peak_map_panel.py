@@ -7,6 +7,8 @@ with interactive mouse controls for zoom, pan, and measurement.
 import time
 from typing import Callable, Optional
 
+import numpy as np
+import pandas as pd
 from nicegui import ui
 from nicegui.events import MouseEventArguments
 
@@ -1302,17 +1304,45 @@ class PeakMapPanel(BasePanel):
             # Reuse existing temp_peak_df
             view_df = self.state.temp_peak_df
         else:
-            # Need to create DataFrame from current view
-            df = self.state.df
-            mask = (
-                (df["rt"] >= self.state.view_rt_min)
-                & (df["rt"] <= self.state.view_rt_max)
-                & (df["mz"] >= self.state.view_mz_min)
-                & (df["mz"] <= self.state.view_mz_max)
-            )
-            view_df = df[mask].copy()
+            # Phase 6: Try multiple fallback paths to get view DataFrame
+            view_df = None
 
-        if len(view_df) == 0:
+            # Path 1: Try get2DPeakDataLong if exp is available
+            if self.state.exp is not None:
+                try:
+                    rt_array, mz_array, intensity_array = self.state.exp.get2DPeakDataLong(
+                        self.state.view_rt_min,
+                        self.state.view_rt_max,
+                        self.state.view_mz_min,
+                        self.state.view_mz_max,
+                        ms_level=1,
+                    )
+                    view_df = pd.DataFrame({
+                        'rt': rt_array,
+                        'mz': mz_array,
+                        'intensity': intensity_array,
+                        'log_intensity': np.log10(intensity_array + 1),
+                    })
+                except Exception:
+                    # Fall through to Path 2
+                    pass
+
+            # Path 2: Fall back to filtering state.df if available
+            if view_df is None and self.state.df is not None:
+                df = self.state.df
+                mask = (
+                    (df["rt"] >= self.state.view_rt_min)
+                    & (df["rt"] <= self.state.view_rt_max)
+                    & (df["mz"] >= self.state.view_mz_min)
+                    & (df["mz"] <= self.state.view_mz_max)
+                )
+                view_df = df[mask].copy()
+
+            # Path 3: Fall back to get_peaks_in_view (out-of-core mode)
+            if view_df is None:
+                view_df = self.state.get_peaks_in_view()
+
+        if view_df is None or len(view_df) == 0:
             if self.view_3d_status:
                 self.view_3d_status.set_text("No peaks in view")
             return
