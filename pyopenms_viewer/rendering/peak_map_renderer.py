@@ -10,6 +10,7 @@ import io
 import datashader as ds
 import datashader.transfer_functions as tf
 import numpy as np
+import pandas as pd
 import xarray as xr
 from PIL import Image, ImageDraw
 
@@ -176,10 +177,13 @@ class PeakMapRenderer:
                     )
                     view_df = source_df[mask]
                     state.temp_peak_df = view_df.copy()
-                else:
+                elif state.data_manager is not None:
                     # Out-of-core path: query via DuckDB
                     view_df = state.get_peaks_in_view()
                     state.temp_peak_df = view_df.copy() if view_df is not None else None
+                else:
+                    # No fallback available - no DataFrame and get2DPeakDataLong failed
+                    view_df = None
         else:
             # Fallback when exp is None - use traditional approach
             if state.df is not None:
@@ -204,10 +208,13 @@ class PeakMapRenderer:
                 )
                 view_df = source_df[mask]
                 state.temp_peak_df = view_df.copy()
-            else:
+            elif state.data_manager is not None:
                 # Out-of-core path: query via DuckDB (handles FAIMS CV filtering internally)
                 view_df = state.get_peaks_in_view()
                 state.temp_peak_df = view_df.copy() if view_df is not None else None
+            else:
+                # No data available
+                view_df = None
 
         if view_df is None or len(view_df) == 0:
             return ""
@@ -249,10 +256,10 @@ class PeakMapRenderer:
             )
             agg = ds_canvas.points(view_df, "rt", "mz", ds.max("log_intensity"))
 
-        # Apply colormap
-        img = tf.shade(agg, cmap=COLORMAPS[state.colormap], how="linear")
+        # Apply colormap with histogram equalization for better contrast
+        img = tf.shade(agg, cmap=COLORMAPS[state.colormap], how="eq_hist")
         if not fast:
-            img = tf.dynspread(img, threshold=0.5, max_px=3)
+            img = tf.dynspread(img, threshold=0.5, max_px=4)
         img = tf.set_background(img, get_colormap_background(state.colormap))
 
         plot_img = img.to_pil()
@@ -317,13 +324,22 @@ class PeakMapRenderer:
         render_height = self.plot_height // resolution_factor
 
         # Call rasterizeRTMZ to create 2D intensity grid
-        # Output array shape is (mz_bins, rt_bins)
-        output_array = np.zeros((render_height, render_width), dtype=np.float32)
+        # rasterizeRTMZ fills array as [mz_bins, rt_bins] based on array shape
+        # We need to request the right number of bins for each dimension
+        if state.swap_axes:
+            # Swapped view: m/z on X (width), RT on Y (height)
+            # Request: render_width m/z bins, render_height RT bins
+            # So pass array shaped (render_width, render_height) = (mz_bins, rt_bins) = (1100, 550)
+            output_array = np.zeros((render_width, render_height), dtype=np.float32)
+        else:
+            # Default view: RT on X (width), m/z on Y (height)
+            # Request: render_width RT bins, render_height m/z bins
+            # So pass array shaped (render_height, render_width) = (mz_bins, rt_bins) = (550, 1100)
+            output_array = np.zeros((render_height, render_width), dtype=np.float32)
 
         try:
             if not hasattr(state.exp, "rasterizeRTMZ"):
                 # Method doesn't exist - fall back to point rendering
-                print("[PeakMapRenderer] rasterizeRTMZ not available, falling back to point rendering")
                 return self._render_points(state, fast, draw_overlays, draw_axes)
 
             state.exp.rasterizeRTMZ(
@@ -339,42 +355,47 @@ class PeakMapRenderer:
             # Check if rasterization produced any data
             if output_array.max() == 0.0:
                 # No data in rasterization - fall back to point rendering
-                print("[PeakMapRenderer] Rasterization produced no data, falling back to point rendering")
                 return self._render_points(state, fast, draw_overlays, draw_axes)
-        except Exception as e:
+        except Exception:
             # Rasterization failed - fall back to point rendering
-            print(f"[PeakMapRenderer] Rasterization failed: {e}, falling back to point rendering")
             return self._render_points(state, fast, draw_overlays, draw_axes)
 
         # Convert to log intensity for better visualization
         # Add small epsilon to avoid log(0)
         log_intensity = np.log10(output_array + 1.0)
 
-        # Create xarray DataArray with proper coordinate labels
-        # Coordinates represent the RT and m/z ranges
-        rt_coords = np.linspace(view_rt_min, view_rt_max, render_width)
-        mz_coords = np.linspace(view_mz_min, view_mz_max, render_height)
-
-        # Respect swap_axes flag: transpose data and swap dims if needed
+        # Prepare data for datashader
+        # Datashader needs array shape (height, width) to produce image of size (width, height)
         if state.swap_axes:
-            # Transpose data and swap dimensions
+            # output_array is currently (render_width, render_height) = (mz_bins, rt_bins) = (1100, 550)
+            # Transpose to (render_height, render_width) = (rt_bins, mz_bins) = (550, 1100)
+            # This represents rows=RT, cols=m/z which matches the swapped axes
+            log_intensity = log_intensity.T
+            # Create DataArray with dims matching the transposed data
             data_array = xr.DataArray(
-                log_intensity.T,
-                coords={"rt": rt_coords, "mz": mz_coords},
+                log_intensity,
+                coords={
+                    "rt": np.linspace(view_rt_min, view_rt_max, render_height),
+                    "mz": np.linspace(view_mz_min, view_mz_max, render_width),
+                },
                 dims=["rt", "mz"],
             )
         else:
-            # Keep original orientation
+            # output_array is (render_height, render_width) = (mz_bins, rt_bins) = (550, 1100)
+            # Use as-is: rows=m/z, cols=RT which matches default axes
             data_array = xr.DataArray(
                 log_intensity,
-                coords={"mz": mz_coords, "rt": rt_coords},
+                coords={
+                    "mz": np.linspace(view_mz_min, view_mz_max, render_height),
+                    "rt": np.linspace(view_rt_min, view_rt_max, render_width),
+                },
                 dims=["mz", "rt"],
             )
 
-        # Shade the data array using datashader
-        img = tf.shade(data_array, cmap=COLORMAPS[state.colormap], how="linear")
+        # Shade the data array using datashader with histogram equalization for better contrast
+        img = tf.shade(data_array, cmap=COLORMAPS[state.colormap], how="eq_hist")
         if not fast:
-            img = tf.dynspread(img, threshold=0.5, max_px=3)
+            img = tf.dynspread(img, threshold=0.5, max_px=4)
         img = tf.set_background(img, get_colormap_background(state.colormap))
 
         plot_img = img.to_pil()

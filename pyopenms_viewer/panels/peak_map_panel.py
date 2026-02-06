@@ -516,6 +516,10 @@ class PeakMapPanel(BasePanel):
         Works for both in-memory mode (state.df is not None) and
         out-of-core mode (state.df is None but data_manager has data).
         """
+        # Phase 1 rasterization mode: exp is present even when df is None
+        if self.state.exp is not None and len(self.state.exp) > 0:
+            return True
+        # In-memory mode with DataFrame
         if self.state.df is not None:
             return True
         # Out-of-core mode: check data_manager
@@ -616,8 +620,11 @@ class PeakMapPanel(BasePanel):
     def _toggle_swap_axes(self):
         """Toggle axis swap."""
         self.state.swap_axes = self.swap_axes_cb.value
+        # Invalidate minimap cache because bin dimensions change with swap_axes
+        self.state.invalidate_minimap_cache()
         if self._has_data():
             self.update()
+            self.update_minimap()
 
     def _toggle_spectrum_marker(self):
         """Toggle spectrum position marker."""
