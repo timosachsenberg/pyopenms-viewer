@@ -49,6 +49,8 @@ class PeakMapPanel(BasePanel):
         self.scene_3d_container: Optional[ui.column] = None
         self.plot_3d = None
         self.view_3d_status: Optional[ui.label] = None
+        self.view_3d_sync_warning: Optional[ui.label] = None
+        self.view_3d_auto_update_cb: Optional[ui.checkbox] = None
         self.view_3d_btn = None
 
         # Checkboxes for overlay options
@@ -400,6 +402,16 @@ class PeakMapPanel(BasePanel):
         with self.scene_3d_container:
             self.view_3d_status = ui.label("").classes("text-xs text-yellow-400")
 
+            # Add out-of-sync warning label
+            self.view_3d_sync_warning = ui.label("").classes("text-xs text-orange-400")
+            self.view_3d_sync_warning.set_visibility(False)
+
+            # Add auto-update checkbox
+            with ui.row().classes("gap-2"):
+                self.view_3d_auto_update_cb = ui.checkbox(
+                    "Auto-update 3D", value=True, on_change=self._on_3d_auto_update_changed
+                ).classes("text-xs")
+
             # Create empty plotly figure for 3D view
             empty_fig = go.Figure()
             empty_fig.update_layout(
@@ -542,6 +554,8 @@ class PeakMapPanel(BasePanel):
     def _on_view_changed(self):
         """Handle view changed event."""
         self.update()
+        # Check if 3D view is still in sync and update warning
+        self._check_and_update_3d_sync_warning()
 
     def _on_selection_changed(self, selection_type: str, index):
         """Handle selection changed event - redraw spectrum marker."""
@@ -1224,8 +1238,50 @@ class PeakMapPanel(BasePanel):
             else:
                 self.view_3d_btn.props("color=grey")
 
+    def _on_3d_auto_update_changed(self):
+        """Handle auto-update checkbox change."""
+        if (
+            hasattr(self, "view_3d_auto_update_cb")
+            and self.view_3d_auto_update_cb is not None
+            and self.view_3d_auto_update_cb.value
+        ):
+            # Auto-update is enabled, update 3D view if showing
+            if self.state.show_3d_view and self._has_data():
+                self._update_3d_view()
+
+    def _check_and_update_3d_sync_warning(self):
+        """Check 3D sync status and update warning label.
+
+        Called when view changes (pan/zoom) to detect if 3D view is out of sync.
+        """
+        if not self.state.show_3d_view or not hasattr(self, "view_3d_sync_warning") or self.view_3d_sync_warning is None:
+            return
+
+        # Check if 3D is out of sync
+        is_in_sync = self.state.check_3d_sync()
+
+        if is_in_sync:
+            # In sync - hide warning
+            self.view_3d_sync_warning.set_visibility(False)
+        else:
+            # Out of sync - show warning
+            if (
+                hasattr(self, "view_3d_auto_update_cb")
+                and self.view_3d_auto_update_cb is not None
+                and self.view_3d_auto_update_cb.value
+            ):
+                    self._update_3d_view()
+            else:
+                # Auto-update is disabled, show warning
+                self.view_3d_sync_warning.set_text("⚠ 3D view out of sync")
+                self.view_3d_sync_warning.set_visibility(True)
+
     def _update_3d_view(self):
-        """Update the 3D visualization with current view data using pyopenms-viz."""
+        """Update the 3D visualization with current view data using pyopenms-viz.
+        
+        Reuses temporary DataFrames when the 2D view is in sync with the
+        last 3D update to avoid redundant data processing.
+        """
         if not self.state.show_3d_view or self.plot_3d is None or not self._has_data():
             return
 
@@ -1241,26 +1297,37 @@ class PeakMapPanel(BasePanel):
                 )
             return
 
-        # Get peaks in current view
-        df = self.state.df
-        mask = (
-            (df["rt"] >= self.state.view_rt_min)
-            & (df["rt"] <= self.state.view_rt_max)
-            & (df["mz"] >= self.state.view_mz_min)
-            & (df["mz"] <= self.state.view_mz_max)
-        )
-        view_df = df[mask].copy()
+        # Check if temp_peak_df exists and is in sync
+        if self.state.temp_peak_df is not None and self.state.check_3d_sync():
+            # Reuse existing temp_peak_df
+            view_df = self.state.temp_peak_df
+        else:
+            # Need to create DataFrame from current view
+            df = self.state.df
+            mask = (
+                (df["rt"] >= self.state.view_rt_min)
+                & (df["rt"] <= self.state.view_rt_max)
+                & (df["mz"] >= self.state.view_mz_min)
+                & (df["mz"] <= self.state.view_mz_max)
+            )
+            view_df = df[mask].copy()
 
         if len(view_df) == 0:
             if self.view_3d_status:
                 self.view_3d_status.set_text("No peaks in view")
             return
 
+        # Store as temp_peak_df for potential reuse
+        self.state.temp_peak_df = view_df
+
         # Subsample if too many peaks
         num_peaks_total = len(view_df)
         if len(view_df) > self.state.max_3d_peaks:
             view_df = view_df.nlargest(self.state.max_3d_peaks, "intensity")
         num_peaks_shown = len(view_df)
+
+        # Update 3D sync tracking
+        self.state.update_3d_sync_bounds()
 
         try:
             # Use pyopenms-viz for 3D plotting

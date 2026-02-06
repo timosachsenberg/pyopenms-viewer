@@ -523,6 +523,60 @@ class ViewerState:
         if emit_event:
             self.emit_view_changed()
 
+    # ========== 3D VIEW SYNCHRONIZATION ==========
+
+    def update_3d_sync_bounds(self) -> None:
+        """Store current view bounds when 3D view is updated.
+
+        This method should be called after updating the 3D visualization
+        to track the view bounds used for 3D rendering, enabling detection
+        of out-of-sync states when the 2D view changes.
+        """
+        self.last_3d_view_bounds = (
+            self.view_rt_min if self.view_rt_min is not None else self.rt_min,
+            self.view_rt_max if self.view_rt_max is not None else self.rt_max,
+            self.view_mz_min if self.view_mz_min is not None else self.mz_min,
+            self.view_mz_max if self.view_mz_max is not None else self.mz_max,
+        )
+        self.is_3d_in_sync = True
+
+    def check_3d_sync(self) -> bool:
+        """Check if 3D view matches current 2D view bounds.
+
+        Uses floating point tolerance (1e-6) to account for rounding errors
+        when panning/zooming.
+
+        Returns:
+            True if 3D view is in sync with 2D view bounds, False otherwise.
+            Also updates self.is_3d_in_sync flag.
+        """
+        if self.last_3d_view_bounds is None:
+            self.is_3d_in_sync = False
+            return False
+
+        last_rt_min, last_rt_max, last_mz_min, last_mz_max = self.last_3d_view_bounds
+
+        # Get current bounds (use view bounds if set, else data bounds)
+        current_rt_min = self.view_rt_min if self.view_rt_min is not None else self.rt_min
+        current_rt_max = self.view_rt_max if self.view_rt_max is not None else self.rt_max
+        current_mz_min = self.view_mz_min if self.view_mz_min is not None else self.mz_min
+        current_mz_max = self.view_mz_max if self.view_mz_max is not None else self.mz_max
+
+        # Allow small tolerance for floating point comparison
+        tolerance = 1e-6
+        rt_matches = (
+            abs(current_rt_min - last_rt_min) < tolerance
+            and abs(current_rt_max - last_rt_max) < tolerance
+        )
+        mz_matches = (
+            abs(current_mz_min - last_mz_min) < tolerance
+            and abs(current_mz_max - last_mz_max) < tolerance
+        )
+
+        in_sync = rt_matches and mz_matches
+        self.is_3d_in_sync = in_sync
+        return in_sync
+
     # ========== PANEL VISIBILITY ==========
 
     def should_panel_be_visible(self, panel_id: str) -> bool:
