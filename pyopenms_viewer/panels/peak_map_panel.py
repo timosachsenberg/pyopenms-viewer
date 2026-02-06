@@ -625,6 +625,9 @@ class PeakMapPanel(BasePanel):
         if self._has_data():
             self.update()
             self.update_minimap()
+            # Update 3D view if showing (aspect ratio depends on swap_axes)
+            if self.state.show_3d_view and self.plot_3d is not None:
+                self._update_3d_view()
 
     def _toggle_spectrum_marker(self):
         """Toggle spectrum position marker."""
@@ -1071,6 +1074,9 @@ class PeakMapPanel(BasePanel):
         self.state.view_mz_min = new_mz_min
         self.state.view_mz_max = new_mz_max
 
+        # Emit view changed event for 3D sync
+        self.state.emit_view_changed()
+
         # Throttle rendering
         current_time = time.time()
         if current_time - self._drag_state["last_pan_render"] >= 0.05:
@@ -1155,6 +1161,9 @@ class PeakMapPanel(BasePanel):
             self.state.view_mz_min = new_mz_min
             self.state.view_mz_max = new_mz_max
 
+            # Emit view changed event for 3D sync
+            self.state.emit_view_changed()
+
             # Save new state to zoom history
             self.state.push_zoom_history()
             self.update()
@@ -1173,7 +1182,7 @@ class PeakMapPanel(BasePanel):
                 x_frac = plot_x / self.state.plot_width
                 y_frac = plot_y / self.state.plot_height
                 zoom_in = delta_y < 0
-                self.state.zoom_at_point(x_frac, y_frac, zoom_in)
+                self.state.zoom_at_point(x_frac, y_frac, zoom_in, emit_event=True)
                 self.update()
         except Exception:
             pass
@@ -1219,7 +1228,7 @@ class PeakMapPanel(BasePanel):
             offset_y = e.args.get("offsetY", 0)
             x_frac = offset_x / self.state.minimap_width
             y_frac = offset_y / self.state.minimap_height
-            self.state.minimap_click_to_view(x_frac, y_frac)
+            self.state.minimap_click_to_view(x_frac, y_frac, emit_event=True)
             self.update()
         except Exception:
             pass
@@ -1270,20 +1279,31 @@ class PeakMapPanel(BasePanel):
         ):
             return
 
-        # Check if 3D is out of sync
+        # First check if region is too large for 3D
+        if not self._is_small_region():
+            # Region too large - show warning even in auto-update mode
+            self.view_3d_sync_warning.set_text(
+                f"⚠ Out of sync - Zoom in for 3D (need: RT≤{self.state.rt_threshold_3d:.0f}s, m/z≤{self.state.mz_threshold_3d:.0f})"
+            )
+            self.view_3d_sync_warning.set_visibility(True)
+            return
+
+        # Region is small enough - check if 3D is out of sync
         is_in_sync = self.state.check_3d_sync()
 
         if is_in_sync:
             # In sync - hide warning
             self.view_3d_sync_warning.set_visibility(False)
         else:
-            # Out of sync - show warning
+            # Out of sync - update if auto-update enabled, else show warning
             if (
                 hasattr(self, "view_3d_auto_update_cb")
                 and self.view_3d_auto_update_cb is not None
                 and self.view_3d_auto_update_cb.value
             ):
                 self._update_3d_view()
+                # Hide warning after updating
+                self.view_3d_sync_warning.set_visibility(False)
             else:
                 # Auto-update is disabled, show warning
                 self.view_3d_sync_warning.set_text("⚠ 3D view out of sync")
@@ -1300,6 +1320,7 @@ class PeakMapPanel(BasePanel):
 
         # Check if region is small enough
         if not self._is_small_region():
+            # Show message that region is too large
             # Show message that region is too large
             if self.view_3d_status:
                 rt_range = self.state.view_rt_max - self.state.view_rt_min
@@ -1386,6 +1407,25 @@ class PeakMapPanel(BasePanel):
             # Get the plotly figure
             fig = plot.fig
 
+            # Calculate aspect ratio to match 2D peak map visual proportions
+            # pyopenms-viz plots with x=RT, y=m/z regardless of our swap_axes setting
+            # We need to match how RT and m/z are visually mapped in the 2D view
+            
+            if self.state.swap_axes:
+                # In 2D: m/z on x-axis (gets plot_width), RT on y-axis (gets plot_height)
+                # In 3D: RT is x-axis, m/z is y-axis
+                # So 3D x-axis (RT) should have visual length proportional to plot_height
+                # And 3D y-axis (m/z) should have visual length proportional to plot_width
+                aspect_x = self.state.plot_height / max(self.state.plot_width, self.state.plot_height)
+                aspect_y = self.state.plot_width / max(self.state.plot_width, self.state.plot_height)
+            else:
+                # In 2D: RT on x-axis (gets plot_width), m/z on y-axis (gets plot_height)
+                # In 3D: RT is x-axis, m/z is y-axis
+                # So 3D x-axis (RT) should have visual length proportional to plot_width
+                # And 3D y-axis (m/z) should have visual length proportional to plot_height
+                aspect_x = self.state.plot_width / max(self.state.plot_width, self.state.plot_height)
+                aspect_y = self.state.plot_height / max(self.state.plot_width, self.state.plot_height)
+
             # Update layout for light/dark mode compatibility
             fig.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
@@ -1397,11 +1437,11 @@ class PeakMapPanel(BasePanel):
                     "zaxis": {"title": "Intensity", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": "#888"},
                     "bgcolor": "rgba(0,0,0,0)",
                     "aspectmode": "manual",
-                    "aspectratio": {"x": 1.5, "y": 1, "z": 0.8},
+                    "aspectratio": {"x": aspect_x, "y": aspect_y, "z": 0.6},
                 },
                 margin={"l": 0, "r": 0, "t": 0, "b": 0},
-                width=self.state.canvas_width,
-                height=500,
+                width=self.state.plot_width + self.state.margin_left + self.state.margin_right,
+                height=self.state.plot_height + self.state.margin_top + self.state.margin_bottom,
                 autosize=False,
                 showlegend=True,
                 legend={"x": 0, "y": 1, "bgcolor": "rgba(128,128,128,0.3)"},
