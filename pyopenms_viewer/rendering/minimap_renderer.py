@@ -12,6 +12,7 @@ from typing import Optional
 import datashader as ds
 import datashader.transfer_functions as tf
 import numpy as np
+import pandas as pd
 import xarray as xr
 from PIL import ImageDraw
 
@@ -68,7 +69,15 @@ class MinimapRenderer:
         # Check cache - if empty, rasterize
         if state.cached_minimap_raster is None:
             # Rasterize at full data extent
-            output = np.empty((self.height, self.width), dtype=np.float32)
+            # Request appropriate bin counts based on swap_axes
+            if state.swap_axes:
+                # Swapped: m/z on X (width), RT on Y (height)
+                # Request (self.width mz bins, self.height RT bins) = (400, 200)
+                output = np.empty((self.width, self.height), dtype=np.float32)
+            else:
+                # Default: RT on X (width), m/z on Y (height)
+                # Request (self.height mz bins, self.width RT bins) = (200, 400)
+                output = np.empty((self.height, self.width), dtype=np.float32)
 
             try:
                 state.exp.rasterizeRTMZ(
@@ -80,30 +89,41 @@ class MinimapRenderer:
                     ms_level=1,
                     aggregation="sum",
                 )
+                # Transpose if swapped to get standard (height, width) shape
+                if state.swap_axes:
+                    output = output.T
                 state.cached_minimap_raster = output
-            except Exception as e:
+            except Exception:
                 # If rasterization fails, fall back to datashader
-                print(f"Minimap rasterization failed: {e}, falling back to datashader")
                 return self._render_with_datashader(state)
 
         # Create xarray DataArray from cached raster
-        # Respect swap_axes flag: transpose data and swap dims if needed
+        # cached_minimap_raster is always (self.height, self.width) = (200, 400) after transposing
+
         if state.swap_axes:
-            # Transpose data and use RT x m/z orientation
+            # Swapped view: rows=RT, cols=m/z
             xr_data = xr.DataArray(
-                state.cached_minimap_raster.T,
+                state.cached_minimap_raster,
+                coords={
+                    "rt": np.linspace(state.rt_min, state.rt_max, self.height),
+                    "mz": np.linspace(state.mz_min, state.mz_max, self.width),
+                },
                 dims=["rt", "mz"],
             )
         else:
-            # Keep original orientation: m/z x RT
+            # Default view: rows=m/z, cols=RT
             xr_data = xr.DataArray(
                 state.cached_minimap_raster,
+                coords={
+                    "mz": np.linspace(state.mz_min, state.mz_max, self.height),
+                    "rt": np.linspace(state.rt_min, state.rt_max, self.width),
+                },
                 dims=["mz", "rt"],
             )
 
-        # Apply colormap to create image
-        img = tf.shade(xr_data, cmap=COLORMAPS[state.colormap], how="linear")
-        img = tf.dynspread(img, threshold=0.5, max_px=2)
+        # Apply colormap with histogram equalization for better contrast
+        img = tf.shade(xr_data, cmap=COLORMAPS[state.colormap], how="eq_hist")
+        img = tf.dynspread(img, threshold=0.5, max_px=4)
         img = tf.set_background(img, get_colormap_background(state.colormap))
 
         # Convert to PIL
@@ -136,8 +156,26 @@ class MinimapRenderer:
             else:
                 # No downsampling - get all peaks
                 minimap_df = state.data_manager.query_all_peaks()
-        else:
+        elif state.df is not None:
             minimap_df = state.df
+        elif state.exp is not None and hasattr(state.exp, "get2DPeakDataLong"):
+            # Phase 1 rasterization path: extract data on-demand when df is None
+            try:
+                rt_array, mz_array, intensity_array = state.exp.get2DPeakDataLong(
+                    state.rt_min, state.rt_max, state.mz_min, state.mz_max, ms_level=1
+                )
+                minimap_df = pd.DataFrame(
+                    {
+                        "rt": rt_array,
+                        "mz": mz_array,
+                        "intensity": intensity_array,
+                        "log_intensity": np.log10(intensity_array + 1),
+                    }
+                )
+            except Exception:
+                return None
+        else:
+            minimap_df = None
 
         if minimap_df is None or len(minimap_df) == 0:
             return None
@@ -165,9 +203,9 @@ class MinimapRenderer:
             )
             agg = cvs.points(minimap_df, "rt", "mz", agg=ds.max("log_intensity"))
 
-        # Apply color map with linear scaling
-        img = tf.shade(agg, cmap=COLORMAPS[state.colormap], how="linear")
-        img = tf.dynspread(img, threshold=0.5, max_px=2)
+        # Apply color map with histogram equalization for better contrast
+        img = tf.shade(agg, cmap=COLORMAPS[state.colormap], how="eq_hist")
+        img = tf.dynspread(img, threshold=0.5, max_px=4)
         img = tf.set_background(img, get_colormap_background(state.colormap))
 
         # Convert to PIL
@@ -333,9 +371,9 @@ class MinimapRenderer:
             )
             agg = cvs.points(cv_df, "rt", "mz", agg=ds.max("log_intensity"))
 
-        # Apply color map with linear scaling
-        img = tf.shade(agg, cmap=COLORMAPS[state.colormap], how="linear")
-        img = tf.dynspread(img, threshold=0.5, max_px=2)
+        # Apply color map with histogram equalization for better contrast
+        img = tf.shade(agg, cmap=COLORMAPS[state.colormap], how="eq_hist")
+        img = tf.dynspread(img, threshold=0.5, max_px=4)
         img = tf.set_background(img, get_colormap_background(state.colormap))
 
         # Convert to PIL
