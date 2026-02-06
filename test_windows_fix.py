@@ -8,9 +8,8 @@ This script validates that the hook changes work correctly by:
 3. Testing DLL collection logic
 """
 
-import os
-import sys
 import ast
+import sys
 from pathlib import Path
 
 
@@ -19,7 +18,7 @@ def test_hook_no_import():
     print("Testing hook-pyopenms.py doesn't import pyopenms...")
 
     hook_path = Path(__file__).parent / "hook-pyopenms.py"
-    with open(hook_path, "r") as f:
+    with open(hook_path) as f:
         content = f.read()
 
     # Parse as AST to find function calls
@@ -48,7 +47,7 @@ def test_runtime_hook_ascii():
     print("\nTesting pyi_rth_pyopenms.py uses ASCII-only output...")
 
     rth_path = Path(__file__).parent / "pyi_rth_pyopenms.py"
-    with open(rth_path, "r", encoding="utf-8") as f:
+    with open(rth_path, encoding="utf-8") as f:
         content = f.read()
 
     # Check for Unicode characters
@@ -72,7 +71,7 @@ def test_spec_no_collect_all_pyopenms():
     print("\nTesting pyopenms-viewer-windows.spec doesn't import pyopenms...")
 
     spec_path = Path(__file__).parent / "pyopenms-viewer-windows.spec"
-    with open(spec_path, "r") as f:
+    with open(spec_path) as f:
         lines = f.readlines()
 
     # Check each line, ignoring comments
@@ -101,7 +100,7 @@ def test_hook_collects_dlls():
     print("\nTesting hook-pyopenms.py has DLL collection logic...")
 
     hook_path = Path(__file__).parent / "hook-pyopenms.py"
-    with open(hook_path, "r") as f:
+    with open(hook_path) as f:
         content = f.read()
 
     required_patterns = [
@@ -129,7 +128,7 @@ def test_runtime_hook_qt_isolation():
     print("\nTesting pyi_rth_pyopenms.py isolates Qt6 DLLs...")
 
     rth_path = Path(__file__).parent / "pyi_rth_pyopenms.py"
-    with open(rth_path, "r") as f:
+    with open(rth_path) as f:
         content = f.read()
 
     required_patterns = [

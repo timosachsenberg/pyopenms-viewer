@@ -1256,7 +1256,11 @@ class PeakMapPanel(BasePanel):
 
         Called when view changes (pan/zoom) to detect if 3D view is out of sync.
         """
-        if not self.state.show_3d_view or not hasattr(self, "view_3d_sync_warning") or self.view_3d_sync_warning is None:
+        if (
+            not self.state.show_3d_view
+            or not hasattr(self, "view_3d_sync_warning")
+            or self.view_3d_sync_warning is None
+        ):
             return
 
         # Check if 3D is out of sync
@@ -1272,7 +1276,7 @@ class PeakMapPanel(BasePanel):
                 and self.view_3d_auto_update_cb is not None
                 and self.view_3d_auto_update_cb.value
             ):
-                    self._update_3d_view()
+                self._update_3d_view()
             else:
                 # Auto-update is disabled, show warning
                 self.view_3d_sync_warning.set_text("⚠ 3D view out of sync")
@@ -1280,7 +1284,7 @@ class PeakMapPanel(BasePanel):
 
     def _update_3d_view(self):
         """Update the 3D visualization with current view data using pyopenms-viz.
-        
+
         Reuses temporary DataFrames when the 2D view is in sync with the
         last 3D update to avoid redundant data processing.
         """
@@ -1317,12 +1321,14 @@ class PeakMapPanel(BasePanel):
                         self.state.view_mz_max,
                         ms_level=1,
                     )
-                    view_df = pd.DataFrame({
-                        'rt': rt_array,
-                        'mz': mz_array,
-                        'intensity': intensity_array,
-                        'log_intensity': np.log10(intensity_array + 1),
-                    })
+                    view_df = pd.DataFrame(
+                        {
+                            "rt": rt_array,
+                            "mz": mz_array,
+                            "intensity": intensity_array,
+                            "log_intensity": np.log10(intensity_array + 1),
+                        }
+                    )
                 except Exception:
                     # Fall through to Path 2
                     pass

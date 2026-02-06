@@ -3,9 +3,10 @@
 # Any changes to os.environ ARE inherited by subprocesses.
 # Critical for Windows where OpenMS.dll must be in PATH before importing.
 
-from PyInstaller.utils.hooks import get_package_paths
 import os
 import sys
+
+from PyInstaller.utils.hooks import get_package_paths
 
 
 def pre_safe_import_module(api):

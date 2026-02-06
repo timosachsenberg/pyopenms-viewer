@@ -9,7 +9,6 @@ Usage:
 """
 
 import os
-import sys
 import site
 
 

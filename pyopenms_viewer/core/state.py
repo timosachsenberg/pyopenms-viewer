@@ -396,6 +396,58 @@ class ViewerState:
         )
         return self.im_df[mask]
 
+    def get_faims_peaks_for_cv(
+        self, cv: float, rt_min: float, rt_max: float, mz_min: float, mz_max: float
+    ) -> pd.DataFrame:
+        """Extract FAIMS peaks for a specific CV value on-demand.
+
+        Uses get2DPeakDataIMLong() to extract peaks from the experiment,
+        then filters by CV (which is stored as ion_mobility in pyOpenMS).
+
+        Args:
+            cv: Compensation voltage value to filter by
+            rt_min: Minimum RT for extraction
+            rt_max: Maximum RT for extraction
+            mz_min: Minimum m/z for extraction
+            mz_max: Maximum m/z for extraction
+
+        Returns:
+            DataFrame with columns: rt, mz, intensity, log_intensity
+            Only peaks matching the specified CV are included.
+        """
+        if self.exp is None:
+            return pd.DataFrame()
+
+        try:
+            # Extract all peaks in bounds using get2DPeakDataIMLong
+            # Returns: (rt_array, mz_array, intensity_array, ion_mobility_array)
+            # ion_mobility stores the CV value for FAIMS data
+            rt_array, mz_array, intensity_array, cv_array = self.exp.get2DPeakDataIMLong(
+                rt_min, rt_max, mz_min, mz_max, ms_level=1
+            )
+
+            # Filter by CV (ion_mobility == cv)
+            # Use numpy operations for efficiency
+            mask = np.isclose(cv_array, cv, atol=0.01)  # Allow small tolerance for floating point
+            rt_filtered = rt_array[mask]
+            mz_filtered = mz_array[mask]
+            intensity_filtered = intensity_array[mask]
+
+            # Create DataFrame
+            result_df = pd.DataFrame(
+                {
+                    "rt": rt_filtered,
+                    "mz": mz_filtered,
+                    "intensity": intensity_filtered,
+                    "log_intensity": np.log1p(intensity_filtered),
+                }
+            )
+
+            return result_df
+        except Exception:
+            # If extraction fails, return empty DataFrame
+            return pd.DataFrame()
+
     def get_view_bounds(self) -> ViewBounds:
         """Get current view bounds as a ViewBounds object."""
         return ViewBounds(
@@ -563,14 +615,8 @@ class ViewerState:
 
         # Allow small tolerance for floating point comparison
         tolerance = 1e-6
-        rt_matches = (
-            abs(current_rt_min - last_rt_min) < tolerance
-            and abs(current_rt_max - last_rt_max) < tolerance
-        )
-        mz_matches = (
-            abs(current_mz_min - last_mz_min) < tolerance
-            and abs(current_mz_max - last_mz_max) < tolerance
-        )
+        rt_matches = abs(current_rt_min - last_rt_min) < tolerance and abs(current_rt_max - last_rt_max) < tolerance
+        mz_matches = abs(current_mz_min - last_mz_min) < tolerance and abs(current_mz_max - last_mz_max) < tolerance
 
         in_sync = rt_matches and mz_matches
         self.is_3d_in_sync = in_sync

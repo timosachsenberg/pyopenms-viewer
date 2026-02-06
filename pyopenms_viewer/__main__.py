@@ -13,7 +13,6 @@ from pyopenms_viewer.cli import (
     main,
 )
 
-
 if __name__ == "__main__":
     freeze_support()
     argv = _sanitize_pyinstaller_args(sys.argv)

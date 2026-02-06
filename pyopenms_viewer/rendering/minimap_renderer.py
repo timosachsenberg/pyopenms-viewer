@@ -283,11 +283,16 @@ class MinimapRenderer:
         if not state.has_faims:
             return None
 
-        # Get CV data - use data_manager in out-of-core mode, faims_data in-memory
+        # Get CV data - use data_manager in out-of-core mode, or in-memory with on-demand extraction
         if state.data_manager is not None:
             cv_df = state.data_manager.query_peaks_for_cv(cv, downsample=state.peakmap_downsampling)
         else:
-            cv_df = state.faims_data.get(cv)
+            # Check if cv_df is in faims_data cache
+            if cv in state.faims_data:
+                cv_df = state.faims_data[cv]
+            else:
+                # Extract on-demand if faims_data is empty (Phase 1 rasterization path)
+                cv_df = state.get_faims_peaks_for_cv(cv, state.rt_min, state.rt_max, state.mz_min, state.mz_max)
 
         if cv_df is None or len(cv_df) == 0:
             return None

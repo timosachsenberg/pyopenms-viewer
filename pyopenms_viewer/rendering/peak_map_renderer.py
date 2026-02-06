@@ -141,12 +141,14 @@ class PeakMapRenderer:
                 )
 
                 # Create temporary DataFrame from the returned arrays
-                view_df = pd.DataFrame({
-                    'rt': rt_array,
-                    'mz': mz_array,
-                    'intensity': intensity_array,
-                    'log_intensity': np.log10(intensity_array + 1),
-                })
+                view_df = pd.DataFrame(
+                    {
+                        "rt": rt_array,
+                        "mz": mz_array,
+                        "intensity": intensity_array,
+                        "log_intensity": np.log10(intensity_array + 1),
+                    }
+                )
 
                 # Store temporary DataFrame for potential 3D view reuse (Phase 5)
                 state.temp_peak_df = view_df.copy()
@@ -154,8 +156,15 @@ class PeakMapRenderer:
                 # Fallback: use traditional DataFrame filtering if get2DPeakDataLong fails
                 if state.df is not None:
                     # Fast path: direct pandas filtering (in-memory mode)
-                    if state.has_faims and state.selected_faims_cv is not None and state.selected_faims_cv in state.faims_data:
-                        source_df = state.faims_data[state.selected_faims_cv]
+                    if state.has_faims and state.selected_faims_cv is not None:
+                        # Check if faims_data is populated
+                        if state.selected_faims_cv in state.faims_data:
+                            source_df = state.faims_data[state.selected_faims_cv]
+                        else:
+                            # Extract on-demand if faims_data is empty (Phase 1 rasterization path)
+                            source_df = state.get_faims_peaks_for_cv(
+                                state.selected_faims_cv, state.rt_min, state.rt_max, state.mz_min, state.mz_max
+                            )
                     else:
                         source_df = state.df
 
@@ -175,8 +184,15 @@ class PeakMapRenderer:
             # Fallback when exp is None - use traditional approach
             if state.df is not None:
                 # Fast path: direct pandas filtering (in-memory mode)
-                if state.has_faims and state.selected_faims_cv is not None and state.selected_faims_cv in state.faims_data:
-                    source_df = state.faims_data[state.selected_faims_cv]
+                if state.has_faims and state.selected_faims_cv is not None:
+                    # Check if faims_data is populated
+                    if state.selected_faims_cv in state.faims_data:
+                        source_df = state.faims_data[state.selected_faims_cv]
+                    else:
+                        # Extract on-demand if faims_data is empty (Phase 1 rasterization path)
+                        source_df = state.get_faims_peaks_for_cv(
+                            state.selected_faims_cv, state.rt_min, state.rt_max, state.mz_min, state.mz_max
+                        )
                 else:
                     source_df = state.df
 
@@ -305,11 +321,11 @@ class PeakMapRenderer:
         output_array = np.zeros((render_height, render_width), dtype=np.float32)
 
         try:
-            if not hasattr(state.exp, 'rasterizeRTMZ'):
+            if not hasattr(state.exp, "rasterizeRTMZ"):
                 # Method doesn't exist - fall back to point rendering
                 print("[PeakMapRenderer] rasterizeRTMZ not available, falling back to point rendering")
                 return self._render_points(state, fast, draw_overlays, draw_axes)
-            
+
             state.exp.rasterizeRTMZ(
                 output_array,
                 view_rt_min,
@@ -319,7 +335,7 @@ class PeakMapRenderer:
                 ms_level=1,
                 aggregation="sum",
             )
-            
+
             # Check if rasterization produced any data
             if output_array.max() == 0.0:
                 # No data in rasterization - fall back to point rendering

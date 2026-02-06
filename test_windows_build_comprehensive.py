@@ -16,11 +16,10 @@ Tests:
 8. DLL path setup verification
 """
 
-import os
-import sys
 import ast
+import os
 import re
-from pathlib import Path
+import sys
 
 
 # Colors for terminal output
@@ -115,7 +114,7 @@ PYTHON_FILES = [
 for f in PYTHON_FILES:
     if os.path.exists(f):
         try:
-            with open(f, "r") as file:
+            with open(f) as file:
                 source = file.read()
             ast.parse(source)
             ok(f"Valid Python syntax: {f}")
@@ -131,7 +130,7 @@ for f in PYTHON_FILES:
 header("TEST 3: hook-pyopenms.py Logic Verification")
 
 if os.path.exists("hook-pyopenms.py"):
-    with open("hook-pyopenms.py", "r") as f:
+    with open("hook-pyopenms.py") as f:
         hook_content = f.read()
 
     # Test 3.1: .pyd files go to pyopenms/ directory
@@ -185,7 +184,7 @@ if os.path.exists("hook-pyopenms.py"):
 header("TEST 4: pyi_rth_pyopenms.py Runtime Hook Verification")
 
 if os.path.exists("pyi_rth_pyopenms.py"):
-    with open("pyi_rth_pyopenms.py", "r") as f:
+    with open("pyi_rth_pyopenms.py") as f:
         rth_content = f.read()
 
     # Test 4.1: Checks for frozen state
@@ -234,7 +233,7 @@ if os.path.exists("pyi_rth_pyopenms.py"):
 header("TEST 5: pyopenms-viewer-windows.spec Verification")
 
 if os.path.exists("pyopenms-viewer-windows.spec"):
-    with open("pyopenms-viewer-windows.spec", "r") as f:
+    with open("pyopenms-viewer-windows.spec") as f:
         spec_content = f.read()
 
     # Test 5.1: runtime_hooks includes pyi_rth_pyopenms.py
@@ -304,7 +303,7 @@ header("TEST 6: CI Workflow Verification")
 
 # Test 6.1: windows.yml
 if os.path.exists(".github/workflows/windows.yml"):
-    with open(".github/workflows/windows.yml", "r") as f:
+    with open(".github/workflows/windows.yml") as f:
         windows_yml = f.read()
 
     if "pyopenms-viewer-windows.spec" in windows_yml:
@@ -322,7 +321,7 @@ if os.path.exists(".github/workflows/windows.yml"):
 
 # Test 6.2: build.yml
 if os.path.exists(".github/workflows/build.yml"):
-    with open(".github/workflows/build.yml", "r") as f:
+    with open(".github/workflows/build.yml") as f:
         build_yml = f.read()
 
     if "pyopenms-viewer-windows.spec" in build_yml:
@@ -344,7 +343,7 @@ if os.path.exists(".github/workflows/build.yml"):
 header("TEST 7: pre_safe_import_module Hook Verification")
 
 if os.path.exists("pre_safe_import_module/hook-pyopenms.py"):
-    with open("pre_safe_import_module/hook-pyopenms.py", "r") as f:
+    with open("pre_safe_import_module/hook-pyopenms.py") as f:
         presafe_content = f.read()
 
     if "def pre_safe_import_module(api)" in presafe_content:
@@ -433,9 +432,9 @@ header("TEST 9: Cross-Component Consistency Check")
 
 # Verify consistency between hook and spec
 if os.path.exists("hook-pyopenms.py") and os.path.exists("pyopenms-viewer-windows.spec"):
-    with open("hook-pyopenms.py", "r") as f:
+    with open("hook-pyopenms.py") as f:
         hook = f.read()
-    with open("pyopenms-viewer-windows.spec", "r") as f:
+    with open("pyopenms-viewer-windows.spec") as f:
         spec = f.read()
 
     # Check both have same hidden imports
@@ -450,7 +449,7 @@ if os.path.exists("hook-pyopenms.py") and os.path.exists("pyopenms-viewer-window
 
 # Verify runtime hook is referenced correctly
 if os.path.exists("pyi_rth_pyopenms.py") and os.path.exists("pyopenms-viewer-windows.spec"):
-    with open("pyopenms-viewer-windows.spec", "r") as f:
+    with open("pyopenms-viewer-windows.spec") as f:
         spec = f.read()
 
     if "pyi_rth_pyopenms.py" in spec:
@@ -509,7 +508,7 @@ print("   ───────────────────────�
 
 # Test 10.1: Verify pre_safe_import_module runs first (sets PATH for build)
 if os.path.exists("pre_safe_import_module/hook-pyopenms.py"):
-    with open("pre_safe_import_module/hook-pyopenms.py", "r") as f:
+    with open("pre_safe_import_module/hook-pyopenms.py") as f:
         presafe = f.read()
 
     # Must set PATH before any import happens
@@ -527,7 +526,7 @@ else:
 
 # Test 10.2: Verify standard hook does NOT import pyopenms
 if os.path.exists("hook-pyopenms.py"):
-    with open("hook-pyopenms.py", "r") as f:
+    with open("hook-pyopenms.py") as f:
         hook = f.read()
 
     # Check for dangerous imports that would trigger DLL load
@@ -563,7 +562,7 @@ if os.path.exists("hook-pyopenms.py"):
 
 # Test 10.3: Verify runtime hook runs at frozen startup
 if os.path.exists("pyi_rth_pyopenms.py"):
-    with open("pyi_rth_pyopenms.py", "r") as f:
+    with open("pyi_rth_pyopenms.py") as f:
         rth = f.read()
 
     # Must check for frozen state first
@@ -592,7 +591,7 @@ if os.path.exists("pyi_rth_pyopenms.py"):
 
 # Test 10.4: Verify runtime hook is listed in spec (determines execution order)
 if os.path.exists("pyopenms-viewer-windows.spec"):
-    with open("pyopenms-viewer-windows.spec", "r") as f:
+    with open("pyopenms-viewer-windows.spec") as f:
         spec = f.read()
 
     # Check runtime_hooks order - pyopenms should be first if there are multiple
@@ -621,7 +620,7 @@ print("\n   Checking for import conflicts...")
 
 # The runtime hook must NOT import pyopenms before setting up PATH
 if os.path.exists("pyi_rth_pyopenms.py"):
-    with open("pyi_rth_pyopenms.py", "r") as f:
+    with open("pyi_rth_pyopenms.py") as f:
         rth_content = f.read()
 
     # Find where PATH is set vs where pyopenms might be imported
@@ -646,7 +645,7 @@ if os.path.exists("pyi_rth_pyopenms.py"):
 
 # Test 10.6: Verify hookspath order in spec
 if os.path.exists("pyopenms-viewer-windows.spec"):
-    with open("pyopenms-viewer-windows.spec", "r") as f:
+    with open("pyopenms-viewer-windows.spec") as f:
         spec = f.read()
 
     hookspath_match = re.search(r"hookspath\s*=\s*\[(.*?)\]", spec, re.DOTALL)
@@ -688,7 +687,7 @@ Our strategy:
 """
 
 if os.path.exists("pyi_rth_pyopenms.py"):
-    with open("pyi_rth_pyopenms.py", "r") as f:
+    with open("pyi_rth_pyopenms.py") as f:
         rth = f.read()
 
     # Test 11.1: pyopenms_dlls is added FIRST to PATH (prepended, not appended)
@@ -732,7 +731,7 @@ if os.path.exists("pyi_rth_pyopenms.py"):
 
 # Test 11.4: Verify .pyd files are NOT in pyopenms_dlls (would break imports)
 if os.path.exists("hook-pyopenms.py"):
-    with open("hook-pyopenms.py", "r") as f:
+    with open("hook-pyopenms.py") as f:
         hook = f.read()
 
     # Check that .pyd files go to pyopenms/, not pyopenms_dlls/
