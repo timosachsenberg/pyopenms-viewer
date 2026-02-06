@@ -22,35 +22,43 @@ import ast
 import re
 from pathlib import Path
 
+
 # Colors for terminal output
 class Colors:
-    GREEN = '\033[92m'
-    RED = '\033[91m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    BOLD = '\033[1m'
-    END = '\033[0m'
+    GREEN = "\033[92m"
+    RED = "\033[91m"
+    YELLOW = "\033[93m"
+    BLUE = "\033[94m"
+    BOLD = "\033[1m"
+    END = "\033[0m"
+
 
 def ok(msg):
     print(f"{Colors.GREEN}✓{Colors.END} {msg}")
+
 
 def fail(msg):
     print(f"{Colors.RED}✗{Colors.END} {msg}")
     return False
 
+
 def warn(msg):
     print(f"{Colors.YELLOW}⚠{Colors.END} {msg}")
 
+
 def header(msg):
-    print(f"\n{Colors.BOLD}{Colors.BLUE}{'='*60}{Colors.END}")
+    print(f"\n{Colors.BOLD}{Colors.BLUE}{'=' * 60}{Colors.END}")
     print(f"{Colors.BOLD}{Colors.BLUE}{msg}{Colors.END}")
-    print(f"{Colors.BOLD}{Colors.BLUE}{'='*60}{Colors.END}")
+    print(f"{Colors.BOLD}{Colors.BLUE}{'=' * 60}{Colors.END}")
+
 
 # Track all test results
 all_passed = True
 
+
 def test(name):
     """Decorator for test functions"""
+
     def decorator(func):
         def wrapper(*args, **kwargs):
             global all_passed
@@ -63,8 +71,11 @@ def test(name):
                 fail(f"{name}: EXCEPTION - {e}")
                 all_passed = False
                 return False
+
         return wrapper
+
     return decorator
+
 
 # =============================================================================
 # TEST 1: FILE EXISTENCE
@@ -72,15 +83,15 @@ def test(name):
 header("TEST 1: Critical File Existence")
 
 REQUIRED_FILES = [
-    'hook-pyopenms.py',
-    'pyi_rth_pyopenms.py',
-    'pre_safe_import_module/hook-pyopenms.py',
-    'pyopenms-viewer-windows.spec',
-    'pyopenms-viewer-linux.spec',
-    'pyopenms-viewer-macos.spec',
-    '.github/workflows/windows.yml',
-    '.github/workflows/build.yml',
-    '.github/workflows/linux.yml',
+    "hook-pyopenms.py",
+    "pyi_rth_pyopenms.py",
+    "pre_safe_import_module/hook-pyopenms.py",
+    "pyopenms-viewer-windows.spec",
+    "pyopenms-viewer-linux.spec",
+    "pyopenms-viewer-macos.spec",
+    ".github/workflows/windows.yml",
+    ".github/workflows/build.yml",
+    ".github/workflows/linux.yml",
 ]
 
 for f in REQUIRED_FILES:
@@ -96,15 +107,15 @@ for f in REQUIRED_FILES:
 header("TEST 2: Python Syntax Validation")
 
 PYTHON_FILES = [
-    'hook-pyopenms.py',
-    'pyi_rth_pyopenms.py',
-    'pre_safe_import_module/hook-pyopenms.py',
+    "hook-pyopenms.py",
+    "pyi_rth_pyopenms.py",
+    "pre_safe_import_module/hook-pyopenms.py",
 ]
 
 for f in PYTHON_FILES:
     if os.path.exists(f):
         try:
-            with open(f, 'r') as file:
+            with open(f, "r") as file:
                 source = file.read()
             ast.parse(source)
             ok(f"Valid Python syntax: {f}")
@@ -119,16 +130,18 @@ for f in PYTHON_FILES:
 # =============================================================================
 header("TEST 3: hook-pyopenms.py Logic Verification")
 
-if os.path.exists('hook-pyopenms.py'):
-    with open('hook-pyopenms.py', 'r') as f:
+if os.path.exists("hook-pyopenms.py"):
+    with open("hook-pyopenms.py", "r") as f:
         hook_content = f.read()
-    
+
     # Test 3.1: .pyd files go to pyopenms/ directory
     pyd_pattern = r"file\.endswith\(\s*\(\s*['\"]\.pyd['\"]"
     if re.search(pyd_pattern, hook_content):
         # Check that .pyd is followed by placing in dest_dir (not pyopenms_dlls)
-        pyd_section = re.search(r"elif file\.endswith\(\(['\"]\.pyd['\"].*?\n.*?binaries\.append\(\(src,\s*(\w+)\)", hook_content, re.DOTALL)
-        if pyd_section and pyd_section.group(1) == 'dest_dir':
+        pyd_section = re.search(
+            r"elif file\.endswith\(\(['\"]\.pyd['\"].*?\n.*?binaries\.append\(\(src,\s*(\w+)\)", hook_content, re.DOTALL
+        )
+        if pyd_section and pyd_section.group(1) == "dest_dir":
             ok(".pyd files → dest_dir (pyopenms/) ✓")
         else:
             all_passed = False
@@ -136,7 +149,7 @@ if os.path.exists('hook-pyopenms.py'):
     else:
         all_passed = False
         fail("Cannot find .pyd handling logic")
-    
+
     # Test 3.2: .dll files go to pyopenms_dlls/ directory
     dll_pattern = r"elif file\.endswith\(\(['\"]\.dll['\"].*?\n.*?binaries\.append\(\(src,\s*['\"]pyopenms_dlls['\"]\)"
     if re.search(dll_pattern, hook_content, re.DOTALL):
@@ -144,7 +157,7 @@ if os.path.exists('hook-pyopenms.py'):
     else:
         all_passed = False
         fail(".dll files should go to pyopenms_dlls!")
-    
+
     # Test 3.3: All 8 _pyopenms modules in hiddenimports
     for i in range(1, 9):
         if f"pyopenms._pyopenms_{i}" in hook_content:
@@ -152,14 +165,14 @@ if os.path.exists('hook-pyopenms.py'):
         else:
             all_passed = False
             fail(f"MISSING hidden import: pyopenms._pyopenms_{i}")
-    
+
     # Test 3.4: Does NOT use collect_all('pyopenms') at module level
     if re.search(r"^[^#]*collect_all\s*\(\s*['\"]pyopenms['\"]\s*\)", hook_content, re.MULTILINE):
         all_passed = False
         fail("hook-pyopenms.py should NOT call collect_all('pyopenms') - causes import!")
     else:
         ok("Does not call collect_all('pyopenms') at module level ✓")
-    
+
     # Test 3.5: Uses get_package_paths instead of importing
     if "get_package_paths('pyopenms')" in hook_content:
         ok("Uses get_package_paths() to find pyopenms without importing ✓")
@@ -171,44 +184,44 @@ if os.path.exists('hook-pyopenms.py'):
 # =============================================================================
 header("TEST 4: pyi_rth_pyopenms.py Runtime Hook Verification")
 
-if os.path.exists('pyi_rth_pyopenms.py'):
-    with open('pyi_rth_pyopenms.py', 'r') as f:
+if os.path.exists("pyi_rth_pyopenms.py"):
+    with open("pyi_rth_pyopenms.py", "r") as f:
         rth_content = f.read()
-    
+
     # Test 4.1: Checks for frozen state
     if "getattr(sys, 'frozen', False)" in rth_content:
         ok("Checks sys.frozen before running ✓")
     else:
         all_passed = False
         fail("Must check sys.frozen before executing frozen-only code")
-    
+
     # Test 4.2: Uses sys._MEIPASS
     if "sys._MEIPASS" in rth_content:
         ok("Uses sys._MEIPASS for extraction directory ✓")
     else:
         all_passed = False
         fail("Must use sys._MEIPASS to find extraction directory")
-    
+
     # Test 4.3: Adds pyopenms_dlls to PATH
     if "pyopenms_dlls" in rth_content and "PATH" in rth_content:
         ok("Adds pyopenms_dlls to PATH ✓")
     else:
         all_passed = False
         fail("Must add pyopenms_dlls directory to PATH")
-    
+
     # Test 4.4: Uses os.add_dll_directory()
     if "os.add_dll_directory" in rth_content:
         ok("Uses os.add_dll_directory() for Windows 10+ ✓")
     else:
         all_passed = False
         fail("Must use os.add_dll_directory() for Windows 10+")
-    
+
     # Test 4.5: Adds pyopenms package directory for .pyd files
     if "pyopenms_pkg_dir" in rth_content or ("pyopenms" in rth_content and "add_dll_directory" in rth_content):
         ok("Adds pyopenms package directory for .pyd file loading ✓")
     else:
         warn("Should add pyopenms package directory to DLL search path")
-    
+
     # Test 4.6: Prepends to PATH (not appends)
     if re.search(r"PATH.*=.*pyopenms_dlls.*\+.*pathsep", rth_content):
         ok("PREPENDS pyopenms_dlls to PATH (not appends) ✓")
@@ -220,10 +233,10 @@ if os.path.exists('pyi_rth_pyopenms.py'):
 # =============================================================================
 header("TEST 5: pyopenms-viewer-windows.spec Verification")
 
-if os.path.exists('pyopenms-viewer-windows.spec'):
-    with open('pyopenms-viewer-windows.spec', 'r') as f:
+if os.path.exists("pyopenms-viewer-windows.spec"):
+    with open("pyopenms-viewer-windows.spec", "r") as f:
         spec_content = f.read()
-    
+
     # Test 5.1: runtime_hooks includes pyi_rth_pyopenms.py
     if "runtime_hooks=['pyi_rth_pyopenms.py']" in spec_content:
         ok("runtime_hooks includes pyi_rth_pyopenms.py ✓")
@@ -232,52 +245,52 @@ if os.path.exists('pyopenms-viewer-windows.spec'):
         fail("CRITICAL: runtime_hooks is EMPTY - runtime hook won't run!")
     else:
         warn("Could not verify runtime_hooks setting")
-    
+
     # Test 5.2: hookspath includes current directory
     if "hookspath=['.'" in spec_content or "hookspath=['.'," in spec_content:
         ok("hookspath includes '.' for custom hooks ✓")
     else:
         all_passed = False
         fail("hookspath must include '.' to find hook-pyopenms.py")
-    
+
     # Test 5.3: All 8 _pyopenms modules in hiddenimports
     missing_modules = []
     for i in range(1, 9):
         if f"pyopenms._pyopenms_{i}" not in spec_content:
             missing_modules.append(i)
-    
+
     if not missing_modules:
         ok("All 8 _pyopenms extension modules in hiddenimports ✓")
     else:
         all_passed = False
         fail(f"MISSING _pyopenms modules in spec: {missing_modules}")
-    
+
     # Test 5.4: Does NOT use collect_all('pyopenms')
     # Check for actual call, not just comment mentioning it
     # Pattern: collect_all('pyopenms') or collect_all("pyopenms") NOT preceded by # comment
-    lines = spec_content.split('\n')
+    lines = spec_content.split("\n")
     uses_collect_all_pyopenms = False
     for line in lines:
         stripped = line.strip()
         # Skip comments
-        if stripped.startswith('#'):
+        if stripped.startswith("#"):
             continue
-        if ("collect_all('pyopenms')" in line or 'collect_all("pyopenms")' in line):
+        if "collect_all('pyopenms')" in line or 'collect_all("pyopenms")' in line:
             uses_collect_all_pyopenms = True
             break
-    
+
     if uses_collect_all_pyopenms:
         all_passed = False
         fail("CRITICAL: Spec file uses collect_all('pyopenms') - will fail on Windows!")
     else:
         ok("Does NOT call collect_all('pyopenms') in spec ✓")
-    
+
     # Test 5.5: UPX is disabled (can corrupt DLLs)
     if "upx=False" in spec_content:
         ok("UPX compression disabled (prevents DLL corruption) ✓")
     else:
         warn("Consider disabling UPX (upx=False) to prevent DLL issues")
-    
+
     # Test 5.6: Excludes problematic Qt6 WebEngine
     if "PyQt6.QtWebEngine" in spec_content and "excludes" in spec_content:
         ok("Excludes Qt6WebEngine (prevents extraction failures) ✓")
@@ -290,37 +303,37 @@ if os.path.exists('pyopenms-viewer-windows.spec'):
 header("TEST 6: CI Workflow Verification")
 
 # Test 6.1: windows.yml
-if os.path.exists('.github/workflows/windows.yml'):
-    with open('.github/workflows/windows.yml', 'r') as f:
+if os.path.exists(".github/workflows/windows.yml"):
+    with open(".github/workflows/windows.yml", "r") as f:
         windows_yml = f.read()
-    
-    if 'pyopenms-viewer-windows.spec' in windows_yml:
+
+    if "pyopenms-viewer-windows.spec" in windows_yml:
         ok("windows.yml uses pyopenms-viewer-windows.spec ✓")
-    elif '--collect-all pyopenms' in windows_yml:
+    elif "--collect-all pyopenms" in windows_yml:
         all_passed = False
         fail("CRITICAL: windows.yml uses --collect-all pyopenms (will fail!)")
     else:
         warn("Could not verify windows.yml build command")
-    
-    if 'pyinstaller-hooks-contrib' in windows_yml:
+
+    if "pyinstaller-hooks-contrib" in windows_yml:
         ok("windows.yml installs pyinstaller-hooks-contrib ✓")
     else:
         warn("windows.yml should install pyinstaller-hooks-contrib")
 
 # Test 6.2: build.yml
-if os.path.exists('.github/workflows/build.yml'):
-    with open('.github/workflows/build.yml', 'r') as f:
+if os.path.exists(".github/workflows/build.yml"):
+    with open(".github/workflows/build.yml", "r") as f:
         build_yml = f.read()
-    
-    if 'pyopenms-viewer-windows.spec' in build_yml:
+
+    if "pyopenms-viewer-windows.spec" in build_yml:
         ok("build.yml uses pyopenms-viewer-windows.spec for Windows ✓")
-    elif 'nicegui.scripts.pack' in build_yml:
+    elif "nicegui.scripts.pack" in build_yml:
         all_passed = False
         fail("CRITICAL: build.yml uses nicegui.pack instead of spec file!")
     else:
         warn("Could not verify build.yml Windows build command")
-    
-    if 'spec_file:' in build_yml:
+
+    if "spec_file:" in build_yml:
         ok("build.yml uses matrix with spec_file variable ✓")
     else:
         warn("build.yml should use matrix for platform-specific spec files")
@@ -330,21 +343,21 @@ if os.path.exists('.github/workflows/build.yml'):
 # =============================================================================
 header("TEST 7: pre_safe_import_module Hook Verification")
 
-if os.path.exists('pre_safe_import_module/hook-pyopenms.py'):
-    with open('pre_safe_import_module/hook-pyopenms.py', 'r') as f:
+if os.path.exists("pre_safe_import_module/hook-pyopenms.py"):
+    with open("pre_safe_import_module/hook-pyopenms.py", "r") as f:
         presafe_content = f.read()
-    
+
     if "def pre_safe_import_module(api)" in presafe_content:
         ok("Defines pre_safe_import_module(api) function ✓")
     else:
         all_passed = False
         fail("Must define pre_safe_import_module(api) function")
-    
+
     if "sys.platform == 'win32'" in presafe_content:
         ok("Checks for Windows platform ✓")
     else:
         warn("Should check sys.platform == 'win32'")
-    
+
     if "os.environ['PATH']" in presafe_content:
         ok("Modifies PATH environment variable ✓")
     else:
@@ -357,51 +370,51 @@ header("TEST 8: Simulate Hook File Collection Logic")
 
 try:
     from PyInstaller.utils.hooks import get_package_paths
-    
-    pkg_base, pkg_dir = get_package_paths('pyopenms')
+
+    pkg_base, pkg_dir = get_package_paths("pyopenms")
     print(f"   pyopenms location: {pkg_dir}")
-    
+
     pyd_count = 0
     dll_count = 0
     pyd_to_pyopenms = 0
     dll_to_pyopenms_dlls = 0
-    
+
     for root, dirs, files in os.walk(pkg_dir):
         for file in files:
             rel_path = os.path.relpath(root, pkg_dir)
-            dest_dir = os.path.join('pyopenms', rel_path) if rel_path != '.' else 'pyopenms'
-            
-            if file.endswith(('.pyd', '.so')):
+            dest_dir = os.path.join("pyopenms", rel_path) if rel_path != "." else "pyopenms"
+
+            if file.endswith((".pyd", ".so")):
                 pyd_count += 1
                 # Simulate hook logic: .pyd goes to dest_dir
-                if dest_dir.startswith('pyopenms') and 'pyopenms_dlls' not in dest_dir:
+                if dest_dir.startswith("pyopenms") and "pyopenms_dlls" not in dest_dir:
                     pyd_to_pyopenms += 1
-            elif file.endswith(('.dll', '.dylib')):
+            elif file.endswith((".dll", ".dylib")):
                 dll_count += 1
                 # Simulate hook logic: .dll goes to pyopenms_dlls
                 dll_to_pyopenms_dlls += 1  # Always goes to pyopenms_dlls in our hook
-    
+
     print(f"   Found {pyd_count} extension modules (.pyd/.so)")
     print(f"   Found {dll_count} DLLs (.dll/.dylib)")
-    
+
     if pyd_count > 0 and pyd_to_pyopenms == pyd_count:
         ok(f"All {pyd_count} extension modules → pyopenms/ ✓")
     else:
         all_passed = False
         fail(f"Extension module placement issue: {pyd_to_pyopenms}/{pyd_count}")
-    
+
     if dll_count > 0:
         ok(f"All {dll_count} DLLs → pyopenms_dlls/ ✓")
-    
+
     # Verify expected extension modules exist
-    expected_modules = [f'_pyopenms_{i}' for i in range(1, 9)]
+    expected_modules = [f"_pyopenms_{i}" for i in range(1, 9)]
     found_modules = []
     for root, dirs, files in os.walk(pkg_dir):
         for file in files:
             for mod in expected_modules:
-                if mod in file and file.endswith(('.pyd', '.so')):
+                if mod in file and file.endswith((".pyd", ".so")):
                     found_modules.append(mod)
-    
+
     found_modules = list(set(found_modules))
     if len(found_modules) >= 1:
         ok(f"Found {len(found_modules)} _pyopenms_N extension modules")
@@ -419,16 +432,16 @@ except Exception as e:
 header("TEST 9: Cross-Component Consistency Check")
 
 # Verify consistency between hook and spec
-if os.path.exists('hook-pyopenms.py') and os.path.exists('pyopenms-viewer-windows.spec'):
-    with open('hook-pyopenms.py', 'r') as f:
+if os.path.exists("hook-pyopenms.py") and os.path.exists("pyopenms-viewer-windows.spec"):
+    with open("hook-pyopenms.py", "r") as f:
         hook = f.read()
-    with open('pyopenms-viewer-windows.spec', 'r') as f:
+    with open("pyopenms-viewer-windows.spec", "r") as f:
         spec = f.read()
-    
+
     # Check both have same hidden imports
     hook_has_8 = all(f"_pyopenms_{i}" in hook for i in range(1, 9))
     spec_has_8 = all(f"_pyopenms_{i}" in spec for i in range(1, 9))
-    
+
     if hook_has_8 and spec_has_8:
         ok("Both hook and spec have all 8 _pyopenms modules ✓")
     else:
@@ -436,10 +449,10 @@ if os.path.exists('hook-pyopenms.py') and os.path.exists('pyopenms-viewer-window
         fail(f"Inconsistent hidden imports: hook={hook_has_8}, spec={spec_has_8}")
 
 # Verify runtime hook is referenced correctly
-if os.path.exists('pyi_rth_pyopenms.py') and os.path.exists('pyopenms-viewer-windows.spec'):
-    with open('pyopenms-viewer-windows.spec', 'r') as f:
+if os.path.exists("pyi_rth_pyopenms.py") and os.path.exists("pyopenms-viewer-windows.spec"):
+    with open("pyopenms-viewer-windows.spec", "r") as f:
         spec = f.read()
-    
+
     if "pyi_rth_pyopenms.py" in spec:
         ok("Spec file references pyi_rth_pyopenms.py ✓")
     else:
@@ -495,14 +508,14 @@ print("         → Then user code imports pyopenms successfully")
 print("   ─────────────────────────────────────────────────────")
 
 # Test 10.1: Verify pre_safe_import_module runs first (sets PATH for build)
-if os.path.exists('pre_safe_import_module/hook-pyopenms.py'):
-    with open('pre_safe_import_module/hook-pyopenms.py', 'r') as f:
+if os.path.exists("pre_safe_import_module/hook-pyopenms.py"):
+    with open("pre_safe_import_module/hook-pyopenms.py", "r") as f:
         presafe = f.read()
-    
+
     # Must set PATH before any import happens
     sets_path_early = "os.environ['PATH']" in presafe or 'os.environ["PATH"]' in presafe
     has_presafe_func = "def pre_safe_import_module" in presafe
-    
+
     if sets_path_early and has_presafe_func:
         ok("pre_safe_import_module sets PATH before import (Step 1) ✓")
     else:
@@ -513,35 +526,35 @@ else:
     fail("pre_safe_import_module/hook-pyopenms.py missing!")
 
 # Test 10.2: Verify standard hook does NOT import pyopenms
-if os.path.exists('hook-pyopenms.py'):
-    with open('hook-pyopenms.py', 'r') as f:
+if os.path.exists("hook-pyopenms.py"):
+    with open("hook-pyopenms.py", "r") as f:
         hook = f.read()
-    
+
     # Check for dangerous imports that would trigger DLL load
     dangerous_imports = [
-        'import pyopenms',
-        'from pyopenms import',
+        "import pyopenms",
+        "from pyopenms import",
         'importlib.import_module("pyopenms")',
         "importlib.import_module('pyopenms')",
     ]
-    
+
     has_dangerous_import = False
     for pattern in dangerous_imports:
         # Check if pattern exists outside of comments
-        for line in hook.split('\n'):
+        for line in hook.split("\n"):
             stripped = line.strip()
-            if stripped.startswith('#'):
+            if stripped.startswith("#"):
                 continue
             if pattern in line:
                 has_dangerous_import = True
                 break
-    
+
     if not has_dangerous_import:
         ok("hook-pyopenms.py does NOT import pyopenms (Step 2) ✓")
     else:
         all_passed = False
         fail("hook-pyopenms.py must NOT import pyopenms - will fail on Windows!")
-    
+
     # Verify it uses get_package_paths instead
     if "get_package_paths('pyopenms')" in hook:
         ok("hook-pyopenms.py uses get_package_paths() to find package safely ✓")
@@ -549,28 +562,28 @@ if os.path.exists('hook-pyopenms.py'):
         warn("hook-pyopenms.py should use get_package_paths() to avoid importing")
 
 # Test 10.3: Verify runtime hook runs at frozen startup
-if os.path.exists('pyi_rth_pyopenms.py'):
-    with open('pyi_rth_pyopenms.py', 'r') as f:
+if os.path.exists("pyi_rth_pyopenms.py"):
+    with open("pyi_rth_pyopenms.py", "r") as f:
         rth = f.read()
-    
+
     # Must check for frozen state first
     checks_frozen = "getattr(sys, 'frozen', False)" in rth or "sys.frozen" in rth
     uses_meipass = "sys._MEIPASS" in rth
     sets_path = "os.environ['PATH']" in rth or 'os.environ["PATH"]' in rth
     adds_dll_dir = "os.add_dll_directory" in rth
-    
+
     if checks_frozen:
         ok("Runtime hook checks sys.frozen (only runs when frozen) ✓")
     else:
         all_passed = False
         fail("Runtime hook must check sys.frozen before executing")
-    
+
     if uses_meipass:
         ok("Runtime hook uses sys._MEIPASS to find extraction dir ✓")
     else:
         all_passed = False
         fail("Runtime hook must use sys._MEIPASS")
-    
+
     if sets_path and adds_dll_dir:
         ok("Runtime hook sets PATH and calls add_dll_directory() (Step 4) ✓")
     else:
@@ -578,20 +591,20 @@ if os.path.exists('pyi_rth_pyopenms.py'):
         fail("Runtime hook must set PATH and call add_dll_directory()")
 
 # Test 10.4: Verify runtime hook is listed in spec (determines execution order)
-if os.path.exists('pyopenms-viewer-windows.spec'):
-    with open('pyopenms-viewer-windows.spec', 'r') as f:
+if os.path.exists("pyopenms-viewer-windows.spec"):
+    with open("pyopenms-viewer-windows.spec", "r") as f:
         spec = f.read()
-    
+
     # Check runtime_hooks order - pyopenms should be first if there are multiple
     rth_match = re.search(r"runtime_hooks\s*=\s*\[(.*?)\]", spec, re.DOTALL)
     if rth_match:
         rth_list = rth_match.group(1)
-        if 'pyi_rth_pyopenms.py' in rth_list:
+        if "pyi_rth_pyopenms.py" in rth_list:
             # Check if it's first in the list
             hooks_in_list = re.findall(r"['\"]([^'\"]+)['\"]", rth_list)
-            if hooks_in_list and hooks_in_list[0] == 'pyi_rth_pyopenms.py':
+            if hooks_in_list and hooks_in_list[0] == "pyi_rth_pyopenms.py":
                 ok("pyi_rth_pyopenms.py is FIRST in runtime_hooks (correct order) ✓")
-            elif 'pyi_rth_pyopenms.py' in hooks_in_list:
+            elif "pyi_rth_pyopenms.py" in hooks_in_list:
                 warn("pyi_rth_pyopenms.py should be first in runtime_hooks for DLL priority")
             else:
                 all_passed = False
@@ -607,22 +620,22 @@ if os.path.exists('pyopenms-viewer-windows.spec'):
 print("\n   Checking for import conflicts...")
 
 # The runtime hook must NOT import pyopenms before setting up PATH
-if os.path.exists('pyi_rth_pyopenms.py'):
-    with open('pyi_rth_pyopenms.py', 'r') as f:
+if os.path.exists("pyi_rth_pyopenms.py"):
+    with open("pyi_rth_pyopenms.py", "r") as f:
         rth_content = f.read()
-    
+
     # Find where PATH is set vs where pyopenms might be imported
     path_set_line = None
     pyopenms_import_line = None
-    
-    for i, line in enumerate(rth_content.split('\n'), 1):
-        if "os.environ['PATH']" in line and '=' in line:
+
+    for i, line in enumerate(rth_content.split("\n"), 1):
+        if "os.environ['PATH']" in line and "=" in line:
             if path_set_line is None:
                 path_set_line = i
-        if 'import pyopenms' in line or 'from pyopenms' in line:
-            if not line.strip().startswith('#'):
+        if "import pyopenms" in line or "from pyopenms" in line:
+            if not line.strip().startswith("#"):
                 pyopenms_import_line = i
-    
+
     if pyopenms_import_line is None:
         ok("Runtime hook does NOT import pyopenms (correct - avoids circular dep) ✓")
     elif path_set_line and pyopenms_import_line > path_set_line:
@@ -632,22 +645,22 @@ if os.path.exists('pyi_rth_pyopenms.py'):
         fail("Runtime hook imports pyopenms BEFORE setting PATH - will fail!")
 
 # Test 10.6: Verify hookspath order in spec
-if os.path.exists('pyopenms-viewer-windows.spec'):
-    with open('pyopenms-viewer-windows.spec', 'r') as f:
+if os.path.exists("pyopenms-viewer-windows.spec"):
+    with open("pyopenms-viewer-windows.spec", "r") as f:
         spec = f.read()
-    
+
     hookspath_match = re.search(r"hookspath\s*=\s*\[(.*?)\]", spec, re.DOTALL)
     if hookspath_match:
         hookspath = hookspath_match.group(1)
         has_current_dir = "'.'," in hookspath or "'.'" in hookspath
-        has_presafe = 'pre_safe_import_module' in hookspath
-        
+        has_presafe = "pre_safe_import_module" in hookspath
+
         if has_current_dir:
             ok("hookspath includes '.' for standard hooks ✓")
         else:
             all_passed = False
             fail("hookspath must include '.' to find hook-pyopenms.py")
-        
+
         if has_presafe:
             ok("hookspath includes 'pre_safe_import_module' directory ✓")
         else:
@@ -674,15 +687,15 @@ Our strategy:
   - This ensures pyopenms's Qt6 DLLs load before PyQt6's
 """
 
-if os.path.exists('pyi_rth_pyopenms.py'):
-    with open('pyi_rth_pyopenms.py', 'r') as f:
+if os.path.exists("pyi_rth_pyopenms.py"):
+    with open("pyi_rth_pyopenms.py", "r") as f:
         rth = f.read()
-    
+
     # Test 11.1: pyopenms_dlls is added FIRST to PATH (prepended, not appended)
     # Look for pattern: PATH = pyopenms_dlls + ... + old_path
     prepend_pattern = re.search(r"PATH.*=.*pyopenms_dlls.*\+.*pathsep", rth, re.IGNORECASE)
     append_pattern = re.search(r"PATH.*=.*\+.*pyopenms_dlls", rth, re.IGNORECASE)
-    
+
     if prepend_pattern:
         ok("pyopenms_dlls is PREPENDED to PATH (loaded first) ✓")
     elif append_pattern:
@@ -690,9 +703,9 @@ if os.path.exists('pyi_rth_pyopenms.py'):
         fail("pyopenms_dlls is APPENDED to PATH - must be PREPENDED for priority!")
     else:
         warn("Could not verify PATH modification order")
-    
+
     # Test 11.2: add_dll_directory is called for both directories
-    dll_dir_calls = rth.count('add_dll_directory(')
+    dll_dir_calls = rth.count("add_dll_directory(")
     if dll_dir_calls >= 2:
         ok(f"add_dll_directory() called {dll_dir_calls} times (pyopenms_dlls + exe_dir + pyopenms) ✓")
     elif dll_dir_calls == 1:
@@ -700,31 +713,31 @@ if os.path.exists('pyi_rth_pyopenms.py'):
     else:
         all_passed = False
         fail("add_dll_directory() not called - required for Windows 10+")
-    
+
     # Test 11.3: Check pyopenms_dlls is added before exe_dir
-    lines = rth.split('\n')
+    lines = rth.split("\n")
     pyopenms_dlls_add_line = None
     exe_dir_add_line = None
-    
+
     for i, line in enumerate(lines):
-        if 'add_dll_directory' in line and 'pyopenms_dlls' in line:
+        if "add_dll_directory" in line and "pyopenms_dlls" in line:
             pyopenms_dlls_add_line = i
-        if 'add_dll_directory' in line and 'exe_dir' in line and 'pyopenms' not in line:
+        if "add_dll_directory" in line and "exe_dir" in line and "pyopenms" not in line:
             exe_dir_add_line = i
-    
+
     if pyopenms_dlls_add_line is not None:
         ok("add_dll_directory() called for pyopenms_dlls ✓")
     else:
         warn("Could not verify add_dll_directory(pyopenms_dlls_dir)")
 
 # Test 11.4: Verify .pyd files are NOT in pyopenms_dlls (would break imports)
-if os.path.exists('hook-pyopenms.py'):
-    with open('hook-pyopenms.py', 'r') as f:
+if os.path.exists("hook-pyopenms.py"):
+    with open("hook-pyopenms.py", "r") as f:
         hook = f.read()
-    
+
     # Check that .pyd files go to pyopenms/, not pyopenms_dlls/
     pyd_to_dlls = re.search(r"\.pyd.*pyopenms_dlls", hook)
-    
+
     if pyd_to_dlls:
         all_passed = False
         fail("CRITICAL: .pyd files go to pyopenms_dlls/ - breaks imports!")
@@ -737,9 +750,9 @@ if os.path.exists('hook-pyopenms.py'):
 header("FINAL SUMMARY")
 
 if all_passed:
-    print(f"\n{Colors.GREEN}{Colors.BOLD}{'='*60}")
+    print(f"\n{Colors.GREEN}{Colors.BOLD}{'=' * 60}")
     print("ALL TESTS PASSED! ✓")
-    print(f"{'='*60}{Colors.END}")
+    print(f"{'=' * 60}{Colors.END}")
     print("\nThe Windows build configuration appears to be correct.")
     print("Key verified components:")
     print("  1. hook-pyopenms.py: Collects files WITHOUT importing")
@@ -749,8 +762,8 @@ if all_passed:
     print("  5. File separation: .pyd→pyopenms/, .dll→pyopenms_dlls/")
     sys.exit(0)
 else:
-    print(f"\n{Colors.RED}{Colors.BOLD}{'='*60}")
+    print(f"\n{Colors.RED}{Colors.BOLD}{'=' * 60}")
     print("SOME TESTS FAILED! ✗")
-    print(f"{'='*60}{Colors.END}")
+    print(f"{'=' * 60}{Colors.END}")
     print("\nPlease fix the issues above before building.")
     sys.exit(1)

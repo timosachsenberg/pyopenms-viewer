@@ -10,6 +10,7 @@ import io
 import datashader as ds
 import datashader.transfer_functions as tf
 import numpy as np
+import xarray as xr
 from PIL import Image, ImageDraw
 
 from pyopenms_viewer.annotation.tick_formatter import calculate_nice_ticks, format_tick_label
@@ -75,6 +76,36 @@ class PeakMapRenderer:
         draw_axes: bool = True,
     ) -> str:
         """Render the peak map to a base64-encoded PNG string.
+
+        Chooses between point-based rendering (for deep zoom) and rasterized rendering
+        (for wide views) based on the current view bounds and configured thresholds.
+
+        Args:
+            state: ViewerState containing all data and view bounds
+            fast: If True, render at reduced resolution for panning
+            draw_overlays: If True, draw features/IDs/markers (skipped in fast mode)
+            draw_axes: If True, draw axis labels (skipped in fast mode)
+
+        Returns:
+            Base64-encoded PNG string, or empty string if no data
+        """
+        # Branch based on rendering mode
+        if state.should_use_point_rendering():
+            return self._render_points(state, fast, draw_overlays, draw_axes)
+        else:
+            return self._render_rasterized(state, fast, draw_overlays, draw_axes)
+
+    def _render_points(
+        self,
+        state: ViewerState,
+        fast: bool = False,
+        draw_overlays: bool = True,
+        draw_axes: bool = True,
+    ) -> str:
+        """Render the peak map using point-based rendering (datashader canvas.points()).
+
+        This is the original rendering method, optimized for deep zoom where individual
+        peaks can be distinguished.
 
         Args:
             state: ViewerState containing all data and view bounds
@@ -162,6 +193,106 @@ class PeakMapRenderer:
 
         # Apply colormap
         img = tf.shade(agg, cmap=COLORMAPS[state.colormap], how="linear")
+        if not fast:
+            img = tf.dynspread(img, threshold=0.5, max_px=3)
+        img = tf.set_background(img, get_colormap_background(state.colormap))
+
+        plot_img = img.to_pil()
+
+        # Upscale if fast mode
+        if fast and resolution_factor > 1:
+            plot_img = plot_img.resize((self.plot_width, self.plot_height), Image.Resampling.NEAREST)
+
+        # Draw overlays on plot image (features, IDs, spectrum markers)
+        plot_img_rgba = plot_img.convert("RGBA")
+        if draw_overlays and not fast:
+            plot_img_rgba = self.overlay_renderer.draw_all(plot_img_rgba, state)
+
+        # Compose final canvas
+        canvas = Image.new("RGBA", (self.canvas_width, self.canvas_height), (0, 0, 0, 0))
+        canvas.paste(plot_img_rgba, (self.margin_left, self.margin_top))
+
+        # Draw axes unless in fast mode
+        if draw_axes and not fast:
+            canvas = self._draw_axes(canvas, state, view_rt_min, view_rt_max, view_mz_min, view_mz_max)
+
+        # Encode to base64
+        buffer = io.BytesIO()
+        canvas.save(buffer, format="PNG")
+        buffer.seek(0)
+
+        return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+    def _render_rasterized(
+        self,
+        state: ViewerState,
+        fast: bool = False,
+        draw_overlays: bool = True,
+        draw_axes: bool = True,
+    ) -> str:
+        """Render the peak map using rasterization with MSExperiment.rasterizeRTMZ().
+
+        This method uses the native pyOpenMS rasterization for efficient rendering
+        of wide views with many peaks. Rasterization creates a 2D intensity grid
+        at screen resolution, which is then shaded using datashader.
+
+        Args:
+            state: ViewerState containing all data and view bounds
+            fast: If True, render at reduced resolution for panning
+            draw_overlays: If True, draw features/IDs/markers (skipped in fast mode)
+            draw_axes: If True, draw axis labels (skipped in fast mode)
+
+        Returns:
+            Base64-encoded PNG string, or empty string if no data
+        """
+        if state.exp is None:
+            return ""
+
+        # Get view bounds
+        bounds = state.get_view_bounds()
+        view_rt_min, view_rt_max = bounds.rt_min, bounds.rt_max
+        view_mz_min, view_mz_max = bounds.mz_min, bounds.mz_max
+
+        # Use screen resolution for rasterization
+        resolution_factor = 4 if fast else 1
+        render_width = self.plot_width // resolution_factor
+        render_height = self.plot_height // resolution_factor
+
+        # Call rasterizeRTMZ to create 2D intensity grid
+        # Output array shape is (mz_bins, rt_bins)
+        output_array = np.zeros((render_height, render_width), dtype=np.float32)
+
+        try:
+            state.exp.rasterizeRTMZ(
+                output_array,
+                view_rt_min,
+                view_rt_max,
+                view_mz_min,
+                view_mz_max,
+                ms_level=1,
+                aggregation="sum",
+            )
+        except Exception:
+            # Fall back to empty rasterization if rasterizeRTMZ fails
+            output_array.fill(0.0)
+
+        # Convert to log intensity for better visualization
+        # Add small epsilon to avoid log(0)
+        log_intensity = np.log10(output_array + 1.0)
+
+        # Create xarray DataArray with proper coordinate labels
+        # Coordinates represent the RT and m/z ranges
+        rt_coords = np.linspace(view_rt_min, view_rt_max, render_width)
+        mz_coords = np.linspace(view_mz_min, view_mz_max, render_height)
+
+        data_array = xr.DataArray(
+            log_intensity,
+            coords={"mz": mz_coords, "rt": rt_coords},
+            dims=["mz", "rt"],
+        )
+
+        # Shade the data array using datashader
+        img = tf.shade(data_array, cmap=COLORMAPS[state.colormap], how="linear")
         if not fast:
             img = tf.dynspread(img, threshold=0.5, max_px=3)
         img = tf.set_background(img, get_colormap_background(state.colormap))

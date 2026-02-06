@@ -421,6 +421,17 @@ class TestConfig:
         for panel_id in PANEL_DEFINITIONS:
             assert panel_id in DEFAULT_PANEL_VISIBILITY
 
+    def test_config_has_rasterization_settings(self):
+        """Test configuration has rasterization threshold settings."""
+        # Only two threshold settings needed
+        assert hasattr(DEFAULTS, "DEEP_ZOOM_RT_THRESHOLD")
+        assert isinstance(DEFAULTS.DEEP_ZOOM_RT_THRESHOLD, (int, float))
+        assert DEFAULTS.DEEP_ZOOM_RT_THRESHOLD >= 0
+
+        assert hasattr(DEFAULTS, "DEEP_ZOOM_MZ_THRESHOLD")
+        assert isinstance(DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD, (int, float))
+        assert DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD >= 0
+
 
 class TestStateZoomHistory:
     """Tests for zoom history functionality."""
@@ -561,3 +572,23 @@ class TestStateFAIMS:
         state = ViewerState()
         assert state.faims_data == {}
         assert isinstance(state.faims_data, dict)
+
+    def test_state_has_cache_attributes(self):
+        """Test ViewerState has rasterization cache attributes."""
+        state = ViewerState()
+
+        # Check cached minimap attribute
+        assert hasattr(state, "cached_minimap_raster")
+        assert state.cached_minimap_raster is None
+
+        # Check temp peak dataframe attribute
+        assert hasattr(state, "temp_peak_df")
+        assert state.temp_peak_df is None
+
+        # Check last 3D view bounds attribute
+        assert hasattr(state, "last_3d_view_bounds")
+        assert state.last_3d_view_bounds is None
+
+        # Check 3D sync flag
+        assert hasattr(state, "is_3d_in_sync")
+        assert state.is_3d_in_sync is True
