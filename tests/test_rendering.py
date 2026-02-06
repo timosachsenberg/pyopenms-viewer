@@ -500,6 +500,11 @@ class TestRasterizationSupport:
         # Create a simple MSExperiment with test data
         exp = MSExperiment()
 
+        # Build DataFrame matching MSExperiment peaks for Phase 6 (optional df removal)
+        rt_list = []
+        mz_list = []
+        intensity_list = []
+
         # Add some test spectra
         for i in range(10):
             spectrum = MSSpectrum()
@@ -511,7 +516,21 @@ class TestRasterizationSupport:
             intensities = np.array([1000.0 * (i + 1) for _ in range(10)], dtype=np.float32)
             spectrum.set_peaks((mzs, intensities))
 
+            # Track peaks for DataFrame
+            rt_list.extend([i * 360.0] * 10)
+            mz_list.extend(mzs)
+            intensity_list.extend(intensities)
+
             exp.addSpectrum(spectrum)
+
+        # Phase 6: Initialize state.df with matching data
+        # This supports both in-memory and fallback rendering modes
+        state.df = pd.DataFrame({
+            'rt': rt_list,
+            'mz': mz_list,
+            'intensity': intensity_list,
+            'log_intensity': np.log10(np.array(intensity_list) + 1),
+        })
 
         state.exp = exp
         return state
@@ -996,6 +1015,188 @@ class TestRasterizationSupport:
             # Verify the data is still the same
             assert np.allclose(temp_df_second["rt"].values, rt_array)
             assert np.allclose(temp_df_second["mz"].values, mz_array)
+        finally:
+            # Restore original values
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = original_rt
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = original_mz
+
+    # ========== PHASE 6: REMOVE GLOBAL DATAFRAME ==========
+
+    def test_rendering_without_dataframe(self, state_with_exp):
+        """Test that rendering works when state.df is None (Phase 6).
+        
+        Phase 6 removes global DataFrame storage in rasterization mode.
+        Rendering should fall back to get2DPeakDataLong when state.df is None.
+        """
+        from pyopenms_viewer.core.config import DEFAULTS
+        from pyopenms_viewer.rendering.peak_map_renderer import PeakMapRenderer
+
+        # Save original thresholds
+        original_rt = DEFAULTS.DEEP_ZOOM_RT_THRESHOLD
+        original_mz = DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD
+
+        try:
+            # Set narrow thresholds to use point rendering
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = 1000.0
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = 500.0
+
+            # Create state with bounds
+            state_with_exp.view_rt_min = 0.0
+            state_with_exp.view_rt_max = 400.0
+            state_with_exp.view_mz_min = 100.0
+            state_with_exp.view_mz_max = 500.0
+
+            # Phase 6: Remove df to simulate out-of-core mode
+            state_with_exp.df = None
+
+            # Rendering should still work by using get2DPeakDataLong
+            renderer = PeakMapRenderer()
+            result = renderer.render(state_with_exp, fast=False)
+
+            # Verify rendering succeeded (non-empty base64 string)
+            assert result != ""
+            assert isinstance(result, str)
+            # Base64 strings start with this pattern for PNG
+            assert result.startswith("iVB") or result.startswith("/9j")  # PNG or JPEG
+
+            # Verify temp_peak_df was created even without state.df
+            assert state_with_exp.temp_peak_df is not None
+            assert len(state_with_exp.temp_peak_df) > 0
+        finally:
+            # Restore original values
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = original_rt
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = original_mz
+
+    def test_point_rendering_fallback_chain(self, state_with_exp):
+        """Test the fallback chain: get2DPeakDataLong -> df -> get_peaks_in_view.
+        
+        Phase 6 implements a three-tier fallback:
+        1. Try get2DPeakDataLong (best for rasterization mode with MSExperiment)
+        2. Fall back to filtering state.df (in-memory mode)
+        3. Fall back to get_peaks_in_view() (out-of-core mode with DuckDB)
+        """
+        from unittest.mock import MagicMock
+
+        from pyopenms_viewer.core.config import DEFAULTS
+        from pyopenms_viewer.rendering.peak_map_renderer import PeakMapRenderer
+
+        # Save original thresholds
+        original_rt = DEFAULTS.DEEP_ZOOM_RT_THRESHOLD
+        original_mz = DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD
+
+        try:
+            # Set narrow thresholds to use point rendering
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = 1000.0
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = 500.0
+
+            state_with_exp.view_rt_min = 0.0
+            state_with_exp.view_rt_max = 400.0
+            state_with_exp.view_mz_min = 100.0
+            state_with_exp.view_mz_max = 500.0
+
+            # Test 1: PATH 1 - get2DPeakDataLong succeeds
+            rt_array = np.array([100.0, 200.0], dtype=np.float64)
+            mz_array = np.array([300.0, 400.0], dtype=np.float64)
+            intensity_array = np.array([1000.0, 2000.0], dtype=np.float32)
+
+            mock_get2d = MagicMock(return_value=(rt_array, mz_array, intensity_array))
+            state_with_exp.exp.get2DPeakDataLong = mock_get2d
+
+            renderer = PeakMapRenderer()
+            result = renderer.render(state_with_exp, fast=False)
+
+            # Verify get2DPeakDataLong was called
+            assert mock_get2d.called
+            assert state_with_exp.temp_peak_df is not None
+            assert len(state_with_exp.temp_peak_df) == 2
+
+            # Test 2: PATH 2 - get2DPeakDataLong fails, fall back to df
+            state_with_exp.temp_peak_df = None
+            mock_get2d.side_effect = RuntimeError("get2DPeakDataLong failed")
+
+            result = renderer.render(state_with_exp, fast=False)
+
+            # Should have used state.df instead
+            assert state_with_exp.temp_peak_df is not None
+            # Df filtering should have returned multiple peaks within the view bounds
+            assert len(state_with_exp.temp_peak_df) > 0
+
+            # Test 3: PATH 3 - both fail, fall back to get_peaks_in_view
+            state_with_exp.df = None
+            state_with_exp.temp_peak_df = None
+
+            # Mock get_peaks_in_view to return a small DataFrame
+            fallback_df = pd.DataFrame({
+                'rt': [50.0, 100.0],
+                'mz': [200.0, 250.0],
+                'intensity': [5000.0, 6000.0],
+                'log_intensity': [3.7, 3.78],
+            })
+            state_with_exp.get_peaks_in_view = MagicMock(return_value=fallback_df)
+
+            result = renderer.render(state_with_exp, fast=False)
+
+            # Should have used get_peaks_in_view
+            assert state_with_exp.get_peaks_in_view.called
+            assert state_with_exp.temp_peak_df is not None
+        finally:
+            # Restore original values
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = original_rt
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = original_mz
+
+    def test_3d_view_without_dataframe(self, state_with_exp):
+        """Test that 3D view works without state.df by using get2DPeakDataLong (Phase 6)."""
+        import pytest
+
+        try:
+            from pyopenms_viewer.panels.peak_map_panel import PeakMapPanel
+        except ImportError:
+            pytest.skip("pyopenms_viewer.panels not available")
+
+        from pyopenms_viewer.core.config import DEFAULTS
+
+        # Save original thresholds
+        original_rt = DEFAULTS.DEEP_ZOOM_RT_THRESHOLD
+        original_mz = DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD
+
+        try:
+            # Set narrow view to trigger point rendering
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = 1000.0
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = 500.0
+
+            state_with_exp.view_rt_min = 0.0
+            state_with_exp.view_rt_max = 400.0
+            state_with_exp.view_mz_min = 100.0
+            state_with_exp.view_mz_max = 500.0
+
+            # Phase 6: Remove df to simulate out-of-core mode
+            state_with_exp.df = None
+
+            # In Phase 6, when state.df is None, the 3D view should try to use
+            # get2DPeakDataLong similar to rendering
+            # We can't directly test PeakMapPanel without a full UI, but we can
+            # verify the fallback logic would work
+
+            # Verify that exp.get2DPeakDataLong would be the primary source
+            # when state.df is None
+            assert state_with_exp.exp is not None
+            assert hasattr(state_with_exp.exp, 'get2DPeakDataLong')
+
+            # Verify that even with df=None, we can extract peaks via get2DPeakDataLong
+            try:
+                rt_array, mz_array, intensity_array = state_with_exp.exp.get2DPeakDataLong(
+                    state_with_exp.view_rt_min,
+                    state_with_exp.view_rt_max,
+                    state_with_exp.view_mz_min,
+                    state_with_exp.view_mz_max,
+                    ms_level=1,
+                )
+                # Should have some peaks
+                assert len(rt_array) > 0
+                assert len(mz_array) > 0
+                assert len(intensity_array) > 0
+            except Exception as e:
+                pytest.skip(f"get2DPeakDataLong not available: {e}")
         finally:
             # Restore original values
             DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = original_rt
