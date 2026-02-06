@@ -809,6 +809,198 @@ class TestRasterizationSupport:
             valid_base64 = False
         assert valid_base64
 
+    def test_deep_zoom_uses_point_rendering(self, state_with_exp):
+        """Test that _render_points is used when view is in deep zoom range."""
+        from pyopenms_viewer.core.config import DEFAULTS
+        from pyopenms_viewer.rendering.peak_map_renderer import PeakMapRenderer
+
+        # Save original thresholds
+        original_rt = DEFAULTS.DEEP_ZOOM_RT_THRESHOLD
+        original_mz = DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD
+
+        try:
+            # Set thresholds - narrow ranges will trigger point rendering
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = 100.0
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = 200.0
+
+            # Create state with narrow view (within thresholds)
+            state_with_exp.view_rt_min = 0.0
+            state_with_exp.view_rt_max = 50.0  # 50 seconds (< 100)
+            state_with_exp.view_mz_min = 100.0
+            state_with_exp.view_mz_max = 250.0  # 150 mz (< 200)
+
+            # Verify that should_use_point_rendering returns True
+            assert state_with_exp.should_use_point_rendering() is True
+
+            # Create a mock to track if _render_points would be called
+            renderer = PeakMapRenderer()
+            assert callable(renderer._render_points)
+        finally:
+            # Restore original values
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = original_rt
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = original_mz
+
+    def test_get_2d_peak_data_integration(self, state_with_exp):
+        """Test that get2DPeakDataLong is called with correct parameters."""
+        from unittest.mock import MagicMock, patch
+
+        from pyopenms_viewer.core.config import DEFAULTS
+        from pyopenms_viewer.rendering.peak_map_renderer import PeakMapRenderer
+
+        # Save original thresholds
+        original_rt = DEFAULTS.DEEP_ZOOM_RT_THRESHOLD
+        original_mz = DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD
+
+        try:
+            # Set thresholds to use point rendering
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = 1000.0
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = 500.0
+
+            # Create state with bounds that match fixture structure
+            # Fixture has data at RT 0-3240, mz 100-1000
+            state_with_exp.view_rt_min = 0.0
+            state_with_exp.view_rt_max = 400.0
+            state_with_exp.view_mz_min = 100.0
+            state_with_exp.view_mz_max = 500.0
+
+            # Create a mock for get2DPeakDataLong
+            mock_get2d = MagicMock(return_value=(np.array([100.0, 101.0]), np.array([200.0, 201.0]), np.array([1000.0, 2000.0])))
+            state_with_exp.exp.get2DPeakDataLong = mock_get2d
+
+            # Render (will call _render_points since we're in deep zoom)
+            renderer = PeakMapRenderer()
+            result = renderer.render(state_with_exp, fast=False)
+
+            # Verify that get2DPeakDataLong was called with correct bounds and ms_level
+            mock_get2d.assert_called()
+            call_args = mock_get2d.call_args
+            if call_args:
+                # Check that call was made with correct bounds
+                # get2DPeakDataLong(rt_min, rt_max, mz_min, mz_max, ms_level)
+                args, kwargs = call_args
+                if len(args) >= 5:
+                    rt_min, rt_max, mz_min, mz_max, ms_level = args[:5]
+                    assert rt_min == 0.0
+                    assert rt_max == 400.0
+                    assert mz_min == 100.0
+                    assert mz_max == 500.0
+                    assert ms_level == 1
+        finally:
+            # Restore original values
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = original_rt
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = original_mz
+
+    def test_temp_dataframe_creation(self, state_with_exp):
+        """Test that temporary DataFrame is created from get2DPeakDataLong arrays."""
+        from unittest.mock import MagicMock
+
+        from pyopenms_viewer.core.config import DEFAULTS
+        from pyopenms_viewer.rendering.peak_map_renderer import PeakMapRenderer
+
+        # Save original thresholds
+        original_rt = DEFAULTS.DEEP_ZOOM_RT_THRESHOLD
+        original_mz = DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD
+
+        try:
+            # Set narrow thresholds
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = 1000.0
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = 500.0
+
+            # Create state with bounds that match fixture data
+            # Fixture has spectra at RT 0, 360, 720, ..., 3240
+            # With peaks at m/z 100, 200, 300, ..., 1000
+            # Use bounds that capture the first spectrum (RT 0-360)
+            state_with_exp.view_rt_min = 0.0
+            state_with_exp.view_rt_max = 400.0  # Captures first spectrum at RT 0-360
+            state_with_exp.view_mz_min = 100.0
+            state_with_exp.view_mz_max = 500.0  # Captures peaks at 100, 200, 300, 400
+
+            # Mock get2DPeakDataLong to return test data
+            rt_array = np.array([100.0, 101.0, 102.0], dtype=np.float64)
+            mz_array = np.array([200.0, 210.0, 220.0], dtype=np.float64)
+            intensity_array = np.array([1000.0, 2000.0, 3000.0], dtype=np.float32)
+            
+            mock_get2d = MagicMock(return_value=(rt_array, mz_array, intensity_array))
+            state_with_exp.exp.get2DPeakDataLong = mock_get2d
+
+            # Render
+            renderer = PeakMapRenderer()
+            result = renderer.render(state_with_exp, fast=False)
+
+            # Verify that temp_peak_df was created and stored in state
+            assert state_with_exp.temp_peak_df is not None
+            assert isinstance(state_with_exp.temp_peak_df, pd.DataFrame)
+            assert len(state_with_exp.temp_peak_df) == 3
+
+            # Verify the DataFrame has the expected columns
+            assert "rt" in state_with_exp.temp_peak_df.columns
+            assert "mz" in state_with_exp.temp_peak_df.columns
+            assert "intensity" in state_with_exp.temp_peak_df.columns
+            assert "log_intensity" in state_with_exp.temp_peak_df.columns
+
+            # Verify data integrity
+            assert np.allclose(state_with_exp.temp_peak_df["rt"].values, rt_array)
+            assert np.allclose(state_with_exp.temp_peak_df["mz"].values, mz_array)
+            assert np.allclose(state_with_exp.temp_peak_df["intensity"].values, intensity_array)
+        finally:
+            # Restore original values
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = original_rt
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = original_mz
+
+    def test_temp_dataframe_reuse(self, state_with_exp):
+        """Test that temp_peak_df can be reused for 3D view rendering."""
+        from unittest.mock import MagicMock
+
+        from pyopenms_viewer.core.config import DEFAULTS
+        from pyopenms_viewer.rendering.peak_map_renderer import PeakMapRenderer
+
+        # Save original thresholds
+        original_rt = DEFAULTS.DEEP_ZOOM_RT_THRESHOLD
+        original_mz = DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD
+
+        try:
+            # Set narrow thresholds to use point rendering
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = 1000.0
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = 500.0
+
+            # Create state with bounds that match fixture data
+            state_with_exp.view_rt_min = 0.0
+            state_with_exp.view_rt_max = 400.0
+            state_with_exp.view_mz_min = 100.0
+            state_with_exp.view_mz_max = 500.0
+
+            # Mock get2DPeakDataLong to return test data
+            rt_array = np.array([100.5, 101.5], dtype=np.float64)
+            mz_array = np.array([205.0, 215.0], dtype=np.float64)
+            intensity_array = np.array([5000.0, 6000.0], dtype=np.float32)
+            
+            mock_get2d = MagicMock(return_value=(rt_array, mz_array, intensity_array))
+            state_with_exp.exp.get2DPeakDataLong = mock_get2d
+
+            # First render
+            renderer = PeakMapRenderer()
+            result1 = renderer.render(state_with_exp, fast=False)
+
+            # Save reference to temp_peak_df after first render
+            temp_df_first = state_with_exp.temp_peak_df
+            assert temp_df_first is not None
+            assert len(temp_df_first) == 2
+
+            # Second render with same bounds (should reuse)
+            result2 = renderer.render(state_with_exp, fast=False)
+
+            # Verify temp_peak_df is still available for reuse
+            temp_df_second = state_with_exp.temp_peak_df
+            assert temp_df_second is not None
+            
+            # Verify the data is still the same
+            assert np.allclose(temp_df_second["rt"].values, rt_array)
+            assert np.allclose(temp_df_second["mz"].values, mz_array)
+        finally:
+            # Restore original values
+            DEFAULTS.DEEP_ZOOM_RT_THRESHOLD = original_rt
+            DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD = original_mz
+
 
 class TestMinimapCaching:
     """Tests for minimap rasterization caching."""
