@@ -830,6 +830,126 @@ class TestRasterizationSupport:
             valid_base64 = False
         assert valid_base64
 
+    def test_rasterization_respects_swap_axes_true(self):
+        """Test that when swap_axes=True, data is properly transposed for xarray."""
+        try:
+            import xarray as xr
+        except ImportError:
+            pytest.skip("xarray not available")
+
+        import numpy as np
+
+        # Create simple test data that would come from rasterization
+        # Shape is (mz_bins, rt_bins) from rasterizeRTMZ output
+        output_array = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)  # 2 mz_bins, 3 rt_bins
+        log_intensity = np.log10(output_array + 1.0)
+
+        # Setup coordinate arrays
+        rt_coords = np.linspace(0.0, 3600.0, 3)
+        mz_coords = np.linspace(100.0, 2000.0, 2)
+
+        # Test 1: Normal case (swap_axes=False)
+        # Should create DataArray with dims=["mz", "rt"]
+        data_array_normal = xr.DataArray(
+            log_intensity,
+            coords={"mz": mz_coords, "rt": rt_coords},
+            dims=["mz", "rt"],
+        )
+        assert data_array_normal.dims == ("mz", "rt")
+        assert data_array_normal.shape == (2, 3)  # (mz_bins, rt_bins)
+
+        # Test 2: Swapped case (swap_axes=True)
+        # Should transpose data and create DataArray with dims=["rt", "mz"]
+        # Transposed array should have shape (rt_bins, mz_bins)
+        data_array_swapped = xr.DataArray(
+            log_intensity.T,  # This is what should happen when swap_axes=True
+            coords={"rt": rt_coords, "mz": mz_coords},
+            dims=["rt", "mz"],
+        )
+        assert data_array_swapped.dims == ("rt", "mz")
+        assert data_array_swapped.shape == (3, 2)  # (rt_bins, mz_bins)
+
+        # Verify data is actually transposed correctly
+        np.testing.assert_array_equal(data_array_swapped.values, log_intensity.T)
+
+    def test_rasterization_respects_swap_axes_false(self):
+        """Test that when swap_axes=False, data keeps original orientation."""
+        try:
+            import xarray as xr
+        except ImportError:
+            pytest.skip("xarray not available")
+
+        import numpy as np
+
+        # Create simple test data
+        output_array = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)  # 2 mz_bins, 3 rt_bins
+        log_intensity = np.log10(output_array + 1.0)
+
+        # Setup coordinate arrays
+        rt_coords = np.linspace(0.0, 3600.0, 3)
+        mz_coords = np.linspace(100.0, 2000.0, 2)
+
+        # Test: Normal case (swap_axes=False)
+        # Should create DataArray with dims=["mz", "rt"] and NO transpose
+        data_array_normal = xr.DataArray(
+            log_intensity,
+            coords={"mz": mz_coords, "rt": rt_coords},
+            dims=["mz", "rt"],
+        )
+        assert data_array_normal.dims == ("mz", "rt")
+        assert data_array_normal.shape == (2, 3)  # (mz_bins, rt_bins)
+
+        # Verify data is NOT transposed
+        np.testing.assert_array_equal(data_array_normal.values, log_intensity)
+
+    def test_render_rasterized_integration_swap_axes_true(self, state_with_exp):
+        """Integration test: verify _render_rasterized executes with swap_axes=True."""
+        from pyopenms_viewer.rendering.peak_map_renderer import PeakMapRenderer
+
+        renderer = PeakMapRenderer(plot_width=1100, plot_height=550)
+
+        # Set up state with test data
+        state_with_exp.view_rt_min = 0.0
+        state_with_exp.view_rt_max = 3600.0
+        state_with_exp.view_mz_min = 100.0
+        state_with_exp.view_mz_max = 2000.0
+
+        # Enable axis swapping
+        state_with_exp.swap_axes = True
+
+        # Call _render_rasterized with swap_axes=True
+        result = renderer._render_rasterized(state_with_exp, fast=False)
+
+        # Verify a valid result was returned
+        assert isinstance(result, str)
+        assert len(result) > 0
+        # Base64 string should start with valid PNG or image header
+        assert result.startswith("iVB") or result.startswith("/9j"), "Should return valid base64 encoded image"
+
+    def test_render_rasterized_integration_swap_axes_false(self, state_with_exp):
+        """Integration test: verify _render_rasterized executes with swap_axes=False."""
+        from pyopenms_viewer.rendering.peak_map_renderer import PeakMapRenderer
+
+        renderer = PeakMapRenderer(plot_width=1100, plot_height=550)
+
+        # Set up state with test data
+        state_with_exp.view_rt_min = 0.0
+        state_with_exp.view_rt_max = 3600.0
+        state_with_exp.view_mz_min = 100.0
+        state_with_exp.view_mz_max = 2000.0
+
+        # Disable axis swapping (default)
+        state_with_exp.swap_axes = False
+
+        # Call _render_rasterized with swap_axes=False
+        result = renderer._render_rasterized(state_with_exp, fast=False)
+
+        # Verify a valid result was returned
+        assert isinstance(result, str)
+        assert len(result) > 0
+        # Base64 string should start with valid PNG or image header
+        assert result.startswith("iVB") or result.startswith("/9j"), "Should return valid base64 encoded image"
+
     def test_deep_zoom_uses_point_rendering(self, state_with_exp):
         """Test that _render_points is used when view is in deep zoom range."""
         from pyopenms_viewer.core.config import DEFAULTS

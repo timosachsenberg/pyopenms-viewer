@@ -355,11 +355,21 @@ class PeakMapRenderer:
         rt_coords = np.linspace(view_rt_min, view_rt_max, render_width)
         mz_coords = np.linspace(view_mz_min, view_mz_max, render_height)
 
-        data_array = xr.DataArray(
-            log_intensity,
-            coords={"mz": mz_coords, "rt": rt_coords},
-            dims=["mz", "rt"],
-        )
+        # Respect swap_axes flag: transpose data and swap dims if needed
+        if state.swap_axes:
+            # Transpose data and swap dimensions
+            data_array = xr.DataArray(
+                log_intensity.T,
+                coords={"rt": rt_coords, "mz": mz_coords},
+                dims=["rt", "mz"],
+            )
+        else:
+            # Keep original orientation
+            data_array = xr.DataArray(
+                log_intensity,
+                coords={"mz": mz_coords, "rt": rt_coords},
+                dims=["mz", "rt"],
+            )
 
         # Shade the data array using datashader
         img = tf.shade(data_array, cmap=COLORMAPS[state.colormap], how="linear")
