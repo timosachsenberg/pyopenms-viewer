@@ -301,6 +301,18 @@ class ViewerState:
             return 0.0
         return self.data_manager.get_cache_size_mb()
 
+    def invalidate_minimap_cache(self) -> None:
+        """Clear cached minimap raster when new file is loaded.
+
+        This should be called whenever:
+        - A new mzML file is loaded
+        - Data bounds change significantly
+
+        The cache stores the raw rasterized numpy array, allowing efficient
+        re-shading with different colormaps without re-rasterization.
+        """
+        self.cached_minimap_raster = None
+
     # ========== VIEW ACCESSORS (return views, not copies) ==========
 
     def get_peaks_in_view(self) -> pd.DataFrame:

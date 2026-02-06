@@ -8,15 +8,15 @@ Two-phase loading:
 2. process() - Extract peaks, TIC, chromatograms, ion mobility data
 """
 
+import os
 import re
+import threading
 from pathlib import Path
 from typing import Callable, Optional
 
 import numpy as np
 import pandas as pd
 from pyopenms import DriftTimeUnit, MSExperiment, MzMLFile
-import os
-import threading
 
 from pyopenms_viewer.core.state import ViewerState
 
@@ -461,6 +461,10 @@ class MzMLLoader:
                 self.state.peakmap_downsampling = True
 
             self.state.current_file = filepath
+
+            # Invalidate minimap cache when new file is loaded
+            self.state.invalidate_minimap_cache()
+
             return True
 
         except Exception as e:
