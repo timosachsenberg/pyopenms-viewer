@@ -530,7 +530,7 @@ class TestRasterizationSupport:
                 "rt": rt_list,
                 "mz": mz_list,
                 "intensity": intensity_list,
-                "log_intensity": np.log10(np.array(intensity_list) + 1),
+                "log_intensity": np.log1p(np.array(intensity_list)),
             }
         )
 
@@ -759,7 +759,7 @@ class TestRasterizationSupport:
                 "rt": [10.0, 15.0, 20.0],
                 "mz": [110.0, 120.0, 130.0],
                 "intensity": [1000.0, 2000.0, 3000.0],
-                "log_intensity": [np.log10(1000.0), np.log10(2000.0), np.log10(3000.0)],
+                "log_intensity": [np.log1p(1000.0), np.log1p(2000.0), np.log1p(3000.0)],
             }
         )
 
@@ -810,7 +810,7 @@ class TestRasterizationSupport:
                 "rt": np.linspace(0, 3600, 100),
                 "mz": np.linspace(100, 2000, 100),
                 "intensity": np.random.uniform(1000, 100000, 100),
-                "log_intensity": np.log10(np.random.uniform(1000, 100000, 100)),
+                "log_intensity": np.log1p(np.random.uniform(1000, 100000, 100)),
             }
         )
 
@@ -842,7 +842,7 @@ class TestRasterizationSupport:
         # Create simple test data that would come from rasterization
         # Shape is (mz_bins, rt_bins) from rasterizeRTMZ output
         output_array = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)  # 2 mz_bins, 3 rt_bins
-        log_intensity = np.log10(output_array + 1.0)
+        log_intensity = np.log1p(output_array)
 
         # Setup coordinate arrays
         rt_coords = np.linspace(0.0, 3600.0, 3)
@@ -883,7 +883,7 @@ class TestRasterizationSupport:
 
         # Create simple test data
         output_array = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)  # 2 mz_bins, 3 rt_bins
-        log_intensity = np.log10(output_array + 1.0)
+        log_intensity = np.log1p(output_array)
 
         # Setup coordinate arrays
         rt_coords = np.linspace(0.0, 3600.0, 3)
@@ -1368,7 +1368,7 @@ class TestMinimapCaching:
                 "rt": np.linspace(0, 3600, n_peaks),
                 "mz": np.linspace(100, 2000, n_peaks),
                 "intensity": np.random.uniform(1000, 100000, n_peaks),
-                "log_intensity": np.log10(np.random.uniform(1000, 100000, n_peaks)),
+                "log_intensity": np.log1p(np.random.uniform(1000, 100000, n_peaks)),
             }
         )
 
@@ -1600,10 +1600,8 @@ class TestMinimapCaching:
         # When swap_axes=True, dims should be ["rt", "mz"]
         assert list(captured_data_array.dims) == ["rt", "mz"]
 
-        # Verify data is transposed (shape should be swapped)
-        # Original cache shape is (height, width) = (MINIMAP_HEIGHT, MINIMAP_WIDTH)
-        # After transposition it should be (MINIMAP_WIDTH, MINIMAP_HEIGHT)
-        assert captured_data_array.shape == (DEFAULTS.MINIMAP_WIDTH, DEFAULTS.MINIMAP_HEIGHT)
+        # Verify data shape - cache is always normalized to (height, width) after transposing
+        assert captured_data_array.shape == (DEFAULTS.MINIMAP_HEIGHT, DEFAULTS.MINIMAP_WIDTH)
 
     def test_minimap_rasterization_respects_swap_axes_false(self, state_with_minimap_data):
         """Verify that minimap rasterization respects swap_axes=False.

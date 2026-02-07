@@ -169,7 +169,7 @@ class MinimapRenderer:
                         "rt": rt_array,
                         "mz": mz_array,
                         "intensity": intensity_array,
-                        "log_intensity": np.log10(intensity_array + 1),
+                        "log_intensity": np.log1p(intensity_array),
                     }
                 )
             except Exception:

@@ -147,7 +147,7 @@ class PeakMapRenderer:
                         "rt": rt_array,
                         "mz": mz_array,
                         "intensity": intensity_array,
-                        "log_intensity": np.log10(intensity_array + 1),
+                        "log_intensity": np.log1p(intensity_array),
                     }
                 )
 
@@ -362,7 +362,7 @@ class PeakMapRenderer:
 
         # Convert to log intensity for better visualization
         # Add small epsilon to avoid log(0)
-        log_intensity = np.log10(output_array + 1.0)
+        log_intensity = np.log1p(output_array)
 
         # Prepare data for datashader
         # Datashader needs array shape (height, width) to produce image of size (width, height)
