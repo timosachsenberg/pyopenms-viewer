@@ -397,14 +397,18 @@ class MzMLLoader:
 
             if has_rasterization:
                 # ===== RASTERIZATION PATH (no DataFrame) =====
-                # Update ranges and get bounds from native methods
-                self.state.exp.updateRanges()
-
-                # Use native pyOpenMS methods for bounds
-                self.state.rt_min = float(self.state.exp.getMinRT())
-                self.state.rt_max = float(self.state.exp.getMaxRT())
-                self.state.mz_min = float(self.state.exp.getMinMZ())
-                self.state.mz_max = float(self.state.exp.getMaxMZ())
+                # Compute bounds from MS1 peaks only (rts/mzs arrays contain only MS1 data)
+                if peak_idx > 0:
+                    self.state.rt_min = float(rts.min())
+                    self.state.rt_max = float(rts.max())
+                    self.state.mz_min = float(mzs.min())
+                    self.state.mz_max = float(mzs.max())
+                else:
+                    self.state.exp.updateRanges()
+                    self.state.rt_min = float(self.state.exp.getMinRT())
+                    self.state.rt_max = float(self.state.exp.getMaxRT())
+                    self.state.mz_min = float(self.state.exp.getMinMZ())
+                    self.state.mz_max = float(self.state.exp.getMaxMZ())
 
                 # Skip DataFrame creation entirely
                 self.state.df = None
