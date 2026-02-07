@@ -8,7 +8,9 @@ Two-phase loading:
 2. process() - Extract peaks, TIC, chromatograms, ion mobility data
 """
 
+import os
 import re
+import threading
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -387,58 +389,93 @@ class MzMLLoader:
             self.state.spectrum_data = extract_spectrum_data(self.state, spectrum_stats)
 
             if progress_callback:
-                progress_callback("Creating DataFrame...", 0.85)
-
-            # Create main DataFrame
-            df = pd.DataFrame({"rt": rts, "mz": mzs, "intensity": intensities})
-            if self.state.has_faims:
-                df["cv"] = cvs_arr
-            df["log_intensity"] = np.log1p(df["intensity"])
-
-            if progress_callback:
-                progress_callback("Registering with data manager...", 0.88)
-
-            # Register DataFrame with data manager
-            if self.state.data_manager is not None:
-                self.state.df = self.state.data_manager.register_peaks(df, filepath)
-                bounds = self.state.data_manager.get_bounds()
-                self.state.rt_min = bounds["rt_min"]
-                self.state.rt_max = bounds["rt_max"]
-                self.state.mz_min = bounds["mz_min"]
-                self.state.mz_max = bounds["mz_max"]
-            else:
-                self.state.df = df
-
-            if progress_callback:
                 progress_callback("Finalizing...", 0.95)
-            print(f"[PID:{os.getpid()} TID:{threading.get_ident()}] Finished processing data; creating DataFrame...")
+            print(f"[PID:{os.getpid()} TID:{threading.get_ident()}] Finished processing data...")
 
-            # Create per-CV DataFrames for FAIMS view
-            self.state.faims_data = {}
-            if self.state.has_faims and self.state.df is not None:
-                for cv in self.state.faims_cvs:
-                    cv_df = self.state.df[self.state.df["cv"] == cv].copy()
-                    self.state.faims_data[cv] = cv_df
+            # PHASE 1: Check if rasterization is available
+            has_rasterization = hasattr(self.state.exp, "rasterizeRTMZ")
 
-            # Set bounds (fallback if data_manager not used)
-            if self.state.data_manager is None and self.state.df is not None and len(self.state.df) > 0:
-                self.state.rt_min = float(self.state.df["rt"].min())
-                self.state.rt_max = float(self.state.df["rt"].max())
-                self.state.mz_min = float(self.state.df["mz"].min())
-                self.state.mz_max = float(self.state.df["mz"].max())
-            elif self.state.data_manager is None:
-                if self.state.has_ion_mobility and self.state.im_df is not None and len(self.state.im_df) > 0:
-                    self.state.mz_min = float(self.state.im_df["mz"].min())
-                    self.state.mz_max = float(self.state.im_df["mz"].max())
-                if self.state.spectrum_data:
-                    rts_meta = [
-                        s["rt"] for s in self.state.spectrum_data if isinstance(s["rt"], (int, float)) and s["rt"] > 0
-                    ]
-                    if rts_meta:
-                        self.state.rt_min = min(rts_meta)
-                        self.state.rt_max = max(rts_meta)
+            if has_rasterization:
+                # ===== RASTERIZATION PATH (no DataFrame) =====
+                # Update ranges and get bounds from native methods
+                self.state.exp.updateRanges()
 
-            # Ensure valid ranges
+                # Use native pyOpenMS methods for bounds
+                self.state.rt_min = float(self.state.exp.getMinRT())
+                self.state.rt_max = float(self.state.exp.getMaxRT())
+                self.state.mz_min = float(self.state.exp.getMinMZ())
+                self.state.mz_max = float(self.state.exp.getMaxMZ())
+
+                # Skip DataFrame creation entirely
+                self.state.df = None
+
+                # Build per-CV MSExperiment objects for FAIMS rasterization
+                # Each per-CV experiment contains only MS1 spectra for that CV,
+                # allowing rasterizeRTMZ to work natively per-CV.
+                self.state.faims_data = {}
+                self.state.faims_experiments = {}
+                if self.state.has_faims:
+                    for cv in self.state.faims_cvs:
+                        cv_exp = MSExperiment()
+                        for i, stats in enumerate(spectrum_stats):
+                            if stats["cv"] is not None and abs(stats["cv"] - cv) < 0.01:
+                                cv_exp.addSpectrum(self.state.exp[i])
+                        cv_exp.updateRanges()
+                        self.state.faims_experiments[cv] = cv_exp
+            else:
+                # ===== FALLBACK PATH (create DataFrame) =====
+                if progress_callback:
+                    progress_callback("Creating DataFrame...", 0.85)
+
+                # Create main DataFrame
+                df = pd.DataFrame({"rt": rts, "mz": mzs, "intensity": intensities})
+                if self.state.has_faims:
+                    df["cv"] = cvs_arr
+                df["log_intensity"] = np.log1p(df["intensity"])
+
+                if progress_callback:
+                    progress_callback("Registering with data manager...", 0.88)
+
+                # Register DataFrame with data manager
+                if self.state.data_manager is not None:
+                    self.state.df = self.state.data_manager.register_peaks(df, filepath)
+                    bounds = self.state.data_manager.get_bounds()
+                    self.state.rt_min = bounds["rt_min"]
+                    self.state.rt_max = bounds["rt_max"]
+                    self.state.mz_min = bounds["mz_min"]
+                    self.state.mz_max = bounds["mz_max"]
+                else:
+                    self.state.df = df
+
+                # Create per-CV DataFrames for FAIMS view
+                self.state.faims_data = {}
+                self.state.faims_experiments = {}
+                if self.state.has_faims and self.state.df is not None:
+                    for cv in self.state.faims_cvs:
+                        cv_df = self.state.df[self.state.df["cv"] == cv].copy()
+                        self.state.faims_data[cv] = cv_df
+
+                # Set bounds (fallback if data_manager not used)
+                if self.state.data_manager is None and self.state.df is not None and len(self.state.df) > 0:
+                    self.state.rt_min = float(self.state.df["rt"].min())
+                    self.state.rt_max = float(self.state.df["rt"].max())
+                    self.state.mz_min = float(self.state.df["mz"].min())
+                    self.state.mz_max = float(self.state.df["mz"].max())
+                elif self.state.data_manager is None:
+                    if self.state.has_ion_mobility and self.state.im_df is not None and len(self.state.im_df) > 0:
+                        self.state.mz_min = float(self.state.im_df["mz"].min())
+                        self.state.mz_max = float(self.state.im_df["mz"].max())
+                    if self.state.spectrum_data:
+                        rts_meta = [
+                            s["rt"]
+                            for s in self.state.spectrum_data
+                            if isinstance(s["rt"], (int, float)) and s["rt"] > 0
+                        ]
+                        if rts_meta:
+                            self.state.rt_min = min(rts_meta)
+                            self.state.rt_max = max(rts_meta)
+
+            # Ensure valid ranges (apply to both paths)
             if self.state.rt_max <= self.state.rt_min:
                 self.state.rt_max = self.state.rt_min + 1.0
             if self.state.mz_max <= self.state.mz_min:
@@ -455,6 +492,10 @@ class MzMLLoader:
                 self.state.peakmap_downsampling = True
 
             self.state.current_file = filepath
+
+            # Invalidate minimap cache when new file is loaded
+            self.state.invalidate_minimap_cache()
+
             return True
 
         except Exception as e:

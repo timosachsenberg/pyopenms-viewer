@@ -4,6 +4,7 @@ This module creates the NiceGUI interface and wires all components together
 using the modular panel architecture.
 """
 
+import asyncio
 import os
 import tempfile
 import asyncio
@@ -122,6 +123,31 @@ async def create_ui():
         ):
             # Setup helper functions for file loading
 
+            def _relink_ids_and_update_label():
+                """Re-link peptide IDs to spectra and update the ID info label."""
+                if state.peptide_ids:
+                    from pyopenms_viewer.loaders import link_ids_to_spectra
+
+                    link_ids_to_spectra(state)
+                    n_linked = sum(1 for s in state.spectrum_data if s.get("id_idx") is not None)
+                    safe_set_label(id_info_label, f"IDs: {len(state.peptide_ids):,} ({n_linked} linked)")
+
+            def _update_info_label(name: str) -> int:
+                """Build info text from state, update the info label, and return peak count."""
+                if state.data_manager is not None:
+                    peak_count = state.data_manager.get_peak_count()
+                elif state.df is not None:
+                    peak_count = len(state.df)
+                else:
+                    peak_count = 0
+                info_text = f"Loaded: {name} | Spectra: {len(state.exp):,} | Peaks: {peak_count:,}"
+                if state.has_faims:
+                    info_text += f" | FAIMS: {len(state.faims_cvs)} CVs"
+                if state.out_of_core:
+                    info_text += " | Out-of-core"
+                safe_set_label(info_label, info_text)
+                return peak_count
+
             async def load_mzml(filepath: str, original_name: str = None):
                 """Load mzML file in background.
 
@@ -149,27 +175,9 @@ async def create_ui():
 
                 # If same file already loaded and data present, skip reload
                 if cur_fp is not None and cur_fp == new_fp and (state.df is not None or state.data_manager is not None):
-                    # Re-emit events and update labels without reparsing file
-                    if state.peptide_ids:
-                        from pyopenms_viewer.loaders import link_ids_to_spectra
-
-                        link_ids_to_spectra(state)
-                        n_linked = sum(1 for s in state.spectrum_data if s.get("id_idx") is not None)
-                        if id_info_label:
-                            id_info_label.set_text(f"IDs: {len(state.peptide_ids):,} ({n_linked} linked)")
+                    _relink_ids_and_update_label()
                     state.emit_data_loaded("mzml")
-                    if state.data_manager is not None:
-                        peak_count = state.data_manager.get_peak_count()
-                    elif state.df is not None:
-                        peak_count = len(state.df)
-                    else:
-                        peak_count = 0
-                    info_text = f"Loaded: {name} | Spectra: {len(state.exp):,} | Peaks: {peak_count:,}"
-                    if state.has_faims:
-                        info_text += f" | FAIMS: {len(state.faims_cvs)} CVs"
-                    if state.out_of_core:
-                        info_text += " | Out-of-core"
-                    safe_set_label(info_label, info_text)
+                    _update_info_label(name)
                     safe_notify(f"File already loaded: {name}", type="info")
                     return
 
@@ -189,27 +197,17 @@ async def create_ui():
                 if not is_loader:
                     # Wait for the original loader to finish
                     await event.wait()
+                    # Recompute cur_fp — state.current_file was updated by the loader
+                    if state.current_file:
+                        try:
+                            cur_fp = str(Path(state.current_file).resolve())
+                        except Exception:
+                            cur_fp = str(state.current_file)
                     # After wait, data should be available (or failed). Reuse if available.
                     if state.current_file and cur_fp == new_fp and (state.df is not None or state.data_manager is not None):
-                        if state.peptide_ids:
-                            from pyopenms_viewer.loaders import link_ids_to_spectra
-
-                            link_ids_to_spectra(state)
-                            n_linked = sum(1 for s in state.spectrum_data if s.get("id_idx") is not None)
-                            safe_set_label(id_info_label, f"IDs: {len(state.peptide_ids):,} ({n_linked} linked)")
+                        _relink_ids_and_update_label()
                         state.emit_data_loaded("mzml")
-                        if state.data_manager is not None:
-                            peak_count = state.data_manager.get_peak_count()
-                        elif state.df is not None:
-                            peak_count = len(state.df)
-                        else:
-                            peak_count = 0
-                        info_text = f"Loaded: {name} | Spectra: {len(state.exp):,} | Peaks: {peak_count:,}"
-                        if state.has_faims:
-                            info_text += f" | FAIMS: {len(state.faims_cvs)} CVs"
-                        if state.out_of_core:
-                            info_text += " | Out-of-core"
-                        safe_set_label(info_label, info_text)
+                        _update_info_label(name)
                         safe_notify(f"File already loaded: {name}", type="info")
                         return
 
@@ -244,24 +242,9 @@ async def create_ui():
                     except Exception:
                         pass
                 if success:
-                    if state.peptide_ids:
-                        from pyopenms_viewer.loaders import link_ids_to_spectra
-                        link_ids_to_spectra(state)
-                        n_linked = sum(1 for s in state.spectrum_data if s.get("id_idx") is not None)
-                        safe_set_label(id_info_label, f"IDs: {len(state.peptide_ids):,} ({n_linked} linked)")
+                    _relink_ids_and_update_label()
                     state.emit_data_loaded("mzml")
-                    if state.data_manager is not None:
-                        peak_count = state.data_manager.get_peak_count()
-                    elif state.df is not None:
-                        peak_count = len(state.df)
-                    else:
-                        peak_count = 0
-                    info_text = f"Loaded: {name} | Spectra: {len(state.exp):,} | Peaks: {peak_count:,}"
-                    if state.has_faims:
-                        info_text += f" | FAIMS: {len(state.faims_cvs)} CVs"
-                    if state.out_of_core:
-                        info_text += " | Out-of-core"
-                    safe_set_label(info_label, info_text)
+                    peak_count = _update_info_label(name)
                     safe_notify(f"Loaded {peak_count:,} peaks from {name}", type="positive")
                 else:
                     safe_notify(f"Failed to load {name}", type="negative")

@@ -421,6 +421,17 @@ class TestConfig:
         for panel_id in PANEL_DEFINITIONS:
             assert panel_id in DEFAULT_PANEL_VISIBILITY
 
+    def test_config_has_rasterization_settings(self):
+        """Test configuration has rasterization threshold settings."""
+        # Only two threshold settings needed
+        assert hasattr(DEFAULTS, "DEEP_ZOOM_RT_THRESHOLD")
+        assert isinstance(DEFAULTS.DEEP_ZOOM_RT_THRESHOLD, (int, float))
+        assert DEFAULTS.DEEP_ZOOM_RT_THRESHOLD >= 0
+
+        assert hasattr(DEFAULTS, "DEEP_ZOOM_MZ_THRESHOLD")
+        assert isinstance(DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD, (int, float))
+        assert DEFAULTS.DEEP_ZOOM_MZ_THRESHOLD >= 0
+
 
 class TestStateZoomHistory:
     """Tests for zoom history functionality."""
@@ -561,3 +572,171 @@ class TestStateFAIMS:
         state = ViewerState()
         assert state.faims_data == {}
         assert isinstance(state.faims_data, dict)
+
+    def test_faims_experiments_init(self):
+        """Test faims_experiments is initialized as empty dict."""
+        state = ViewerState()
+        assert state.faims_experiments == {}
+        assert isinstance(state.faims_experiments, dict)
+
+    def test_faims_minimap_rasters_init(self):
+        """Test faims_minimap_rasters is initialized as empty dict."""
+        state = ViewerState()
+        assert state.faims_minimap_rasters == {}
+        assert isinstance(state.faims_minimap_rasters, dict)
+
+    def test_faims_experiments_cleared_on_clear_mzml(self):
+        """Test faims_experiments is cleared when mzML data is cleared."""
+        state = ViewerState()
+        state.faims_experiments = {-45.0: "mock_exp"}
+        state.faims_minimap_rasters = {-45.0: "mock_raster"}
+        state.clear_mzml_data()
+        assert state.faims_experiments == {}
+        assert state.faims_minimap_rasters == {}
+
+    def test_faims_minimap_rasters_cleared_on_invalidate(self):
+        """Test faims_minimap_rasters is cleared when minimap cache is invalidated."""
+        state = ViewerState()
+        state.faims_minimap_rasters = {-45.0: "mock_raster", -60.0: "mock_raster2"}
+        state.invalidate_minimap_cache()
+        assert state.cached_minimap_raster is None
+        assert state.faims_minimap_rasters == {}
+
+    def test_state_has_cache_attributes(self):
+        """Test ViewerState has rasterization cache attributes."""
+        state = ViewerState()
+
+        # Check cached minimap attribute
+        assert hasattr(state, "cached_minimap_raster")
+        assert state.cached_minimap_raster is None
+
+        # Check temp peak dataframe attribute
+        assert hasattr(state, "temp_peak_df")
+        assert state.temp_peak_df is None
+
+        # Check last 3D view bounds attribute
+        assert hasattr(state, "last_3d_view_bounds")
+        assert state.last_3d_view_bounds is None
+
+        # Check 3D sync flag
+        assert hasattr(state, "is_3d_in_sync")
+        assert state.is_3d_in_sync is True
+
+    def test_update_3d_sync_bounds(self):
+        """Test update_3d_sync_bounds stores current view bounds."""
+        state = ViewerState()
+        state.rt_min = 0.0
+        state.rt_max = 3600.0
+        state.mz_min = 100.0
+        state.mz_max = 2000.0
+        state.view_rt_min = 500.0
+        state.view_rt_max = 1500.0
+        state.view_mz_min = 300.0
+        state.view_mz_max = 800.0
+
+        state.update_3d_sync_bounds()
+
+        # Should store view bounds, not data bounds
+        assert state.last_3d_view_bounds == (500.0, 1500.0, 300.0, 800.0)
+        assert state.is_3d_in_sync is True
+
+    def test_check_3d_sync_true_when_bounds_match(self):
+        """Test check_3d_sync returns True when bounds match."""
+        state = ViewerState()
+        state.rt_min = 0.0
+        state.rt_max = 3600.0
+        state.mz_min = 100.0
+        state.mz_max = 2000.0
+        state.view_rt_min = 500.0
+        state.view_rt_max = 1500.0
+        state.view_mz_min = 300.0
+        state.view_mz_max = 800.0
+
+        # Set initial bounds
+        state.last_3d_view_bounds = (500.0, 1500.0, 300.0, 800.0)
+
+        # Bounds match, should be in sync
+        result = state.check_3d_sync()
+
+        assert result is True
+        assert state.is_3d_in_sync is True
+
+    def test_check_3d_sync_false_when_bounds_diverge(self):
+        """Test check_3d_sync returns False when bounds diverge."""
+        state = ViewerState()
+        state.rt_min = 0.0
+        state.rt_max = 3600.0
+        state.mz_min = 100.0
+        state.mz_max = 2000.0
+        state.view_rt_min = 500.0
+        state.view_rt_max = 1500.0
+        state.view_mz_min = 300.0
+        state.view_mz_max = 800.0
+
+        # Set initial bounds
+        state.last_3d_view_bounds = (500.0, 1500.0, 300.0, 800.0)
+
+        # Change view (pan)
+        state.view_rt_min = 600.0
+        state.view_rt_max = 1600.0
+
+        # Now out of sync
+        result = state.check_3d_sync()
+
+        assert result is False
+        assert state.is_3d_in_sync is False
+
+    def test_check_3d_sync_false_when_no_last_bounds(self):
+        """Test check_3d_sync returns False when last_3d_view_bounds is None."""
+        state = ViewerState()
+        state.view_rt_min = 500.0
+        state.view_rt_max = 1500.0
+        state.view_mz_min = 300.0
+        state.view_mz_max = 800.0
+        state.last_3d_view_bounds = None
+
+        result = state.check_3d_sync()
+
+        assert result is False
+        assert state.is_3d_in_sync is False
+
+    def test_check_3d_sync_tolerance_for_floating_point(self):
+        """Test check_3d_sync uses tolerance for floating point comparison."""
+        state = ViewerState()
+        state.view_rt_min = 500.0
+        state.view_rt_max = 1500.0
+        state.view_mz_min = 300.0
+        state.view_mz_max = 800.0
+
+        # Set initial bounds with same values
+        state.last_3d_view_bounds = (500.0, 1500.0, 300.0, 800.0)
+
+        # Modify by very small amount (less than 1e-6)
+        state.view_rt_min = 500.0 + 1e-7
+        state.view_rt_max = 1500.0 - 1e-7
+
+        # Should still be in sync (within tolerance)
+        result = state.check_3d_sync()
+
+        assert result is True
+        assert state.is_3d_in_sync is True
+
+    def test_check_3d_sync_fails_for_large_drift(self):
+        """Test check_3d_sync fails when drift exceeds tolerance."""
+        state = ViewerState()
+        state.view_rt_min = 500.0
+        state.view_rt_max = 1500.0
+        state.view_mz_min = 300.0
+        state.view_mz_max = 800.0
+
+        # Set initial bounds
+        state.last_3d_view_bounds = (500.0, 1500.0, 300.0, 800.0)
+
+        # Modify by more than tolerance (1e-6)
+        state.view_rt_min = 500.0 + 1e-5
+
+        # Should be out of sync
+        result = state.check_3d_sync()
+
+        assert result is False
+        assert state.is_3d_in_sync is False
