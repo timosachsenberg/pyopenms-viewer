@@ -573,6 +573,35 @@ class TestStateFAIMS:
         assert state.faims_data == {}
         assert isinstance(state.faims_data, dict)
 
+    def test_faims_experiments_init(self):
+        """Test faims_experiments is initialized as empty dict."""
+        state = ViewerState()
+        assert state.faims_experiments == {}
+        assert isinstance(state.faims_experiments, dict)
+
+    def test_faims_minimap_rasters_init(self):
+        """Test faims_minimap_rasters is initialized as empty dict."""
+        state = ViewerState()
+        assert state.faims_minimap_rasters == {}
+        assert isinstance(state.faims_minimap_rasters, dict)
+
+    def test_faims_experiments_cleared_on_clear_mzml(self):
+        """Test faims_experiments is cleared when mzML data is cleared."""
+        state = ViewerState()
+        state.faims_experiments = {-45.0: "mock_exp"}
+        state.faims_minimap_rasters = {-45.0: "mock_raster"}
+        state.clear_mzml_data()
+        assert state.faims_experiments == {}
+        assert state.faims_minimap_rasters == {}
+
+    def test_faims_minimap_rasters_cleared_on_invalidate(self):
+        """Test faims_minimap_rasters is cleared when minimap cache is invalidated."""
+        state = ViewerState()
+        state.faims_minimap_rasters = {-45.0: "mock_raster", -60.0: "mock_raster2"}
+        state.invalidate_minimap_cache()
+        assert state.cached_minimap_raster is None
+        assert state.faims_minimap_rasters == {}
+
     def test_state_has_cache_attributes(self):
         """Test ViewerState has rasterization cache attributes."""
         state = ViewerState()

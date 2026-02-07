@@ -60,27 +60,41 @@ class MinimapRenderer:
     def _render_with_rasterization(self, state) -> Optional[str]:
         """Render minimap using cached rasterization from pyOpenMS.
 
+        When a FAIMS CV is selected, uses the per-CV experiment and its cached raster
+        instead of the global experiment/cache.
+
         Args:
             state: ViewerState with data and view bounds
 
         Returns:
             Base64-encoded PNG string, or None if no data
         """
+        # Select experiment and cache based on FAIMS CV selection
+        if state.has_faims and state.selected_faims_cv is not None:
+            cv = state.selected_faims_cv
+            raster_exp = state.faims_experiments.get(cv)
+            if raster_exp is None:
+                return self._render_with_datashader(state)
+            cached_raster = state.faims_minimap_rasters.get(cv)
+        else:
+            raster_exp = state.exp
+            cached_raster = state.cached_minimap_raster
+
         # Check cache - if empty, rasterize
-        if state.cached_minimap_raster is None:
+        if cached_raster is None:
             # Rasterize at full data extent
             # Request appropriate bin counts based on swap_axes
             if state.swap_axes:
                 # Swapped: m/z on X (width), RT on Y (height)
                 # Request (self.width mz bins, self.height RT bins) = (400, 200)
-                output = np.empty((self.width, self.height), dtype=np.float32)
+                output = np.zeros((self.width, self.height), dtype=np.float32)
             else:
                 # Default: RT on X (width), m/z on Y (height)
                 # Request (self.height mz bins, self.width RT bins) = (200, 400)
-                output = np.empty((self.height, self.width), dtype=np.float32)
+                output = np.zeros((self.height, self.width), dtype=np.float32)
 
             try:
-                state.exp.rasterizeRTMZ(
+                raster_exp.rasterizeRTMZ(
                     output,
                     state.rt_min,
                     state.rt_max,
@@ -92,18 +106,24 @@ class MinimapRenderer:
                 # Transpose if swapped to get standard (height, width) shape
                 if state.swap_axes:
                     output = output.T
-                state.cached_minimap_raster = output
+                cached_raster = output
             except Exception:
                 # If rasterization fails, fall back to datashader
                 return self._render_with_datashader(state)
 
+            # Store in appropriate cache
+            if state.has_faims and state.selected_faims_cv is not None:
+                state.faims_minimap_rasters[state.selected_faims_cv] = cached_raster
+            else:
+                state.cached_minimap_raster = cached_raster
+
         # Create xarray DataArray from cached raster
-        # cached_minimap_raster is always (self.height, self.width) = (200, 400) after transposing
+        # cached raster is always (self.height, self.width) = (200, 400) after transposing
 
         if state.swap_axes:
             # Swapped view: rows=RT, cols=m/z
             xr_data = xr.DataArray(
-                state.cached_minimap_raster,
+                cached_raster,
                 coords={
                     "rt": np.linspace(state.rt_min, state.rt_max, self.height),
                     "mz": np.linspace(state.mz_min, state.mz_max, self.width),
@@ -113,7 +133,7 @@ class MinimapRenderer:
         else:
             # Default view: rows=m/z, cols=RT
             xr_data = xr.DataArray(
-                state.cached_minimap_raster,
+                cached_raster,
                 coords={
                     "mz": np.linspace(state.mz_min, state.mz_max, self.height),
                     "rt": np.linspace(state.rt_min, state.rt_max, self.width),
@@ -318,6 +338,9 @@ class MinimapRenderer:
     def render_for_cv(self, state, cv: float, width: int = None, height: int = None) -> Optional[str]:
         """Render a minimap for a specific FAIMS CV value.
 
+        Tries rasterization from per-CV MSExperiment first (with caching),
+        falls back to DataFrame-based datashader rendering.
+
         Args:
             state: ViewerState with FAIMS data
             cv: The compensation voltage value to render
@@ -330,7 +353,17 @@ class MinimapRenderer:
         if not state.has_faims:
             return None
 
-        # Get CV data - use data_manager in out-of-core mode, or in-memory with on-demand extraction
+        render_width = width or self.width
+        render_height = height or max(40, self.height // 2)
+
+        # Try rasterization from per-CV experiment first (with caching)
+        cv_exp = state.faims_experiments.get(cv)
+        if cv_exp is not None and hasattr(cv_exp, "rasterizeRTMZ"):
+            result = self._render_cv_with_rasterization(state, cv, cv_exp, render_width, render_height)
+            if result is not None:
+                return result
+
+        # Fallback: DataFrame-based rendering
         if state.data_manager is not None:
             cv_df = state.data_manager.query_peaks_for_cv(cv, downsample=state.peakmap_downsampling)
         else:
@@ -346,10 +379,6 @@ class MinimapRenderer:
 
         # Convert to accelerated DataFrame if available
         cv_df = to_accelerated_dataframe(cv_df)
-
-        # Use smaller dimensions for CV minimaps
-        render_width = width or self.width
-        render_height = height or max(40, self.height // 2)
 
         # Create minimap canvas - swap axes to match main view
         if state.swap_axes:
@@ -380,6 +409,78 @@ class MinimapRenderer:
         plot_img = img.to_pil()
 
         # Convert to base64
+        buffer = io.BytesIO()
+        plot_img.save(buffer, format="PNG")
+        return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+    def _render_cv_with_rasterization(
+        self, state, cv: float, cv_exp, render_width: int, render_height: int
+    ) -> Optional[str]:
+        """Render per-CV minimap using rasterization with caching.
+
+        Args:
+            state: ViewerState
+            cv: Compensation voltage value
+            cv_exp: Per-CV MSExperiment object
+            render_width: Render width in pixels
+            render_height: Render height in pixels
+
+        Returns:
+            Base64-encoded PNG string, or None if rasterization fails
+        """
+        cached_raster = state.faims_minimap_rasters.get(cv)
+
+        if cached_raster is None:
+            if state.swap_axes:
+                output = np.zeros((render_width, render_height), dtype=np.float32)
+            else:
+                output = np.zeros((render_height, render_width), dtype=np.float32)
+
+            try:
+                cv_exp.rasterizeRTMZ(
+                    output,
+                    state.rt_min,
+                    state.rt_max,
+                    state.mz_min,
+                    state.mz_max,
+                    ms_level=1,
+                    aggregation="sum",
+                )
+                if state.swap_axes:
+                    output = output.T
+                cached_raster = output
+                state.faims_minimap_rasters[cv] = cached_raster
+            except Exception:
+                return None
+
+        if cached_raster.max() == 0.0:
+            return None
+
+        if state.swap_axes:
+            xr_data = xr.DataArray(
+                cached_raster,
+                coords={
+                    "rt": np.linspace(state.rt_min, state.rt_max, render_height),
+                    "mz": np.linspace(state.mz_min, state.mz_max, render_width),
+                },
+                dims=["rt", "mz"],
+            )
+        else:
+            xr_data = xr.DataArray(
+                cached_raster,
+                coords={
+                    "mz": np.linspace(state.mz_min, state.mz_max, render_height),
+                    "rt": np.linspace(state.rt_min, state.rt_max, render_width),
+                },
+                dims=["mz", "rt"],
+            )
+
+        img = tf.shade(xr_data, cmap=COLORMAPS[state.colormap], how="eq_hist")
+        img = tf.dynspread(img, threshold=0.5, max_px=4)
+        img = tf.set_background(img, get_colormap_background(state.colormap))
+
+        plot_img = img.to_pil()
+
         buffer = io.BytesIO()
         plot_img.save(buffer, format="PNG")
         return base64.b64encode(buffer.getvalue()).decode("utf-8")

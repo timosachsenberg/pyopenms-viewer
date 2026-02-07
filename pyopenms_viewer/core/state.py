@@ -138,6 +138,8 @@ class ViewerState:
         self.im_unit: str = ""
         self.show_faims_view: bool = False
         self.selected_faims_cv: Optional[float] = None  # Currently selected CV for filtering peak map
+        self.faims_experiments: dict = {}  # CV -> MSExperiment (MS1 only, for rasterization)
+        self.faims_minimap_rasters: dict = {}  # CV -> cached np.ndarray minimap raster
 
         # ========== FILE PATHS ==========
         self.current_file: Optional[str] = None
@@ -313,6 +315,7 @@ class ViewerState:
         re-shading with different colormaps without re-rasterization.
         """
         self.cached_minimap_raster = None
+        self.faims_minimap_rasters = {}
 
     # ========== VIEW ACCESSORS (return views, not copies) ==========
 
@@ -772,6 +775,8 @@ class ViewerState:
         self.im_unit = ""
         self.faims_cvs = []
         self.faims_data = {}
+        self.faims_experiments = {}
+        self.faims_minimap_rasters = {}
         self.faims_tic = {}
         self.has_faims = False
         self.show_faims_view = False

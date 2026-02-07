@@ -409,8 +409,19 @@ class MzMLLoader:
                 # Skip DataFrame creation entirely
                 self.state.df = None
 
-                # Skip per-CV DataFrames (will be extracted on-demand)
+                # Build per-CV MSExperiment objects for FAIMS rasterization
+                # Each per-CV experiment contains only MS1 spectra for that CV,
+                # allowing rasterizeRTMZ to work natively per-CV.
                 self.state.faims_data = {}
+                self.state.faims_experiments = {}
+                if self.state.has_faims:
+                    for cv in self.state.faims_cvs:
+                        cv_exp = MSExperiment()
+                        for i, stats in enumerate(spectrum_stats):
+                            if stats["cv"] is not None and abs(stats["cv"] - cv) < 0.01:
+                                cv_exp.addSpectrum(self.state.exp[i])
+                        cv_exp.updateRanges()
+                        self.state.faims_experiments[cv] = cv_exp
             else:
                 # ===== FALLBACK PATH (create DataFrame) =====
                 if progress_callback:
@@ -438,6 +449,7 @@ class MzMLLoader:
 
                 # Create per-CV DataFrames for FAIMS view
                 self.state.faims_data = {}
+                self.state.faims_experiments = {}
                 if self.state.has_faims and self.state.df is not None:
                     for cv in self.state.faims_cvs:
                         cv_df = self.state.df[self.state.df["cv"] == cv].copy()

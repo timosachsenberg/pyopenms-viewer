@@ -134,10 +134,16 @@ class PeakMapRenderer:
         # 4. Use this DataFrame for Datashader point canvas rendering
         #
         if state.exp is not None:
+            # Select per-CV experiment if FAIMS CV is selected
+            extract_exp = state.exp
+            if state.has_faims and state.selected_faims_cv is not None:
+                if state.selected_faims_cv in state.faims_experiments:
+                    extract_exp = state.faims_experiments[state.selected_faims_cv]
+
             # Use get2DPeakDataLong() to extract peaks for the current view
             # This is more efficient for deep zoom as it avoids filtering large DataFrames
             try:
-                rt_array, mz_array, intensity_array = state.exp.get2DPeakDataLong(
+                rt_array, mz_array, intensity_array = extract_exp.get2DPeakDataLong(
                     view_rt_min, view_rt_max, view_mz_min, view_mz_max, ms_level=1
                 )
 
@@ -261,6 +267,27 @@ class PeakMapRenderer:
             view_df = source_df[mask]
             state.temp_peak_df = view_df.copy()
             return view_df
+        elif state.df is None and state.has_faims and state.selected_faims_cv is not None:
+            # Rasterization path with FAIMS: use per-CV experiment to extract peaks
+            cv_exp = state.faims_experiments.get(state.selected_faims_cv)
+            if cv_exp is not None and hasattr(cv_exp, "get2DPeakDataLong"):
+                try:
+                    rt_array, mz_array, intensity_array = cv_exp.get2DPeakDataLong(
+                        view_rt_min, view_rt_max, view_mz_min, view_mz_max, ms_level=1
+                    )
+                    view_df = pd.DataFrame(
+                        {
+                            "rt": rt_array,
+                            "mz": mz_array,
+                            "intensity": intensity_array,
+                            "log_intensity": np.log1p(intensity_array),
+                        }
+                    )
+                    state.temp_peak_df = view_df.copy()
+                    return view_df
+                except Exception:
+                    pass
+            return None
         elif state.data_manager is not None:
             view_df = state.get_peaks_in_view()
             state.temp_peak_df = view_df.copy() if view_df is not None else None
@@ -292,6 +319,14 @@ class PeakMapRenderer:
         if state.exp is None:
             return ""
 
+        # Select per-CV experiment if FAIMS CV is selected
+        render_exp = state.exp
+        if state.has_faims and state.selected_faims_cv is not None:
+            if state.selected_faims_cv in state.faims_experiments:
+                render_exp = state.faims_experiments[state.selected_faims_cv]
+            else:
+                return self._render_points(state, fast, draw_overlays, draw_axes)
+
         # Get view bounds
         bounds = state.get_view_bounds()
         view_rt_min, view_rt_max = bounds.rt_min, bounds.rt_max
@@ -317,11 +352,11 @@ class PeakMapRenderer:
             output_array = np.zeros((render_height, render_width), dtype=np.float32)
 
         try:
-            if not hasattr(state.exp, "rasterizeRTMZ"):
+            if not hasattr(render_exp, "rasterizeRTMZ"):
                 # Method doesn't exist - fall back to point rendering
                 return self._render_points(state, fast, draw_overlays, draw_axes)
 
-            state.exp.rasterizeRTMZ(
+            render_exp.rasterizeRTMZ(
                 output_array,
                 view_rt_min,
                 view_rt_max,
@@ -555,6 +590,8 @@ class PeakMapRenderer:
     def render_faims(self, state: ViewerState, cv: float) -> str:
         """Render a single FAIMS CV peak map.
 
+        Tries rasterization from per-CV MSExperiment first, falls back to DataFrame path.
+
         Args:
             state: ViewerState with FAIMS data
             cv: Compensation voltage value
@@ -562,14 +599,29 @@ class PeakMapRenderer:
         Returns:
             Base64-encoded PNG string
         """
+        bounds = state.get_view_bounds()
+        view_rt_min, view_rt_max = bounds.rt_min, bounds.rt_max
+        view_mz_min, view_mz_max = bounds.mz_min, bounds.mz_max
+
+        # Smaller dimensions for FAIMS panels
+        faims_width = self.plot_width // 2
+        faims_height = self.plot_height // 2
+
+        # Try rasterization from per-CV experiment first
+        cv_exp = state.faims_experiments.get(cv)
+        if cv_exp is not None and hasattr(cv_exp, "rasterizeRTMZ"):
+            try:
+                return self._render_faims_rasterized(
+                    state, cv_exp, view_rt_min, view_rt_max, view_mz_min, view_mz_max, faims_width, faims_height
+                )
+            except Exception:
+                pass  # Fall through to DataFrame path
+
+        # Fallback: DataFrame path
         if cv not in state.faims_data or len(state.faims_data[cv]) == 0:
             return ""
 
         cv_df = state.faims_data[cv]
-
-        bounds = state.get_view_bounds()
-        view_rt_min, view_rt_max = bounds.rt_min, bounds.rt_max
-        view_mz_min, view_mz_max = bounds.mz_min, bounds.mz_max
 
         mask = (
             (cv_df["rt"] >= view_rt_min)
@@ -584,10 +636,6 @@ class PeakMapRenderer:
 
         # Convert to accelerated DataFrame if available
         view_df = to_accelerated_dataframe(view_df)
-
-        # Smaller dimensions for FAIMS panels
-        faims_width = self.plot_width // 2
-        faims_height = self.plot_height // 2
 
         if state.swap_axes:
             ds_canvas = ds.Canvas(
@@ -607,6 +655,82 @@ class PeakMapRenderer:
             agg = ds_canvas.points(view_df, "rt", "mz", ds.max("log_intensity"))
 
         img = tf.shade(agg, cmap=COLORMAPS[state.colormap], how="linear")
+        img = tf.dynspread(img, threshold=0.5, max_px=2)
+        img = tf.set_background(img, get_colormap_background(state.colormap))
+
+        plot_img = img.to_pil()
+
+        buffer = io.BytesIO()
+        plot_img.save(buffer, format="PNG")
+        buffer.seek(0)
+
+        return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+    def _render_faims_rasterized(
+        self,
+        state: ViewerState,
+        cv_exp,
+        view_rt_min: float,
+        view_rt_max: float,
+        view_mz_min: float,
+        view_mz_max: float,
+        faims_width: int,
+        faims_height: int,
+    ) -> str:
+        """Render a FAIMS CV peak map using rasterization from per-CV experiment.
+
+        Args:
+            state: ViewerState for colormap and axis settings
+            cv_exp: Per-CV MSExperiment object
+            view_rt_min/max: RT range
+            view_mz_min/max: m/z range
+            faims_width: Render width
+            faims_height: Render height
+
+        Returns:
+            Base64-encoded PNG string
+        """
+        if state.swap_axes:
+            output_array = np.zeros((faims_width, faims_height), dtype=np.float32)
+        else:
+            output_array = np.zeros((faims_height, faims_width), dtype=np.float32)
+
+        cv_exp.rasterizeRTMZ(
+            output_array,
+            view_rt_min,
+            view_rt_max,
+            view_mz_min,
+            view_mz_max,
+            ms_level=1,
+            aggregation="sum",
+        )
+
+        if output_array.max() == 0.0:
+            return ""
+
+        log_intensity = np.log1p(output_array)
+
+        if state.swap_axes:
+            log_intensity = log_intensity.T
+            data_array = xr.DataArray(
+                log_intensity,
+                coords={
+                    "rt": np.linspace(view_rt_min, view_rt_max, faims_height),
+                    "mz": np.linspace(view_mz_min, view_mz_max, faims_width),
+                },
+                dims=["rt", "mz"],
+            )
+        else:
+            data_array = xr.DataArray(
+                log_intensity,
+                coords={
+                    "mz": np.linspace(view_mz_min, view_mz_max, faims_height),
+                    "rt": np.linspace(view_rt_min, view_rt_max, faims_width),
+                },
+                dims=["mz", "rt"],
+            )
+
+        img = tf.shade(data_array, cmap=COLORMAPS[state.colormap], how="linear")
         img = tf.dynspread(img, threshold=0.5, max_px=2)
         img = tf.set_background(img, get_colormap_background(state.colormap))
 
