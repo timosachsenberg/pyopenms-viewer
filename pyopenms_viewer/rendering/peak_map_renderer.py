@@ -155,66 +155,10 @@ class PeakMapRenderer:
                 state.temp_peak_df = view_df.copy()
             except Exception:
                 # Fallback: use traditional DataFrame filtering if get2DPeakDataLong fails
-                if state.df is not None:
-                    # Fast path: direct pandas filtering (in-memory mode)
-                    if state.has_faims and state.selected_faims_cv is not None:
-                        # Check if faims_data is populated
-                        if state.selected_faims_cv in state.faims_data:
-                            source_df = state.faims_data[state.selected_faims_cv]
-                        else:
-                            # Extract on-demand if faims_data is empty (Phase 1 rasterization path)
-                            source_df = state.get_faims_peaks_for_cv(
-                                state.selected_faims_cv, state.rt_min, state.rt_max, state.mz_min, state.mz_max
-                            )
-                    else:
-                        source_df = state.df
-
-                    mask = (
-                        (source_df["rt"] >= view_rt_min)
-                        & (source_df["rt"] <= view_rt_max)
-                        & (source_df["mz"] >= view_mz_min)
-                        & (source_df["mz"] <= view_mz_max)
-                    )
-                    view_df = source_df[mask]
-                    state.temp_peak_df = view_df.copy()
-                elif state.data_manager is not None:
-                    # Out-of-core path: query via DuckDB
-                    view_df = state.get_peaks_in_view()
-                    state.temp_peak_df = view_df.copy() if view_df is not None else None
-                else:
-                    # No fallback available - no DataFrame and get2DPeakDataLong failed
-                    view_df = None
+                view_df = self._get_fallback_view_df(state, view_rt_min, view_rt_max, view_mz_min, view_mz_max)
         else:
             # Fallback when exp is None - use traditional approach
-            if state.df is not None:
-                # Fast path: direct pandas filtering (in-memory mode)
-                if state.has_faims and state.selected_faims_cv is not None:
-                    # Check if faims_data is populated
-                    if state.selected_faims_cv in state.faims_data:
-                        source_df = state.faims_data[state.selected_faims_cv]
-                    else:
-                        # Extract on-demand if faims_data is empty (Phase 1 rasterization path)
-                        source_df = state.get_faims_peaks_for_cv(
-                            state.selected_faims_cv, state.rt_min, state.rt_max, state.mz_min, state.mz_max
-                        )
-                else:
-                    source_df = state.df
-
-                mask = (
-                    (source_df["rt"] >= view_rt_min)
-                    & (source_df["rt"] <= view_rt_max)
-                    & (source_df["mz"] >= view_mz_min)
-                    & (source_df["mz"] <= view_mz_max)
-                )
-                view_df = source_df[mask]
-                state.temp_peak_df = view_df.copy()
-            elif state.data_manager is not None:
-                # Out-of-core path: query via DuckDB (handles FAIMS CV filtering internally)
-                view_df = state.get_peaks_in_view()
-                state.temp_peak_df = view_df.copy() if view_df is not None else None
-            else:
-                # No data available
-                view_df = None
+            view_df = self._get_fallback_view_df(state, view_rt_min, view_rt_max, view_mz_min, view_mz_max)
 
         if view_df is None or len(view_df) == 0:
             return ""
@@ -287,6 +231,41 @@ class PeakMapRenderer:
         buffer.seek(0)
 
         return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+    def _get_fallback_view_df(self, state, view_rt_min, view_rt_max, view_mz_min, view_mz_max):
+        """Get view DataFrame using traditional DataFrame filtering.
+
+        Handles FAIMS CV selection, in-memory pandas filtering, and out-of-core
+        DuckDB queries. Stores result in state.temp_peak_df for 3D view reuse.
+
+        Returns:
+            Filtered DataFrame for the current view, or None if no data available.
+        """
+        if state.df is not None:
+            if state.has_faims and state.selected_faims_cv is not None:
+                if state.selected_faims_cv in state.faims_data:
+                    source_df = state.faims_data[state.selected_faims_cv]
+                else:
+                    source_df = state.get_faims_peaks_for_cv(
+                        state.selected_faims_cv, state.rt_min, state.rt_max, state.mz_min, state.mz_max
+                    )
+            else:
+                source_df = state.df
+
+            mask = (
+                (source_df["rt"] >= view_rt_min)
+                & (source_df["rt"] <= view_rt_max)
+                & (source_df["mz"] >= view_mz_min)
+                & (source_df["mz"] <= view_mz_max)
+            )
+            view_df = source_df[mask]
+            state.temp_peak_df = view_df.copy()
+            return view_df
+        elif state.data_manager is not None:
+            view_df = state.get_peaks_in_view()
+            state.temp_peak_df = view_df.copy() if view_df is not None else None
+            return view_df
+        return None
 
     def _render_rasterized(
         self,
