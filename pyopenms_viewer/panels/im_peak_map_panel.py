@@ -39,9 +39,6 @@ class IMPeakMapPanel(BasePanel):
         self.range_label: Optional[ui.label] = None
         self.link_checkbox = None
         self.mobilogram_checkbox = None
-        self.frame_slider = None
-        self.frame_label: Optional[ui.label] = None
-        self.frame_row = None
 
         # Renderer
         self.im_renderer = IMPeakMapRenderer(
@@ -121,21 +118,6 @@ class IMPeakMapPanel(BasePanel):
                 "Save ion mobility map as PNG"
             )
 
-        # Frame selector row (hidden by default, shown when rasterizeIMFrame is available)
-        self.frame_row = ui.row().classes("w-full items-center gap-2 mb-2")
-        self.frame_row.set_visibility(False)
-        with self.frame_row:
-            ui.button(icon="navigate_before", on_click=self._prev_frame).props("dense flat size=sm").tooltip(
-                "Previous frame"
-            )
-            self.frame_slider = ui.slider(min=0, max=0, value=0, on_change=self._on_frame_change).props(
-                "dense label-always"
-            ).classes("flex-grow")
-            ui.button(icon="navigate_next", on_click=self._next_frame).props("dense flat size=sm").tooltip(
-                "Next frame"
-            )
-            self.frame_label = ui.label("Frame: --").classes("text-sm text-gray-400 min-w-[200px]")
-
     def _build_range_row(self):
         """Build the range display row."""
         with ui.row().classes("w-full"):
@@ -196,9 +178,6 @@ class IMPeakMapPanel(BasePanel):
                     f"Ion mobility data: {n_peaks:,} peaks | {self.state.im_type or 'Unknown type'}"
                 )
 
-        # Update frame label
-        self._update_frame_label()
-
     def _has_data(self) -> bool:
         """Check if panel has data to display."""
         return self.state.has_ion_mobility
@@ -224,18 +203,6 @@ class IMPeakMapPanel(BasePanel):
             # Update visibility based on whether IM data is present
             self.update_visibility()
             if self.state.has_ion_mobility:
-                # Configure frame selector if rasterization is available
-                n_frames = len(self.state.im_frame_indices)
-                if n_frames > 0 and self.frame_slider is not None:
-                    self.frame_slider._props["max"] = n_frames - 1
-                    self.frame_slider._props["value"] = 0
-                    self.frame_slider.update()
-                    if self.frame_row is not None:
-                        self.frame_row.set_visibility(True)
-                else:
-                    if self.frame_row is not None:
-                        self.frame_row.set_visibility(False)
-
                 self.update()
                 # Auto-expand if IM data present
                 if self.expansion:
@@ -243,8 +210,6 @@ class IMPeakMapPanel(BasePanel):
             else:
                 # Clear display and collapse when loading non-IM data
                 self._clear_display()
-                if self.frame_row is not None:
-                    self.frame_row.set_visibility(False)
                 if self.expansion:
                     self.expansion.value = False
 
@@ -323,55 +288,6 @@ class IMPeakMapPanel(BasePanel):
             link.click();
         ''')
         ui.notify("Downloading ion_mobility_map.png", type="positive")
-
-    # === Frame navigation ===
-
-    def _on_frame_change(self, e):
-        """Handle frame slider change."""
-        frame_pos = int(e.value)
-        if 0 <= frame_pos < len(self.state.im_frame_indices):
-            self.state.selected_im_frame_idx = self.state.im_frame_indices[frame_pos]
-            self.update()
-
-    def _prev_frame(self):
-        """Navigate to previous frame."""
-        if self.frame_slider is None or not self.state.im_frame_indices:
-            return
-        current = int(self.frame_slider._props.get("value", 0))
-        if current > 0:
-            self.frame_slider._props["value"] = current - 1
-            self.frame_slider.update()
-            self.state.selected_im_frame_idx = self.state.im_frame_indices[current - 1]
-            self.update()
-
-    def _next_frame(self):
-        """Navigate to next frame."""
-        if self.frame_slider is None or not self.state.im_frame_indices:
-            return
-        current = int(self.frame_slider._props.get("value", 0))
-        max_val = len(self.state.im_frame_indices) - 1
-        if current < max_val:
-            self.frame_slider._props["value"] = current + 1
-            self.frame_slider.update()
-            self.state.selected_im_frame_idx = self.state.im_frame_indices[current + 1]
-            self.update()
-
-    def _update_frame_label(self):
-        """Update the frame information label."""
-        if self.frame_label is None or not self.state.im_frame_indices:
-            return
-        if self.state.selected_im_frame_idx is not None and self.state.exp is not None:
-            try:
-                spec = self.state.exp[self.state.selected_im_frame_idx]
-                rt = spec.getRT()
-                rt_display = rt / 60.0 if self.state.rt_in_minutes else rt
-                rt_unit = "min" if self.state.rt_in_minutes else "s"
-                frame_pos = self.state.im_frame_indices.index(self.state.selected_im_frame_idx)
-                self.frame_label.set_text(
-                    f"Frame {frame_pos + 1}/{len(self.state.im_frame_indices)} | RT: {rt_display:.2f} {rt_unit}"
-                )
-            except (ValueError, IndexError):
-                self.frame_label.set_text("Frame: --")
 
     # === Mouse handlers ===
 
