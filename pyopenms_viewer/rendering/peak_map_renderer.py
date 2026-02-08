@@ -814,11 +814,12 @@ class IMPeakMapRenderer:
         view_mz_min, view_mz_max = bounds.mz_min, bounds.mz_max
         view_im_min, view_im_max = bounds.im_min, bounds.im_max
 
-        # Allocate output array: [im_bins, mz_bins]
-        output_array = np.zeros((self.plot_height, self.plot_width), dtype=np.float32)
+        # rasterizeIMFrame expects shape (mz_bins, im_bins) and params (output, min_im, max_im, min_mz, max_mz)
+        # We want: m/z on x-axis (plot_width), IM on y-axis (plot_height)
+        output_array = np.zeros((self.plot_width, self.plot_height), dtype=np.float32)
 
         try:
-            spec.rasterizeIMFrame(output_array, view_mz_min, view_mz_max, view_im_min, view_im_max)
+            spec.rasterizeIMFrame(output_array, view_im_min, view_im_max, view_mz_min, view_mz_max, "sum")
 
             if output_array.max() == 0.0:
                 return ""
@@ -826,10 +827,13 @@ class IMPeakMapRenderer:
             return ""
 
         # Convert to log intensity for better visualization
-        log_intensity = np.log1p(output_array)
+        # output_array is (mz_bins, im_bins) = (plot_width, plot_height)
+        # Transpose to (im_bins, mz_bins) = (plot_height, plot_width) for image display
+        # where rows=IM (y-axis), cols=m/z (x-axis)
+        log_intensity = np.log1p(output_array.T)
 
         # Create xarray DataArray for datashader shading
-        # Array is [im_bins, mz_bins] = rows=IM, cols=m/z
+        # After transpose: rows=IM, cols=m/z
         data_array = xr.DataArray(
             log_intensity,
             coords={
@@ -858,9 +862,10 @@ class IMPeakMapRenderer:
         canvas = self._draw_axes(canvas, state, view_mz_min, view_mz_max, view_im_min, view_im_max)
 
         # Draw mobilogram from raster data if enabled
+        # Pass transposed array so it's [im_bins, mz_bins] as expected by _draw_mobilogram_from_raster
         if state.show_mobilogram:
             canvas = self._draw_mobilogram_from_raster(
-                canvas, state, output_array, view_mz_min, view_mz_max, view_im_min, view_im_max
+                canvas, state, output_array.T, view_mz_min, view_mz_max, view_im_min, view_im_max
             )
 
         buffer = io.BytesIO()

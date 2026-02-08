@@ -352,7 +352,7 @@ class TestIMPeakMapRendererBranching:
         # Mock the spectrum with rasterizeIMFrame that fills the array
         mock_spec = MagicMock()
 
-        def fill_array(arr, mz_min, mz_max, im_min, im_max):
+        def fill_array(arr, im_min, im_max, mz_min, mz_max, aggregation="sum"):
             arr[:] = np.random.rand(*arr.shape).astype(np.float32) * 1000
 
         mock_spec.rasterizeIMFrame = MagicMock(side_effect=fill_array)
