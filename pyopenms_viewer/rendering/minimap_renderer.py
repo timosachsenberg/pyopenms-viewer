@@ -118,15 +118,16 @@ class MinimapRenderer:
                 state.cached_minimap_raster = cached_raster
 
         # Create xarray DataArray from cached raster
-        # cached raster is always (self.height, self.width) = (200, 400) after transposing
+        # Use actual raster shape for coordinates (per-CV rasters may differ in size)
+        n_rows, n_cols = cached_raster.shape
 
         if state.swap_axes:
             # Swapped view: rows=RT, cols=m/z
             xr_data = xr.DataArray(
                 cached_raster,
                 coords={
-                    "rt": np.linspace(state.rt_min, state.rt_max, self.height),
-                    "mz": np.linspace(state.mz_min, state.mz_max, self.width),
+                    "rt": np.linspace(state.rt_min, state.rt_max, n_rows),
+                    "mz": np.linspace(state.mz_min, state.mz_max, n_cols),
                 },
                 dims=["rt", "mz"],
             )
@@ -135,8 +136,8 @@ class MinimapRenderer:
             xr_data = xr.DataArray(
                 cached_raster,
                 coords={
-                    "mz": np.linspace(state.mz_min, state.mz_max, self.height),
-                    "rt": np.linspace(state.rt_min, state.rt_max, self.width),
+                    "mz": np.linspace(state.mz_min, state.mz_max, n_rows),
+                    "rt": np.linspace(state.rt_min, state.rt_max, n_cols),
                 },
                 dims=["mz", "rt"],
             )
