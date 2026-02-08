@@ -116,8 +116,8 @@ class TestIMSLoading:
         loader = MzMLLoader(state)
         loader.load_sync(str(IMS_MZML))
         assert state.has_ion_mobility is True
-        assert state.im_df is not None
-        assert len(state.im_df) > 0
+        # Either DataFrame path (im_df populated) or rasterization path (im_frame_indices populated)
+        assert state.im_df is not None or len(state.im_frame_indices) > 0
 
     def test_load_ims_mzml_has_im_bounds(self):
         """Test that IMS data has proper IM bounds."""

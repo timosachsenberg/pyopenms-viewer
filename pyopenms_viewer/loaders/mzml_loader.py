@@ -185,6 +185,7 @@ class MzMLLoader:
             im_mz_list = []
             im_im_list = []
             im_int_list = []
+            im_frame_indices_list = []  # Track MS1 frame indices that have IM data
             detected_im_name = None
             im_array_names = [
                 "ion mobility",
@@ -317,6 +318,7 @@ class MzMLLoader:
                                     im_mz_list.append(mz_array)
                                     im_im_list.append(im_array)
                                     im_int_list.append(int_array)
+                                    im_frame_indices_list.append(spec_idx)
                                 break
 
             # =========================================================
@@ -378,7 +380,9 @@ class MzMLLoader:
                 progress_callback("Processing ion mobility data...", 0.77)
 
             # Process ion mobility data (already extracted in main loop)
-            self._process_ion_mobility_data(im_mz_list, im_im_list, im_int_list, detected_im_name, filepath)
+            self._process_ion_mobility_data(
+                im_mz_list, im_im_list, im_int_list, detected_im_name, filepath, im_frame_indices_list
+            )
 
             if progress_callback:
                 progress_callback("Extracting spectrum metadata...", 0.8)
@@ -516,8 +520,12 @@ class MzMLLoader:
         im_int_list: list,
         detected_im_name: Optional[str],
         filepath: str,
+        im_frame_indices: Optional[list] = None,
     ) -> None:
         """Process pre-extracted ion mobility data.
+
+        Branches between rasterization path (single-frame rendering with rasterizeIMFrame)
+        and fallback path (DataFrame with all IM peaks).
 
         Args:
             im_mz_list: List of m/z arrays from IM spectra
@@ -525,6 +533,7 @@ class MzMLLoader:
             im_int_list: List of intensity arrays
             detected_im_name: Name of the detected IM array, or None
             filepath: Path to the mzML file (for data manager registration)
+            im_frame_indices: List of spectrum indices for IM frames
         """
         if not im_mz_list or detected_im_name is None:
             self.state.has_ion_mobility = False
@@ -535,7 +544,7 @@ class MzMLLoader:
         name_lower = detected_im_name.lower()
         if "inverse" in name_lower or "1/k0" in name_lower:
             self.state.im_type = "inverse_k0"
-            self.state.im_unit = "Vs/cm²"
+            self.state.im_unit = "Vs/cm\u00b2"
         elif "drift" in name_lower:
             self.state.im_type = "drift_time"
             self.state.im_unit = "ms"
@@ -543,35 +552,73 @@ class MzMLLoader:
             self.state.im_type = "ion_mobility"
             self.state.im_unit = ""
 
-        # Concatenate all arrays
+        # Compute IM and m/z bounds from collected arrays
         mz_concat = np.concatenate(im_mz_list)
         im_concat = np.concatenate(im_im_list)
         int_concat = np.concatenate(im_int_list)
 
-        # Create DataFrame
-        im_df = pd.DataFrame(
-            {
-                "mz": mz_concat,
-                "im": im_concat,
-                "intensity": int_concat,
-            }
-        )
-        im_df["log_intensity"] = np.log1p(im_df["intensity"])
+        im_mz_min = float(mz_concat.min())
+        im_mz_max = float(mz_concat.max())
+        im_min_val = float(im_concat.min())
+        im_max_val = float(im_concat.max())
 
-        # Register with data manager
-        if self.state.data_manager is not None and filepath:
-            self.state.im_df = self.state.data_manager.register_im_peaks(im_df, filepath)
-            im_bounds = self.state.data_manager.get_im_bounds()
-            self.state.im_min = im_bounds["im_min"]
-            self.state.im_max = im_bounds["im_max"]
-            im_mz_min = im_bounds["mz_min"]
-            im_mz_max = im_bounds["mz_max"]
+        # Check if rasterization is available (single-frame rendering)
+        has_im_rasterization = False
+        if self.state.exp is not None and len(self.state.exp) > 0:
+            test_spec = self.state.exp[0]
+            has_im_rasterization = hasattr(test_spec, "rasterizeIMFrame")
+
+        if has_im_rasterization and im_frame_indices:
+            # ===== RASTERIZATION PATH (no DataFrame) =====
+            # Build sorted frame indices and parallel RT arrays
+            frame_rts = np.array(
+                [self.state.exp[idx].getRT() for idx in im_frame_indices], dtype=np.float64
+            )
+            sort_order = np.argsort(frame_rts)
+            self.state.im_frame_indices = [im_frame_indices[i] for i in sort_order]
+            self.state.im_frame_rts = frame_rts[sort_order]
+
+            # Set bounds from collected data
+            self.state.im_min = im_min_val
+            self.state.im_max = im_max_val
+
+            # Skip DataFrame creation
+            self.state.im_df = None
+
+            # Select first frame as default
+            self.state.selected_im_frame_idx = self.state.im_frame_indices[0]
         else:
-            self.state.im_df = im_df
-            self.state.im_min = float(im_df["im"].min())
-            self.state.im_max = float(im_df["im"].max())
-            im_mz_min = float(im_df["mz"].min())
-            im_mz_max = float(im_df["mz"].max())
+            # ===== FALLBACK PATH (create DataFrame) =====
+            im_df = pd.DataFrame(
+                {
+                    "mz": mz_concat,
+                    "im": im_concat,
+                    "intensity": int_concat,
+                }
+            )
+            im_df["log_intensity"] = np.log1p(im_df["intensity"])
+
+            # Also populate frame indices for UI even in fallback mode
+            if im_frame_indices:
+                frame_rts = np.array(
+                    [self.state.exp[idx].getRT() for idx in im_frame_indices], dtype=np.float64
+                )
+                sort_order = np.argsort(frame_rts)
+                self.state.im_frame_indices = [im_frame_indices[i] for i in sort_order]
+                self.state.im_frame_rts = frame_rts[sort_order]
+
+            # Register with data manager
+            if self.state.data_manager is not None and filepath:
+                self.state.im_df = self.state.data_manager.register_im_peaks(im_df, filepath)
+                im_bounds = self.state.data_manager.get_im_bounds()
+                self.state.im_min = im_bounds["im_min"]
+                self.state.im_max = im_bounds["im_max"]
+                im_mz_min = im_bounds["mz_min"]
+                im_mz_max = im_bounds["mz_max"]
+            else:
+                self.state.im_df = im_df
+                self.state.im_min = im_min_val
+                self.state.im_max = im_max_val
 
         # Ensure valid IM range
         if self.state.im_max <= self.state.im_min:

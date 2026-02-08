@@ -136,6 +136,9 @@ class ViewerState:
         self.faims_cvs: list[float] = []
         self.im_type: Optional[str] = None  # "ion mobility", "inverse reduced ion mobility", etc.
         self.im_unit: str = ""
+        self.selected_im_frame_idx: Optional[int] = None  # Index into exp for selected IM frame
+        self.im_frame_indices: list[int] = []  # MS1 IM frame indices in exp
+        self.im_frame_rts: Optional[np.ndarray] = None  # Parallel RT values (sorted)
         self.show_faims_view: bool = False
         self.selected_faims_cv: Optional[float] = None  # Currently selected CV for filtering peak map
         self.faims_experiments: dict = {}  # CV -> MSExperiment (MS1 only, for rasterization)
@@ -399,6 +402,35 @@ class ViewerState:
             & (self.im_df["im"] <= im_max)
         )
         return self.im_df[mask]
+
+    def get_im_frame_spectrum(self):
+        """Get the currently selected IM frame spectrum.
+
+        Returns:
+            MSSpectrum object for the selected frame, or None if no frame selected
+        """
+        if self.exp is None or self.selected_im_frame_idx is None:
+            return None
+        if self.selected_im_frame_idx < 0 or self.selected_im_frame_idx >= len(self.exp):
+            return None
+        return self.exp[self.selected_im_frame_idx]
+
+    def select_nearest_im_frame(self, rt: float) -> None:
+        """Select the IM frame nearest to the given RT value using binary search.
+
+        Args:
+            rt: Retention time in seconds to find nearest frame for
+        """
+        if self.im_frame_rts is None or len(self.im_frame_rts) == 0:
+            return
+        idx = int(np.searchsorted(self.im_frame_rts, rt))
+        # Check neighbors for closest
+        if idx >= len(self.im_frame_rts):
+            idx = len(self.im_frame_rts) - 1
+        elif idx > 0:
+            if abs(self.im_frame_rts[idx - 1] - rt) < abs(self.im_frame_rts[idx] - rt):
+                idx -= 1
+        self.selected_im_frame_idx = self.im_frame_indices[idx]
 
     def get_faims_peaks_for_cv(
         self, cv: float, rt_min: float, rt_max: float, mz_min: float, mz_max: float
@@ -773,6 +805,9 @@ class ViewerState:
         self.has_ion_mobility = False
         self.im_type = None
         self.im_unit = ""
+        self.selected_im_frame_idx = None
+        self.im_frame_indices = []
+        self.im_frame_rts = None
         self.faims_cvs = []
         self.faims_data = {}
         self.faims_experiments = {}

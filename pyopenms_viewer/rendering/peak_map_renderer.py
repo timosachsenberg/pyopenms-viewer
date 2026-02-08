@@ -767,6 +767,111 @@ class IMPeakMapRenderer:
     def render(self, state: ViewerState) -> str:
         """Render ion mobility peak map.
 
+        Branches between rasterized single-frame rendering (when rasterizeIMFrame is
+        available and a frame is selected) and point-based rendering (DataFrame fallback).
+
+        Args:
+            state: ViewerState with IM data
+
+        Returns:
+            Base64-encoded PNG string
+        """
+        # Check if rasterized single-frame rendering is available
+        if self._can_use_im_rasterization(state):
+            result = self._render_im_rasterized(state)
+            if result:
+                return result
+            # Fall through to point rendering if rasterization returned empty
+
+        return self._render_im_points(state)
+
+    def _can_use_im_rasterization(self, state: ViewerState) -> bool:
+        """Check if IM rasterization is available for single-frame rendering."""
+        if state.selected_im_frame_idx is None:
+            return False
+        spec = state.get_im_frame_spectrum()
+        if spec is None:
+            return False
+        return hasattr(spec, "rasterizeIMFrame")
+
+    def _render_im_rasterized(self, state: ViewerState) -> str:
+        """Render IM peak map using rasterizeIMFrame for single-frame rendering.
+
+        Gets the selected frame spectrum and rasterizes it directly into a 2D array
+        at screen resolution. No DataFrame needed.
+
+        Args:
+            state: ViewerState with IM frame selected
+
+        Returns:
+            Base64-encoded PNG string, or empty string on failure
+        """
+        spec = state.get_im_frame_spectrum()
+        if spec is None:
+            return ""
+
+        bounds = state.get_view_bounds()
+        view_mz_min, view_mz_max = bounds.mz_min, bounds.mz_max
+        view_im_min, view_im_max = bounds.im_min, bounds.im_max
+
+        # Allocate output array: [im_bins, mz_bins]
+        output_array = np.zeros((self.plot_height, self.plot_width), dtype=np.float32)
+
+        try:
+            spec.rasterizeIMFrame(output_array, view_mz_min, view_mz_max, view_im_min, view_im_max)
+
+            if output_array.max() == 0.0:
+                return ""
+        except Exception:
+            return ""
+
+        # Convert to log intensity for better visualization
+        log_intensity = np.log1p(output_array)
+
+        # Create xarray DataArray for datashader shading
+        # Array is [im_bins, mz_bins] = rows=IM, cols=m/z
+        data_array = xr.DataArray(
+            log_intensity,
+            coords={
+                "im": np.linspace(view_im_min, view_im_max, self.plot_height),
+                "mz": np.linspace(view_mz_min, view_mz_max, self.plot_width),
+            },
+            dims=["im", "mz"],
+        )
+
+        img = tf.shade(data_array, cmap=COLORMAPS[state.colormap], how="eq_hist")
+        img = tf.dynspread(img, threshold=0.5, max_px=3)
+        img = tf.set_background(img, get_colormap_background(state.colormap))
+
+        plot_img = img.to_pil()
+
+        # Calculate canvas width - add space for mobilogram if enabled
+        mobilogram_space = state.mobilogram_plot_width + 20 if state.show_mobilogram else 0
+        total_canvas_width = self.canvas_width + mobilogram_space
+
+        # Compose final canvas
+        canvas = Image.new("RGBA", (total_canvas_width, self.canvas_height), (0, 0, 0, 0))
+        plot_img_rgba = plot_img.convert("RGBA")
+        canvas.paste(plot_img_rgba, (self.margin_left, self.margin_top))
+
+        # Draw axes
+        canvas = self._draw_axes(canvas, state, view_mz_min, view_mz_max, view_im_min, view_im_max)
+
+        # Draw mobilogram from raster data if enabled
+        if state.show_mobilogram:
+            canvas = self._draw_mobilogram_from_raster(
+                canvas, state, output_array, view_mz_min, view_mz_max, view_im_min, view_im_max
+            )
+
+        buffer = io.BytesIO()
+        canvas.save(buffer, format="PNG")
+        buffer.seek(0)
+
+        return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+    def _render_im_points(self, state: ViewerState) -> str:
+        """Render IM peak map using point-based DataFrame rendering (original path).
+
         Args:
             state: ViewerState with IM data
 
@@ -778,16 +883,7 @@ class IMPeakMapRenderer:
         view_im_min, view_im_max = bounds.im_min, bounds.im_max
 
         # Get IM peaks in view - two paths for performance:
-        #
-        # IN-MEMORY MODE (state.im_df is not None):
-        #   Use direct pandas boolean masking for best performance.
-        #
-        # OUT-OF-CORE MODE (state.im_df is None):
-        #   Use state.get_im_peaks_in_view() which queries via DuckDB from Parquet.
-        #   The DataManager handles the DuckDB queries transparently.
-        #
         if state.im_df is not None:
-            # Fast path: direct pandas filtering (in-memory mode)
             mask = (
                 (state.im_df["mz"] >= view_mz_min)
                 & (state.im_df["mz"] <= view_mz_max)
@@ -796,7 +892,6 @@ class IMPeakMapRenderer:
             )
             view_df = state.im_df[mask]
         else:
-            # Out-of-core path: query via DuckDB
             view_df = state.get_im_peaks_in_view()
 
         if view_df is None or len(view_df) == 0:
@@ -1004,6 +1099,94 @@ class IMPeakMapRenderer:
         # Draw axis label at top
         font = get_font(10)
 
+        label = "Mobilogram"
+        bbox = draw.textbbox((0, 0), label, font=font)
+        label_width = bbox[2] - bbox[0]
+        draw.text(
+            (mob_left + (state.mobilogram_plot_width - label_width) // 2, mob_top - 15),
+            label,
+            fill=label_color,
+            font=font,
+        )
+
+        return canvas
+
+    def _draw_mobilogram_from_raster(
+        self,
+        canvas: Image.Image,
+        state: ViewerState,
+        raster_array: np.ndarray,
+        view_mz_min: float,
+        view_mz_max: float,
+        view_im_min: float,
+        view_im_max: float,
+    ) -> Image.Image:
+        """Draw mobilogram from pre-rasterized data by summing along m/z axis.
+
+        Instead of querying the DataFrame, this sums the raster array along the m/z
+        dimension (axis=1) to get intensity per IM bin directly from the rasterized data.
+
+        Args:
+            canvas: PIL Image to draw on
+            state: ViewerState for settings
+            raster_array: 2D array [im_bins, mz_bins] from rasterizeIMFrame
+            view_mz_min/max: m/z range
+            view_im_min/max: IM range
+
+        Returns:
+            Modified canvas with mobilogram drawn
+        """
+        draw = ImageDraw.Draw(canvas)
+
+        # Sum along m/z axis (axis=1) to get intensity per IM bin
+        intensities = raster_array.sum(axis=1).astype(np.float64)
+
+        if intensities.max() == 0:
+            return canvas
+
+        # Create IM bin centers
+        n_bins = len(intensities)
+        im_values = np.linspace(view_im_min, view_im_max, n_bins)
+
+        # Mobilogram plot area (to the right of the main plot)
+        mob_left = self.margin_left + self.plot_width + 10
+        mob_right = mob_left + state.mobilogram_plot_width
+        mob_top = self.margin_top
+        mob_bottom = self.margin_top + self.plot_height
+
+        # Draw border for mobilogram area
+        axis_color = (136, 136, 136, 255)
+        label_color = (136, 136, 136, 255)
+        draw.rectangle([mob_left, mob_top, mob_right, mob_bottom], outline=axis_color, width=1)
+
+        # Normalize intensities to plot width
+        max_intensity = float(np.max(intensities))
+        if max_intensity == 0:
+            max_intensity = 1.0
+
+        im_range = view_im_max - view_im_min
+        if im_range == 0:
+            im_range = 1.0
+
+        # Build points for the mobilogram line
+        points = []
+        for im_val, intensity in zip(im_values, intensities):
+            y_frac = 1.0 - (im_val - view_im_min) / im_range
+            y = mob_top + int(y_frac * self.plot_height)
+            x_frac = intensity / max_intensity
+            x = mob_left + int(x_frac * state.mobilogram_plot_width)
+            points.append((x, y))
+
+        # Draw line connecting all points
+        if len(points) > 1:
+            fill_points = [(mob_left, mob_bottom)]
+            fill_points.extend(points)
+            fill_points.append((mob_left, mob_top))
+            draw.polygon(fill_points, fill=(0, 200, 255, 80))
+            draw.line(points, fill=(0, 200, 255, 255), width=2)
+
+        # Draw axis label at top
+        font = get_font(10)
         label = "Mobilogram"
         bbox = draw.textbbox((0, 0), label, font=font)
         label_width = bbox[2] - bbox[0]

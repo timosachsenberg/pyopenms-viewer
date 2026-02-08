@@ -206,6 +206,10 @@ class TICPanel(BasePanel):
             # Select spectrum (triggers spectrum panel update)
             self.state.select_spectrum(best_idx)
 
+            # Also select nearest IM frame if ion mobility data is present
+            if self.state.has_ion_mobility and self.state.im_frame_indices:
+                self.state.select_nearest_im_frame(clicked_rt)
+
             # Also center the peak map on this RT (matching original behavior)
             rt_range = self.state.view_rt_max - self.state.view_rt_min
             new_rt_min = max(self.state.rt_min, clicked_rt - rt_range / 2)
