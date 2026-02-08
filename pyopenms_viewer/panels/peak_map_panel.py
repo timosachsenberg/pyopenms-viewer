@@ -942,7 +942,7 @@ class PeakMapPanel(BasePanel):
             self._handle_zoom_selection(e)
 
     def _handle_feature_click(self, e: MouseEventArguments):
-        """Handle click to select a feature."""
+        """Handle click to select a feature and/or spectrum."""
         # If we have a hovered feature, select it
         if self.state.hover_feature_idx is not None:
             feature_idx = self.state.hover_feature_idx
@@ -969,7 +969,23 @@ class PeakMapPanel(BasePanel):
                     timeout=3000,
                 )
 
-            self.update()
+        # Select nearest spectrum at the clicked RT
+        if self.state.exp is not None:
+            clicked_rt, _ = self._pixel_to_data(e.image_x, e.image_y)
+            best_idx = 0
+            best_diff = float("inf")
+            for i in range(len(self.state.exp)):
+                diff = abs(self.state.exp[i].getRT() - clicked_rt)
+                if diff < best_diff:
+                    best_diff = diff
+                    best_idx = i
+            self.state.select_spectrum(best_idx)
+
+            # Also select nearest IM frame if ion mobility data is present
+            if self.state.has_ion_mobility and self.state.im_frame_indices:
+                self.state.select_nearest_im_frame(clicked_rt)
+
+        self.update()
 
     def _update_coord_display(self, image_x: float, image_y: float):
         """Update the coordinate display label."""
