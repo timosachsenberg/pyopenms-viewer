@@ -854,9 +854,9 @@ class IMPeakMapRenderer:
         else:
             spread_px = 3
 
-        img = tf.shade(data_array, cmap=COLORMAPS[state.colormap], how="eq_hist")
+        img = tf.shade(data_array, cmap=COLORMAPS[state.im_colormap], how="eq_hist")
         img = tf.dynspread(img, threshold=0.3, max_px=spread_px)
-        img = tf.set_background(img, get_colormap_background(state.colormap))
+        img = tf.set_background(img, get_colormap_background(state.im_colormap))
 
         plot_img = img.to_pil()
 
@@ -938,9 +938,9 @@ class IMPeakMapRenderer:
         else:
             spread_px = 3
 
-        img = tf.shade(agg, cmap=COLORMAPS[state.colormap], how="linear")
+        img = tf.shade(agg, cmap=COLORMAPS[state.im_colormap], how="linear")
         img = tf.dynspread(img, threshold=0.3, max_px=spread_px)
-        img = tf.set_background(img, get_colormap_background(state.colormap))
+        img = tf.set_background(img, get_colormap_background(state.im_colormap))
 
         plot_img = img.to_pil()
 

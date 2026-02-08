@@ -191,6 +191,7 @@ class ViewerState:
         self.show_spectrum_marker: bool = DEFAULTS.SHOW_SPECTRUM_MARKER
         self.swap_axes: bool = DEFAULTS.SWAP_AXES
         self.colormap: str = DEFAULTS.COLORMAP
+        self.im_colormap: str = DEFAULTS.COLORMAP
         self.rt_in_minutes: bool = DEFAULTS.RT_IN_MINUTES
         self.spectrum_intensity_percent: bool = DEFAULTS.SPECTRUM_INTENSITY_PERCENT
         self.spectrum_auto_scale: bool = DEFAULTS.SPECTRUM_AUTO_SCALE

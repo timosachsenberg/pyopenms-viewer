@@ -8,6 +8,7 @@ from typing import Optional
 
 from nicegui import ui
 
+from pyopenms_viewer.core.config import COLORMAPS
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.panels.base_panel import BasePanel
 from pyopenms_viewer.rendering import IMPeakMapRenderer
@@ -105,6 +106,12 @@ class IMPeakMapPanel(BasePanel):
                 .props("dense")
                 .tooltip("Show summed intensity profile vs ion mobility")
             )
+
+            # Colormap selector
+            colormap_options = list(COLORMAPS.keys())
+            ui.select(colormap_options, value=self.state.im_colormap, on_change=self._change_colormap).props(
+                "dense outlined"
+            ).classes("w-28")
 
             ui.button("Reset View", icon="home", on_click=self._reset_view).props("dense outline size=sm").tooltip(
                 "Reset to full IM range"
@@ -281,6 +288,12 @@ class IMPeakMapPanel(BasePanel):
             )
 
         self.update()
+
+    def _change_colormap(self, e):
+        """Change IM colormap."""
+        self.state.im_colormap = e.value
+        if self._has_data():
+            self.update()
 
     def _reset_view(self):
         """Reset to full IM view."""
