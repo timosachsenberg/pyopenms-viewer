@@ -843,8 +843,19 @@ class IMPeakMapRenderer:
             dims=["im", "mz"],
         )
 
+        # Adaptive spread: use larger circles when zoomed in (sparse raster)
+        fill_ratio = np.count_nonzero(output_array) / output_array.size
+        if fill_ratio < 0.01:
+            spread_px = 8
+        elif fill_ratio < 0.05:
+            spread_px = 6
+        elif fill_ratio < 0.15:
+            spread_px = 4
+        else:
+            spread_px = 3
+
         img = tf.shade(data_array, cmap=COLORMAPS[state.colormap], how="eq_hist")
-        img = tf.dynspread(img, threshold=0.5, max_px=3)
+        img = tf.dynspread(img, threshold=0.3, max_px=spread_px)
         img = tf.set_background(img, get_colormap_background(state.colormap))
 
         plot_img = img.to_pil()
@@ -914,8 +925,21 @@ class IMPeakMapRenderer:
         )
         agg = ds_canvas.points(view_df, "mz", "im", ds.max("log_intensity"))
 
+        # Adaptive spread: use larger circles when fewer points visible
+        n_pixels = int(agg.values[np.isfinite(agg.values)].astype(bool).sum())
+        total_pixels = self.plot_width * self.plot_height
+        fill_ratio = n_pixels / total_pixels if total_pixels > 0 else 1.0
+        if fill_ratio < 0.01:
+            spread_px = 8
+        elif fill_ratio < 0.05:
+            spread_px = 6
+        elif fill_ratio < 0.15:
+            spread_px = 4
+        else:
+            spread_px = 3
+
         img = tf.shade(agg, cmap=COLORMAPS[state.colormap], how="linear")
-        img = tf.dynspread(img, threshold=0.5, max_px=3)
+        img = tf.dynspread(img, threshold=0.3, max_px=spread_px)
         img = tf.set_background(img, get_colormap_background(state.colormap))
 
         plot_img = img.to_pil()
@@ -1054,6 +1078,14 @@ class IMPeakMapRenderer:
         im_values = im_values[sort_idx]
         intensities = intensities[sort_idx]
 
+        # Filter out zero-intensity bins so the line connects non-zero points directly
+        nonzero = intensities > 0
+        im_values = im_values[nonzero]
+        intensities = intensities[nonzero]
+
+        if len(im_values) == 0:
+            return canvas
+
         # Mobilogram plot area (to the right of the main plot)
         mob_left = self.margin_left + self.plot_width + 10
         mob_right = mob_left + state.mobilogram_plot_width
@@ -1070,7 +1102,6 @@ class IMPeakMapRenderer:
         if max_intensity == 0:
             max_intensity = 1.0
 
-        # Draw filled mobilogram as horizontal bars
         im_range = view_im_max - view_im_min
         if im_range == 0:
             im_range = 1.0
@@ -1149,9 +1180,15 @@ class IMPeakMapRenderer:
         if intensities.max() == 0:
             return canvas
 
-        # Create IM bin centers
+        # Create IM bin centers and filter out zero-intensity bins
         n_bins = len(intensities)
         im_values = np.linspace(view_im_min, view_im_max, n_bins)
+        nonzero = intensities > 0
+        im_values = im_values[nonzero]
+        intensities = intensities[nonzero]
+
+        if len(im_values) == 0:
+            return canvas
 
         # Mobilogram plot area (to the right of the main plot)
         mob_left = self.margin_left + self.plot_width + 10
