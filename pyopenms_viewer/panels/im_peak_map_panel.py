@@ -31,7 +31,7 @@ class IMPeakMapPanel(BasePanel):
         Args:
             state: ViewerState instance (shared reference)
         """
-        super().__init__(state, "im_peakmap", "Ion Mobility Map", "blur_on")
+        super().__init__(state, "im_peakmap", "Ion Mobility Frame", "blur_on")
 
         # UI elements
         self.im_image_element: Optional[ui.interactive_image] = None

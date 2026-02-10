@@ -140,7 +140,7 @@ PANEL_DEFINITIONS = {
     "tic": {"name": "TIC", "icon": "show_chart"},
     "chromatograms": {"name": "Chromatograms", "icon": "timeline"},
     "peakmap": {"name": "2D Peak Map", "icon": "grid_on"},
-    "im_peakmap": {"name": "Ion Mobility Map", "icon": "blur_on"},
+    "im_peakmap": {"name": "Ion Mobility Frame", "icon": "blur_on"},
     "spectrum": {"name": "1D Spectrum", "icon": "ssid_chart"},
     "spectra_table": {"name": "Spectra", "icon": "list"},
     "features_table": {"name": "Features", "icon": "scatter_plot"},
