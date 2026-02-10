@@ -166,17 +166,21 @@ class IMPeakMapPanel(BasePanel):
 
         # Update info label
         if self.info_label is not None and self.state.has_ion_mobility:
-            is_rasterized = self.state.im_df is None and len(self.state.im_frame_indices) > 0
-            if is_rasterized:
-                n_frames = len(self.state.im_frame_indices)
-                self.info_label.set_text(
-                    f"Ion mobility data: {n_frames} frames (rasterized) | {self.state.im_type or 'Unknown type'}"
-                )
+            if self.state.selected_im_frame_idx is not None and self.state.exp is not None:
+                idx = self.state.selected_im_frame_idx
+                if 0 <= idx < len(self.state.exp):
+                    spec = self.state.exp[idx]
+                    ms_level = spec.getMSLevel()
+                    rt = spec.getRT()
+                    n_peaks = spec.size()
+                    self.info_label.set_text(
+                        f"Spectrum #{idx} | MS{ms_level} | RT={rt:.2f}s | {n_peaks:,} peaks"
+                        f" | {self.state.im_type or 'Unknown type'}"
+                    )
+                else:
+                    self.info_label.set_text(f"Ion mobility data | {self.state.im_type or 'Unknown type'}")
             else:
-                n_peaks = len(self.state.im_df) if self.state.im_df is not None else 0
-                self.info_label.set_text(
-                    f"Ion mobility data: {n_peaks:,} peaks | {self.state.im_type or 'Unknown type'}"
-                )
+                self.info_label.set_text(f"Ion mobility data | {self.state.im_type or 'Unknown type'}")
 
     def _has_data(self) -> bool:
         """Check if panel has data to display."""

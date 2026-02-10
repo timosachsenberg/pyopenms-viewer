@@ -243,7 +243,10 @@ async def create_ui():
                         pass
                 if success:
                     _relink_ids_and_update_label()
+                    progress_label.set_text("Rendering...")
+                    await asyncio.sleep(0)  # Let UI update before heavy renders
                     state.emit_data_loaded("mzml")
+                    progress_label.set_text("")
                     peak_count = _update_info_label(name)
                     safe_notify(f"Loaded {peak_count:,} peaks from {name}", type="positive")
                 else:
