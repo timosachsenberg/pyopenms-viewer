@@ -541,6 +541,13 @@ class PeakMapPanel(BasePanel):
                 self.faims_checkbox.set_visibility(self.state.has_faims)
                 if self.state.has_faims:
                     self._create_faims_cv_minimaps()
+                else:
+                    # Clear old FAIMS minimap UI from previous file
+                    self.faims_checkbox.value = False
+                    if self.faims_container is not None:
+                        self.faims_container.clear()
+                    self.faims_cv_minimaps = {}
+                    self.faims_cv_labels = {}
 
     def _clear_display(self):
         """Clear the peak map display."""
