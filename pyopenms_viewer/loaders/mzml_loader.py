@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Callable, Optional
 
 import numpy as np
-import pandas as pd
 from pyopenms import DriftTimeUnit, MSExperiment, MzMLFile
 import os
 import threading
@@ -396,92 +395,35 @@ class MzMLLoader:
                 progress_callback("Finalizing...", 0.95)
             print(f"[PID:{os.getpid()} TID:{threading.get_ident()}] Finished processing data...")
 
-            # PHASE 1: Check if rasterization is available
-            has_rasterization = hasattr(self.state.exp, "rasterizeRTMZ")
-
-            if has_rasterization:
-                # ===== RASTERIZATION PATH (no DataFrame) =====
-                # Compute bounds from MS1 peaks only (rts/mzs arrays contain only MS1 data)
-                if peak_idx > 0:
-                    self.state.rt_min = float(rts.min())
-                    self.state.rt_max = float(rts.max())
-                    self.state.mz_min = float(mzs.min())
-                    self.state.mz_max = float(mzs.max())
-                else:
-                    self.state.exp.updateRanges()
-                    self.state.rt_min = float(self.state.exp.getMinRT())
-                    self.state.rt_max = float(self.state.exp.getMaxRT())
-                    self.state.mz_min = float(self.state.exp.getMinMZ())
-                    self.state.mz_max = float(self.state.exp.getMaxMZ())
-
-                # Skip DataFrame creation entirely
-                self.state.df = None
-
-                # Build per-CV MSExperiment objects for FAIMS rasterization
-                # Each per-CV experiment contains only MS1 spectra for that CV,
-                # allowing rasterizeRTMZ to work natively per-CV.
-                self.state.faims_data = {}
-                self.state.faims_experiments = {}
-                if self.state.has_faims:
-                    for cv in self.state.faims_cvs:
-                        cv_exp = MSExperiment()
-                        for i, stats in enumerate(spectrum_stats):
-                            if stats["cv"] is not None and abs(stats["cv"] - cv) < 0.01:
-                                cv_exp.addSpectrum(self.state.exp[i])
-                        cv_exp.updateRanges()
-                        self.state.faims_experiments[cv] = cv_exp
+            # Compute bounds from MS1 peaks only (rts/mzs arrays contain only MS1 data)
+            if peak_idx > 0:
+                self.state.rt_min = float(rts.min())
+                self.state.rt_max = float(rts.max())
+                self.state.mz_min = float(mzs.min())
+                self.state.mz_max = float(mzs.max())
             else:
-                # ===== FALLBACK PATH (create DataFrame) =====
-                if progress_callback:
-                    progress_callback("Creating DataFrame...", 0.85)
+                self.state.exp.updateRanges()
+                self.state.rt_min = float(self.state.exp.getMinRT())
+                self.state.rt_max = float(self.state.exp.getMaxRT())
+                self.state.mz_min = float(self.state.exp.getMinMZ())
+                self.state.mz_max = float(self.state.exp.getMaxMZ())
 
-                # Create main DataFrame
-                df = pd.DataFrame({"rt": rts, "mz": mzs, "intensity": intensities})
-                if self.state.has_faims:
-                    df["cv"] = cvs_arr
-                df["log_intensity"] = np.log1p(df["intensity"])
+            # No DataFrame needed — rasterizeRTMZ renders directly
+            self.state.df = None
 
-                if progress_callback:
-                    progress_callback("Registering with data manager...", 0.88)
-
-                # Register DataFrame with data manager
-                if self.state.data_manager is not None:
-                    self.state.df = self.state.data_manager.register_peaks(df, filepath)
-                    bounds = self.state.data_manager.get_bounds()
-                    self.state.rt_min = bounds["rt_min"]
-                    self.state.rt_max = bounds["rt_max"]
-                    self.state.mz_min = bounds["mz_min"]
-                    self.state.mz_max = bounds["mz_max"]
-                else:
-                    self.state.df = df
-
-                # Create per-CV DataFrames for FAIMS view
-                self.state.faims_data = {}
-                self.state.faims_experiments = {}
-                if self.state.has_faims and self.state.df is not None:
-                    for cv in self.state.faims_cvs:
-                        cv_df = self.state.df[self.state.df["cv"] == cv].copy()
-                        self.state.faims_data[cv] = cv_df
-
-                # Set bounds (fallback if data_manager not used)
-                if self.state.data_manager is None and self.state.df is not None and len(self.state.df) > 0:
-                    self.state.rt_min = float(self.state.df["rt"].min())
-                    self.state.rt_max = float(self.state.df["rt"].max())
-                    self.state.mz_min = float(self.state.df["mz"].min())
-                    self.state.mz_max = float(self.state.df["mz"].max())
-                elif self.state.data_manager is None:
-                    if self.state.has_ion_mobility and self.state.im_df is not None and len(self.state.im_df) > 0:
-                        self.state.mz_min = float(self.state.im_df["mz"].min())
-                        self.state.mz_max = float(self.state.im_df["mz"].max())
-                    if self.state.spectrum_data:
-                        rts_meta = [
-                            s["rt"]
-                            for s in self.state.spectrum_data
-                            if isinstance(s["rt"], (int, float)) and s["rt"] > 0
-                        ]
-                        if rts_meta:
-                            self.state.rt_min = min(rts_meta)
-                            self.state.rt_max = max(rts_meta)
+            # Build per-CV MSExperiment objects for FAIMS rasterization
+            # Each per-CV experiment contains only MS1 spectra for that CV,
+            # allowing rasterizeRTMZ to work natively per-CV.
+            self.state.faims_data = {}
+            self.state.faims_experiments = {}
+            if self.state.has_faims:
+                for cv in self.state.faims_cvs:
+                    cv_exp = MSExperiment()
+                    for i, stats in enumerate(spectrum_stats):
+                        if stats["cv"] is not None and abs(stats["cv"] - cv) < 0.01:
+                            cv_exp.addSpectrum(self.state.exp[i])
+                    cv_exp.updateRanges()
+                    self.state.faims_experiments[cv] = cv_exp
 
             # Ensure valid ranges (apply to both paths)
             if self.state.rt_max <= self.state.rt_min:
@@ -555,21 +497,13 @@ class MzMLLoader:
         # Compute IM and m/z bounds from collected arrays
         mz_concat = np.concatenate(im_mz_list)
         im_concat = np.concatenate(im_im_list)
-        int_concat = np.concatenate(im_int_list)
 
         im_mz_min = float(mz_concat.min())
         im_mz_max = float(mz_concat.max())
         im_min_val = float(im_concat.min())
         im_max_val = float(im_concat.max())
 
-        # Check if rasterization is available (single-frame rendering)
-        has_im_rasterization = False
-        if self.state.exp is not None and len(self.state.exp) > 0:
-            test_spec = self.state.exp[0]
-            has_im_rasterization = hasattr(test_spec, "rasterizeIMFrame")
-
-        if has_im_rasterization and im_frame_indices:
-            # ===== RASTERIZATION PATH (no DataFrame) =====
+        if im_frame_indices:
             # Build sorted frame indices and parallel RT arrays
             frame_rts = np.array(
                 [self.state.exp[idx].getRT() for idx in im_frame_indices], dtype=np.float64
@@ -582,43 +516,11 @@ class MzMLLoader:
             self.state.im_min = im_min_val
             self.state.im_max = im_max_val
 
-            # Skip DataFrame creation
+            # No DataFrame needed — rasterizeIMFrame renders directly
             self.state.im_df = None
 
             # Select first frame as default
             self.state.selected_im_frame_idx = self.state.im_frame_indices[0]
-        else:
-            # ===== FALLBACK PATH (create DataFrame) =====
-            im_df = pd.DataFrame(
-                {
-                    "mz": mz_concat,
-                    "im": im_concat,
-                    "intensity": int_concat,
-                }
-            )
-            im_df["log_intensity"] = np.log1p(im_df["intensity"])
-
-            # Also populate frame indices for UI even in fallback mode
-            if im_frame_indices:
-                frame_rts = np.array(
-                    [self.state.exp[idx].getRT() for idx in im_frame_indices], dtype=np.float64
-                )
-                sort_order = np.argsort(frame_rts)
-                self.state.im_frame_indices = [im_frame_indices[i] for i in sort_order]
-                self.state.im_frame_rts = frame_rts[sort_order]
-
-            # Register with data manager
-            if self.state.data_manager is not None and filepath:
-                self.state.im_df = self.state.data_manager.register_im_peaks(im_df, filepath)
-                im_bounds = self.state.data_manager.get_im_bounds()
-                self.state.im_min = im_bounds["im_min"]
-                self.state.im_max = im_bounds["im_max"]
-                im_mz_min = im_bounds["mz_min"]
-                im_mz_max = im_bounds["mz_max"]
-            else:
-                self.state.im_df = im_df
-                self.state.im_min = im_min_val
-                self.state.im_max = im_max_val
 
         # Ensure valid IM range
         if self.state.im_max <= self.state.im_min:

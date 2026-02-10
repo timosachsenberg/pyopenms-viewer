@@ -351,28 +351,19 @@ class PeakMapRenderer:
             # So pass array shaped (render_height, render_width) = (mz_bins, rt_bins) = (550, 1100)
             output_array = np.zeros((render_height, render_width), dtype=np.float32)
 
-        try:
-            if not hasattr(render_exp, "rasterizeRTMZ"):
-                # Method doesn't exist - fall back to point rendering
-                return self._render_points(state, fast, draw_overlays, draw_axes)
+        render_exp.rasterizeRTMZ(
+            output_array,
+            view_rt_min,
+            view_rt_max,
+            view_mz_min,
+            view_mz_max,
+            ms_level=1,
+            aggregation="sum",
+        )
 
-            render_exp.rasterizeRTMZ(
-                output_array,
-                view_rt_min,
-                view_rt_max,
-                view_mz_min,
-                view_mz_max,
-                ms_level=1,
-                aggregation="sum",
-            )
-
-            # Check if rasterization produced any data
-            if output_array.max() == 0.0:
-                # No data in rasterization - fall back to point rendering
-                return self._render_points(state, fast, draw_overlays, draw_axes)
-        except Exception:
-            # Rasterization failed - fall back to point rendering
-            return self._render_points(state, fast, draw_overlays, draw_axes)
+        # Check if rasterization produced any data
+        if output_array.max() == 0.0:
+            return ""
 
         # Convert to log intensity for better visualization
         # Add small epsilon to avoid log(0)
@@ -607,64 +598,13 @@ class PeakMapRenderer:
         faims_width = self.plot_width // 2
         faims_height = self.plot_height // 2
 
-        # Try rasterization from per-CV experiment first
         cv_exp = state.faims_experiments.get(cv)
-        if cv_exp is not None and hasattr(cv_exp, "rasterizeRTMZ"):
-            try:
-                return self._render_faims_rasterized(
-                    state, cv_exp, view_rt_min, view_rt_max, view_mz_min, view_mz_max, faims_width, faims_height
-                )
-            except Exception:
-                pass  # Fall through to DataFrame path
-
-        # Fallback: DataFrame path
-        if cv not in state.faims_data or len(state.faims_data[cv]) == 0:
+        if cv_exp is None:
             return ""
 
-        cv_df = state.faims_data[cv]
-
-        mask = (
-            (cv_df["rt"] >= view_rt_min)
-            & (cv_df["rt"] <= view_rt_max)
-            & (cv_df["mz"] >= view_mz_min)
-            & (cv_df["mz"] <= view_mz_max)
+        return self._render_faims_rasterized(
+            state, cv_exp, view_rt_min, view_rt_max, view_mz_min, view_mz_max, faims_width, faims_height
         )
-        view_df = cv_df[mask]
-
-        if len(view_df) == 0:
-            return ""
-
-        # Convert to accelerated DataFrame if available
-        view_df = to_accelerated_dataframe(view_df)
-
-        if state.swap_axes:
-            ds_canvas = ds.Canvas(
-                plot_width=faims_width,
-                plot_height=faims_height,
-                x_range=(view_mz_min, view_mz_max),
-                y_range=(view_rt_min, view_rt_max),
-            )
-            agg = ds_canvas.points(view_df, "mz", "rt", ds.max("log_intensity"))
-        else:
-            ds_canvas = ds.Canvas(
-                plot_width=faims_width,
-                plot_height=faims_height,
-                x_range=(view_rt_min, view_rt_max),
-                y_range=(view_mz_min, view_mz_max),
-            )
-            agg = ds_canvas.points(view_df, "rt", "mz", ds.max("log_intensity"))
-
-        img = tf.shade(agg, cmap=COLORMAPS[state.colormap], how="linear")
-        img = tf.dynspread(img, threshold=0.5, max_px=2)
-        img = tf.set_background(img, get_colormap_background(state.colormap))
-
-        plot_img = img.to_pil()
-
-        buffer = io.BytesIO()
-        plot_img.save(buffer, format="PNG")
-        buffer.seek(0)
-
-        return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
     def _render_faims_rasterized(
         self,
@@ -765,10 +705,7 @@ class IMPeakMapRenderer:
         self.canvas_height = plot_height + margin_top + margin_bottom
 
     def render(self, state: ViewerState) -> str:
-        """Render ion mobility peak map.
-
-        Branches between rasterized single-frame rendering (when rasterizeIMFrame is
-        available and a frame is selected) and point-based rendering (DataFrame fallback).
+        """Render ion mobility peak map using rasterizeIMFrame.
 
         Args:
             state: ViewerState with IM data
@@ -776,23 +713,9 @@ class IMPeakMapRenderer:
         Returns:
             Base64-encoded PNG string
         """
-        # Check if rasterized single-frame rendering is available
-        if self._can_use_im_rasterization(state):
-            result = self._render_im_rasterized(state)
-            if result:
-                return result
-            # Fall through to point rendering if rasterization returned empty
-
-        return self._render_im_points(state)
-
-    def _can_use_im_rasterization(self, state: ViewerState) -> bool:
-        """Check if IM rasterization is available for single-frame rendering."""
-        if state.selected_im_frame_idx is None:
-            return False
-        spec = state.get_im_frame_spectrum()
-        if spec is None:
-            return False
-        return hasattr(spec, "rasterizeIMFrame")
+        if state.selected_im_frame_idx is None or state.get_im_frame_spectrum() is None:
+            return ""
+        return self._render_im_rasterized(state)
 
     def _render_im_rasterized(self, state: ViewerState) -> str:
         """Render IM peak map using rasterizeIMFrame for single-frame rendering.
@@ -878,87 +801,6 @@ class IMPeakMapRenderer:
             canvas = self._draw_mobilogram_from_raster(
                 canvas, state, output_array.T, view_mz_min, view_mz_max, view_im_min, view_im_max
             )
-
-        buffer = io.BytesIO()
-        canvas.save(buffer, format="PNG")
-        buffer.seek(0)
-
-        return base64.b64encode(buffer.getvalue()).decode("utf-8")
-
-    def _render_im_points(self, state: ViewerState) -> str:
-        """Render IM peak map using point-based DataFrame rendering (original path).
-
-        Args:
-            state: ViewerState with IM data
-
-        Returns:
-            Base64-encoded PNG string
-        """
-        bounds = state.get_view_bounds()
-        view_mz_min, view_mz_max = bounds.mz_min, bounds.mz_max
-        view_im_min, view_im_max = bounds.im_min, bounds.im_max
-
-        # Get IM peaks in view - two paths for performance:
-        if state.im_df is not None:
-            mask = (
-                (state.im_df["mz"] >= view_mz_min)
-                & (state.im_df["mz"] <= view_mz_max)
-                & (state.im_df["im"] >= view_im_min)
-                & (state.im_df["im"] <= view_im_max)
-            )
-            view_df = state.im_df[mask]
-        else:
-            view_df = state.get_im_peaks_in_view()
-
-        if view_df is None or len(view_df) == 0:
-            return ""
-
-        # Convert to accelerated DataFrame if available
-        view_df = to_accelerated_dataframe(view_df)
-
-        # m/z on x-axis, IM on y-axis
-        ds_canvas = ds.Canvas(
-            plot_width=self.plot_width,
-            plot_height=self.plot_height,
-            x_range=(view_mz_min, view_mz_max),
-            y_range=(view_im_min, view_im_max),
-        )
-        agg = ds_canvas.points(view_df, "mz", "im", ds.max("log_intensity"))
-
-        # Adaptive spread: use larger circles when fewer points visible
-        n_pixels = int(agg.values[np.isfinite(agg.values)].astype(bool).sum())
-        total_pixels = self.plot_width * self.plot_height
-        fill_ratio = n_pixels / total_pixels if total_pixels > 0 else 1.0
-        if fill_ratio < 0.01:
-            spread_px = 8
-        elif fill_ratio < 0.05:
-            spread_px = 6
-        elif fill_ratio < 0.15:
-            spread_px = 4
-        else:
-            spread_px = 3
-
-        img = tf.shade(agg, cmap=COLORMAPS[state.im_colormap], how="linear")
-        img = tf.dynspread(img, threshold=0.3, max_px=spread_px)
-        img = tf.set_background(img, get_colormap_background(state.im_colormap))
-
-        plot_img = img.to_pil()
-
-        # Calculate canvas width - add space for mobilogram if enabled
-        mobilogram_space = state.mobilogram_plot_width + 20 if state.show_mobilogram else 0
-        total_canvas_width = self.canvas_width + mobilogram_space
-
-        # Compose final canvas
-        canvas = Image.new("RGBA", (total_canvas_width, self.canvas_height), (0, 0, 0, 0))
-        plot_img_rgba = plot_img.convert("RGBA")
-        canvas.paste(plot_img_rgba, (self.margin_left, self.margin_top))
-
-        # Draw axes
-        canvas = self._draw_axes(canvas, state, view_mz_min, view_mz_max, view_im_min, view_im_max)
-
-        # Draw mobilogram on the right side if enabled
-        if state.show_mobilogram:
-            canvas = self._draw_mobilogram(canvas, state, view_mz_min, view_mz_max, view_im_min, view_im_max)
 
         buffer = io.BytesIO()
         canvas.save(buffer, format="PNG")

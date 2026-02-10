@@ -1,7 +1,7 @@
 """Tests for the pyopenms_viewer loaders."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -51,14 +51,7 @@ class TestMzMLLoader:
         assert result is True
         assert state.exp is not None
 
-        # With rasterization available, df is None (new behavior)
-        # Without rasterization, df is created (fallback)
-        has_rasterization = hasattr(state.exp, "rasterizeRTMZ")
-        if has_rasterization:
-            assert state.df is None  # DataFrame not created
-        else:
-            assert state.df is not None  # DataFrame created as fallback
-            assert len(state.df) > 0
+        assert state.df is None  # DataFrame not created; rasterizeRTMZ renders directly
 
     def test_load_mzml_has_bounds(self):
         """Test that loaded data has proper RT and m/z bounds."""
@@ -273,32 +266,17 @@ class TestPhase1Rasterization:
         assert mz_min_from_exp > 0
         assert mz_max_from_exp > mz_min_from_exp
 
-    def test_loader_creates_dataframe_without_rasterization(self):
-        """Verify state.df is created when rasterization unavailable.
-
-        When rasterization is not available, DataFrame creation is the
-        fallback path that should still work (current behavior).
-        """
-
+    def test_loader_skips_dataframe_with_rasterization(self):
+        """Verify state.df is None when rasterization is used."""
         assert BSA_MZML.exists(), f"Test file not found: {BSA_MZML}"
         state = ViewerState()
         loader = MzMLLoader(state)
 
-        # Mock hasattr to return False for rasterizeRTMZ check
-        original_hasattr = hasattr
-
-        def mock_hasattr(obj, name):
-            if name == "rasterizeRTMZ":
-                return False
-            return original_hasattr(obj, name)
-
-        with patch("builtins.hasattr", side_effect=mock_hasattr):
-            result = loader.load_sync(str(BSA_MZML))
+        result = loader.load_sync(str(BSA_MZML))
 
         assert result is True
-        # Verify the fallback path created DataFrame
-        assert state.df is not None
-        assert len(state.df) > 0
+        # Rasterization path skips DataFrame creation
+        assert state.df is None
         # Verify bounds are set
         assert state.rt_min >= 0
         assert state.rt_max > state.rt_min

@@ -8,7 +8,6 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
-import pandas as pd
 
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.loaders.mzml_loader import MzMLLoader
@@ -212,34 +211,8 @@ class TestIMLoaderFrameIndices:
 class TestProcessIonMobilityDataBranching:
     """Tests for the _process_ion_mobility_data branching logic."""
 
-    def test_fallback_path_creates_dataframe(self):
-        """Test fallback path when rasterizeIMFrame is not available."""
-        state = ViewerState()
-        # Create a mock experiment without rasterizeIMFrame
-        mock_exp = MagicMock()
-        mock_exp.__len__ = MagicMock(return_value=3)
-        # Use a mock that doesn't have rasterizeIMFrame by deleting it
-        mock_spec = MagicMock()
-        del mock_spec.rasterizeIMFrame
-        mock_spec.getRT.return_value = 100.0
-        mock_exp.__getitem__ = MagicMock(return_value=mock_spec)
-        state.exp = mock_exp
-
-        loader = MzMLLoader(state)
-
-        im_mz = [np.array([100.0, 200.0, 300.0], dtype=np.float32)]
-        im_im = [np.array([0.5, 0.8, 1.1], dtype=np.float32)]
-        im_int = [np.array([1000.0, 2000.0, 3000.0], dtype=np.float32)]
-        frame_indices = [0]
-
-        loader._process_ion_mobility_data(im_mz, im_im, im_int, "ion mobility", "", frame_indices)
-
-        assert state.has_ion_mobility is True
-        assert state.im_df is not None
-        assert len(state.im_df) == 3
-
     def test_rasterization_path_skips_dataframe(self):
-        """Test rasterization path when rasterizeIMFrame is available."""
+        """Test rasterization path skips DataFrame creation."""
         state = ViewerState()
         # Create a mock experiment with rasterizeIMFrame
         mock_spec = MagicMock()
@@ -300,39 +273,13 @@ class TestProcessIonMobilityDataBranching:
 
 
 class TestIMPeakMapRendererBranching:
-    """Tests for IMPeakMapRenderer render method branching."""
+    """Tests for IMPeakMapRenderer render method."""
 
-    def test_can_use_im_rasterization_no_frame(self):
-        """Test _can_use_im_rasterization returns False when no frame selected."""
+    def test_render_no_frame_returns_empty(self):
+        """Test render returns empty string when no frame selected."""
         renderer = IMPeakMapRenderer()
         state = ViewerState()
-        assert renderer._can_use_im_rasterization(state) is False
-
-    def test_can_use_im_rasterization_no_method(self):
-        """Test _can_use_im_rasterization returns False when method not available."""
-        renderer = IMPeakMapRenderer()
-        state = ViewerState()
-        state.selected_im_frame_idx = 0
-        mock_exp = MagicMock()
-        mock_exp.__len__ = MagicMock(return_value=1)
-        mock_spec = MagicMock()
-        del mock_spec.rasterizeIMFrame  # Remove the method
-        mock_exp.__getitem__ = MagicMock(return_value=mock_spec)
-        state.exp = mock_exp
-        assert renderer._can_use_im_rasterization(state) is False
-
-    def test_can_use_im_rasterization_with_method(self):
-        """Test _can_use_im_rasterization returns True when method available."""
-        renderer = IMPeakMapRenderer()
-        state = ViewerState()
-        state.selected_im_frame_idx = 0
-        mock_exp = MagicMock()
-        mock_exp.__len__ = MagicMock(return_value=1)
-        mock_spec = MagicMock()
-        mock_spec.rasterizeIMFrame = MagicMock()
-        mock_exp.__getitem__ = MagicMock(return_value=mock_spec)
-        state.exp = mock_exp
-        assert renderer._can_use_im_rasterization(state) is True
+        assert renderer.render(state) == ""
 
     def test_render_im_rasterized_returns_image(self):
         """Test that _render_im_rasterized produces a base64 image."""
@@ -424,36 +371,6 @@ class TestIMPeakMapRendererBranching:
 
         result = renderer._render_im_rasterized(state)
         assert result == ""
-
-    def test_render_falls_back_to_points_when_no_rasterization(self):
-        """Test that render() falls back to _render_im_points when rasterization unavailable."""
-        renderer = IMPeakMapRenderer(plot_width=100, plot_height=50)
-        state = ViewerState()
-        state.has_ion_mobility = True
-        state.im_min = 0.5
-        state.im_max = 1.5
-        state.mz_min = 100.0
-        state.mz_max = 2000.0
-        state.view_im_min = 0.5
-        state.view_im_max = 1.5
-        state.view_mz_min = 100.0
-        state.view_mz_max = 2000.0
-        state.show_mobilogram = False
-
-        # No frame selected, no rasterization
-        state.im_df = pd.DataFrame(
-            {
-                "mz": [500.0, 600.0, 700.0],
-                "im": [0.7, 0.9, 1.1],
-                "intensity": [1000.0, 2000.0, 3000.0],
-                "log_intensity": np.log1p([1000.0, 2000.0, 3000.0]),
-            }
-        )
-
-        result = renderer.render(state)
-        # Should produce an image via point rendering
-        assert result != ""
-
 
 class TestMobilogramFromRaster:
     """Tests for _draw_mobilogram_from_raster method."""
