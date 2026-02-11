@@ -106,12 +106,12 @@ def _build_registry() -> list[AlgorithmDescriptor]:
         from pyopenms import PeakPickerIM
 
         def _get_ppim_params():
-            try:
-                return PeakPickerIM().getParameters()
-            except Exception:
-                from pyopenms import Param
+            from pyopenms import Param
 
-                return Param()
+            p = Param()
+            p.setValue("method", "Cluster", "Peak picking method to use")
+            p.setValidStrings("method", [b"Cluster", b"ElutionProfiles", b"Traces"])
+            return p
 
         registry.append(
             AlgorithmDescriptor(
@@ -183,12 +183,16 @@ def _run_peakpicker_hires(state: ViewerState, params: Any) -> Any:
 def _run_peakpicker_im(state: ViewerState, params: Any) -> Any:
     from pyopenms import MSExperiment, PeakPickerIM
 
+    method = str(params.getValue("method")) if params.size() > 0 else "Cluster"
     pp = PeakPickerIM()
+    pick_fn = {"Cluster": pp.pickIMCluster, "ElutionProfiles": pp.pickIMElutionProfiles, "Traces": pp.pickIMTraces}[
+        method
+    ]
     output = MSExperiment()
     for i in range(state.exp.getNrSpectra()):
         spec = state.exp.getSpectrum(i)
         try:
-            pp.pickIMCluster(spec)
+            pick_fn(spec)
         except Exception:
             pass
         output.addSpectrum(spec)
