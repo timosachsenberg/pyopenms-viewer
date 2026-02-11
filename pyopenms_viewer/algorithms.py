@@ -343,6 +343,9 @@ async def _execute_algorithm(
         return
 
     ui.notify(f"Running {algo.name}...", type="info")
+    if feature_info_label and algo.category == "Feature Finder":
+        feature_info_label.set_text(f"Running {algo.name}...")
+    await asyncio.sleep(0)  # Let UI update before heavy computation
 
     try:
         result = await run.io_bound(algo.run_fn, state, params)
@@ -441,15 +444,28 @@ async def show_algorithm_dialog(state: ViewerState, feature_info_label=None) -> 
 
             def on_run():
                 _apply_params_from_widgets(current_params[0], param_widgets[0])
-                algo = current_algo[0]
-                params = current_params[0]
-                dialog.close()
-                # Fire-and-forget: decouple from dialog lifecycle so dialog.close()
-                # does not cancel the long-running algorithm execution.
-                asyncio.create_task(_execute_algorithm(state, algo, params, feature_info_label))
+                dialog.submit({"algo": current_algo[0], "params": current_params[0]})
 
             ui.button("Reset Defaults", on_click=reset_defaults).props("flat")
-            ui.button("Cancel", on_click=dialog.close).props("flat")
+            ui.button("Cancel", on_click=lambda: dialog.submit(None)).props("flat")
             ui.button("Run", on_click=on_run).props("color=primary")
 
-    dialog.open()
+    # await dialog result — dialog is fully closed before we continue
+    result = await dialog
+    if result is None:
+        return
+
+    # Fire-and-forget: capture client context so the independent task can
+    # update the UI, but return immediately so the click handler completes
+    # and doesn't block the WebSocket connection.
+    from nicegui import context
+
+    client = context.client
+    algo = result["algo"]
+    params = result["params"]
+
+    async def _run_with_context():
+        with client:
+            await _execute_algorithm(state, algo, params, feature_info_label)
+
+    asyncio.create_task(_run_with_context())
