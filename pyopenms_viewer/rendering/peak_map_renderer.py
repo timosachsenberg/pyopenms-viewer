@@ -96,6 +96,48 @@ class PeakMapRenderer:
         else:
             return self._render_rasterized(state, fast, draw_overlays, draw_axes)
 
+    def _extract_peaks_manual(self, exp, view_rt_min, view_rt_max, view_mz_min, view_mz_max, ms_level=1):
+        """Extract peaks by iterating spectra in Python — fallback when C++ functions fail."""
+        rt_list, mz_list, int_list = [], [], []
+        for i in range(exp.getNrSpectra()):
+            spec = exp.getSpectrum(i)
+            if spec.getMSLevel() != ms_level:
+                continue
+            rt = spec.getRT()
+            if rt < view_rt_min or rt > view_rt_max:
+                continue
+            mzs, intensities = spec.get_peaks()
+            if len(mzs) == 0:
+                continue
+            mask = (mzs >= view_mz_min) & (mzs <= view_mz_max)
+            if mask.any():
+                rt_list.append(np.full(mask.sum(), rt))
+                mz_list.append(mzs[mask])
+                int_list.append(intensities[mask])
+        if not rt_list:
+            return None
+        rt_arr = np.concatenate(rt_list)
+        mz_arr = np.concatenate(mz_list)
+        int_arr = np.concatenate(int_list)
+        return pd.DataFrame({
+            "rt": rt_arr,
+            "mz": mz_arr,
+            "intensity": int_arr,
+            "log_intensity": np.log1p(int_arr),
+        })
+
+    def _render_empty_view(self, state, view_rt_min, view_rt_max, view_mz_min, view_mz_max) -> str:
+        """Render empty canvas with axes when no peaks are in the current view."""
+        bg = get_colormap_background(state.colormap)
+        plot_img = Image.new("RGBA", (self.plot_width, self.plot_height), bg)
+        canvas = Image.new("RGBA", (self.canvas_width, self.canvas_height), (0, 0, 0, 0))
+        canvas.paste(plot_img, (self.margin_left, self.margin_top))
+        canvas = self._draw_axes(canvas, state, view_rt_min, view_rt_max, view_mz_min, view_mz_max)
+        buffer = io.BytesIO()
+        canvas.save(buffer, format="PNG")
+        buffer.seek(0)
+        return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
     def _render_points(
         self,
         state: ViewerState,
@@ -162,12 +204,27 @@ class PeakMapRenderer:
             except Exception:
                 # Fallback: use traditional DataFrame filtering if get2DPeakDataLong fails
                 view_df = self._get_fallback_view_df(state, view_rt_min, view_rt_max, view_mz_min, view_mz_max)
+
+            # Manual Python fallback when C++ extraction returns empty
+            if (view_df is None or len(view_df) == 0) and extract_exp is not None:
+                view_df = self._extract_peaks_manual(
+                    extract_exp, view_rt_min, view_rt_max, view_mz_min, view_mz_max
+                )
+                if view_df is not None:
+                    state.temp_peak_df = view_df.copy()
         else:
             # Fallback when exp is None - use traditional approach
             view_df = self._get_fallback_view_df(state, view_rt_min, view_rt_max, view_mz_min, view_mz_max)
 
         if view_df is None or len(view_df) == 0:
-            return ""
+            import sys
+
+            print(
+                f"[WARN] Point rendering found no peaks for bounds RT=[{view_rt_min:.2f}, {view_rt_max:.2f}], "
+                f"m/z=[{view_mz_min:.2f}, {view_mz_max:.2f}]",
+                file=sys.stderr,
+            )
+            return self._render_empty_view(state, view_rt_min, view_rt_max, view_mz_min, view_mz_max)
 
         # Render with Datashader
         resolution_factor = 4 if fast else 1
@@ -363,7 +420,14 @@ class PeakMapRenderer:
 
         # Check if rasterization produced any data
         if output_array.max() == 0.0:
-            return ""
+            import sys
+
+            print(
+                f"[WARN] rasterizeRTMZ returned empty for bounds RT=[{view_rt_min:.2f}, {view_rt_max:.2f}], "
+                f"m/z=[{view_mz_min:.2f}, {view_mz_max:.2f}] — falling back to point rendering",
+                file=sys.stderr,
+            )
+            return self._render_points(state, fast, draw_overlays, draw_axes)
 
         # Convert to log intensity for better visualization
         # Add small epsilon to avoid log(0)

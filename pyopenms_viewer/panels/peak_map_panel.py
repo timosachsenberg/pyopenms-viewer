@@ -472,7 +472,13 @@ class PeakMapPanel(BasePanel):
             return
 
         # Render peak map
-        base64_img = self.peak_map_renderer.render(self.state, fast=False)
+        try:
+            base64_img = self.peak_map_renderer.render(self.state, fast=False)
+        except Exception as e:
+            import sys
+
+            print(f"[ERROR] Peak map render failed: {e}", file=sys.stderr)
+            base64_img = ""
         if base64_img:
             self.image_element.set_source(f"data:image/png;base64,{base64_img}")
 
@@ -1179,12 +1185,11 @@ class PeakMapPanel(BasePanel):
             self.state.view_mz_min = new_mz_min
             self.state.view_mz_max = new_mz_max
 
-            # Emit view changed event for 3D sync
+            # Emit view changed event (triggers _on_view_changed -> update)
             self.state.emit_view_changed()
 
             # Save new state to zoom history
             self.state.push_zoom_history()
-            self.update()
 
     def _on_wheel(self, e):
         """Handle mouse wheel zoom."""

@@ -181,21 +181,17 @@ def _run_peakpicker_hires(state: ViewerState, params: Any) -> Any:
 
 
 def _run_peakpicker_im(state: ViewerState, params: Any) -> Any:
-    from pyopenms import MSExperiment, MSSpectrum, PeakPickerIM
+    from pyopenms import MSExperiment, PeakPickerIM
 
     pp = PeakPickerIM()
-    try:
-        pp.setParameters(params)
-    except Exception:
-        pass
     output = MSExperiment()
-    for i in range(len(state.exp)):
-        picked = MSSpectrum()
+    for i in range(state.exp.getNrSpectra()):
+        spec = state.exp.getSpectrum(i)
         try:
-            pp.pick(state.exp[i], picked)
+            pp.pickIMCluster(spec)
         except Exception:
-            picked = state.exp[i]
-        output.addSpectrum(picked)
+            pass
+        output.addSpectrum(spec)
     return output
 
 
@@ -323,7 +319,23 @@ def _apply_params_from_widgets(param, widgets: dict) -> None:
                 param.setValue(key, str(new_val))
             elif isinstance(original, (list, tuple)):
                 parts = [p.strip() for p in str(new_val).split(",") if p.strip()]
-                param.setValue(key, parts)
+                # Use pyOpenMS list types to preserve the correct type
+                type_name = type(original).__name__
+                try:
+                    if "Int" in type_name:
+                        from pyopenms import IntList
+
+                        param.setValue(key, IntList([int(p) for p in parts]))
+                    elif "Double" in type_name or "Float" in type_name:
+                        from pyopenms import DoubleList
+
+                        param.setValue(key, DoubleList([float(p) for p in parts]))
+                    else:
+                        from pyopenms import StringList
+
+                        param.setValue(key, StringList(parts))
+                except (ValueError, TypeError):
+                    param.setValue(key, parts)
         except Exception:
             pass
 
