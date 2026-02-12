@@ -4,6 +4,7 @@ This panel allows users to filter and export subsets of loaded mzML data
 by RT range, m/z range, and MS level to a new mzML file.
 """
 
+import tempfile
 from pathlib import Path
 
 from nicegui import run, ui
@@ -135,10 +136,13 @@ class ExportPanel(BasePanel):
                         .classes("flex-grow")
                     )
 
-                # Preview + Export
+                # Preview + buttons
                 with ui.row().classes("w-full items-center gap-2 mt-1"):
                     self._preview_label = ui.label("").classes("text-xs text-gray-400 flex-grow")
-                    self._export_btn = ui.button("Export", icon="file_download", on_click=self._do_export).props(
+                    self._apply_btn = ui.button(
+                        "Apply filter", icon="filter_alt", on_click=self._do_apply
+                    ).props("flat").tooltip("Replace current data with filtered subset")
+                    self._export_btn = ui.button("Download", icon="file_download", on_click=self._do_export).props(
                         "color=primary"
                     )
 
@@ -226,40 +230,88 @@ class ExportPanel(BasePanel):
         )
         self._preview_label.set_text(f"~{count} spectra match filters")
 
-    async def _do_export(self) -> None:
+    def _get_filter_params(self):
+        """Validate and return filter parameters, or None if invalid."""
         if self.state.exp is None:
             ui.notify("No data loaded", type="warning")
-            return
+            return None
 
-        output_path = (self._output_input.value or "").strip()
-        if not output_path:
-            ui.notify("Please specify an output file path", type="warning")
-            return
-
-        rt_min = self._rt_min_input.value or 0
-        rt_max = self._rt_max_input.value or 0
-        mz_min = self._mz_min_input.value or 0
-        mz_max = self._mz_max_input.value or 0
         selected_levels = self._get_selected_levels()
-
         if not selected_levels:
             ui.notify("Please select at least one MS level", type="warning")
+            return None
+
+        return {
+            "rt_min": self._rt_min_input.value or 0,
+            "rt_max": self._rt_max_input.value or 0,
+            "mz_min": self._mz_min_input.value or 0,
+            "mz_max": self._mz_max_input.value or 0,
+            "selected_levels": selected_levels,
+        }
+
+    async def _do_export(self) -> None:
+        params = self._get_filter_params()
+        if params is None:
             return
+
+        output_name = (self._output_input.value or "").strip()
+        if not output_name:
+            ui.notify("Please specify an output file name", type="warning")
+            return
+
+        # Write to a temp file so the download works even in web/remote mode
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".mzML")
+        import os
+
+        os.close(tmp_fd)
 
         self._export_btn.props("loading")
         try:
             count = await run.io_bound(
-                _export_filtered_mzml,
-                self.state.exp,
-                output_path,
-                rt_min,
-                rt_max,
-                mz_min,
-                mz_max,
-                selected_levels,
+                _export_filtered_mzml, self.state.exp, tmp_path, **params
             )
-            ui.notify(f"Exported {count} spectra to {output_path}", type="positive")
+            ui.notify(f"Exported {count} spectra", type="positive")
+            ui.download(tmp_path, filename=output_name)
         except Exception as e:
             ui.notify(f"Export failed: {e}", type="negative")
         finally:
             self._export_btn.props(remove="loading")
+
+    async def _do_apply(self) -> None:
+        """Export filtered data to a temp file, then reload it as the current file."""
+        params = self._get_filter_params()
+        if params is None:
+            return
+
+        if not hasattr(self.state, "_load_mzml"):
+            ui.notify("Loader not available", type="warning")
+            return
+
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".mzML")
+        import os
+
+        os.close(tmp_fd)
+
+        self._apply_btn.props("loading")
+        try:
+            count = await run.io_bound(
+                _export_filtered_mzml, self.state.exp, tmp_path, **params
+            )
+            if count == 0:
+                ui.notify("No spectra match filters", type="warning")
+                return
+
+            # Derive a display name from current file
+            name = "filtered.mzML"
+            if self.state.current_file:
+                stem = Path(self.state.current_file).stem
+                name = f"{stem}_filtered.mzML"
+
+            # Clear current file path so load_mzml doesn't skip as "already loaded"
+            self.state.current_file = None
+            await self.state._load_mzml(tmp_path, name)
+            ui.notify(f"Applied filter: {count} spectra loaded", type="positive")
+        except Exception as e:
+            ui.notify(f"Apply filter failed: {e}", type="negative")
+        finally:
+            self._apply_btn.props(remove="loading")
