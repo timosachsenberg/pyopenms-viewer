@@ -17,6 +17,7 @@ Available panels:
 
 from pyopenms_viewer.panels.base_panel import BasePanel, PanelManager
 from pyopenms_viewer.panels.chromatogram_panel import ChromatogramPanel
+from pyopenms_viewer.panels.export_panel import ExportPanel
 from pyopenms_viewer.panels.faims_panel import FAIMSPanel
 from pyopenms_viewer.panels.features_table_panel import FeaturesTablePanel
 from pyopenms_viewer.panels.im_peak_map_panel import IMPeakMapPanel
@@ -35,5 +36,6 @@ __all__ = [
     "IMPeakMapPanel",
     "SpectraTablePanel",
     "FeaturesTablePanel",
+    "ExportPanel",
     "FAIMSPanel",
 ]

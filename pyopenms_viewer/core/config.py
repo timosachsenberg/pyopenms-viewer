@@ -145,6 +145,7 @@ PANEL_DEFINITIONS = {
     "spectra_table": {"name": "Spectra", "icon": "list"},
     "features_table": {"name": "Features", "icon": "scatter_plot"},
     "custom_range": {"name": "Custom Range", "icon": "tune"},
+    "export": {"name": "Data Export", "icon": "file_download"},
     "legend": {"name": "Help", "icon": "help"},
 }
 
@@ -158,6 +159,7 @@ DEFAULT_PANEL_ORDER = [
     "spectra_table",
     "features_table",
     "custom_range",
+    "export",
     "legend",
 ]
 
@@ -172,5 +174,6 @@ DEFAULT_PANEL_VISIBILITY = {
     "spectra_table": True,
     "features_table": "auto",
     "custom_range": True,
+    "export": "auto",
     "legend": True,
 }

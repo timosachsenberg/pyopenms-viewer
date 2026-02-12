@@ -684,6 +684,8 @@ class ViewerState:
                 return self.has_chromatograms
             elif panel_id == "features_table":
                 return len(self.feature_data) > 0
+            elif panel_id == "export":
+                return self.exp is not None
             else:
                 return True
         return True

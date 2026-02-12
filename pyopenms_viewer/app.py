@@ -21,6 +21,7 @@ _LOAD_EVENTS_LOCK = asyncio.Lock()
 from pyopenms_viewer.loaders import FeatureLoader, IDLoader, MzMLLoader
 from pyopenms_viewer.panels import (
     ChromatogramPanel,
+    ExportPanel,
     FAIMSPanel,
     FeaturesTablePanel,
     IMPeakMapPanel,
@@ -743,6 +744,7 @@ async def create_ui():
             SpectrumPanel(state),
             SpectraTablePanel(state),
             FeaturesTablePanel(state),
+            ExportPanel(state),
         ]
 
         for panel in panels:
