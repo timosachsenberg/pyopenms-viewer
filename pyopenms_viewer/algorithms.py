@@ -175,7 +175,7 @@ def _run_ff_multiplex(state: ViewerState, params: Any) -> Any:
 
 
 def _run_mass_trace_detection(state: ViewerState, params: Any) -> Any:
-    from pyopenms import ConvexHull2D, Feature, FeatureMap, MassTraceDetection
+    from pyopenms import Feature, FeatureMap, MassTraceDetection
 
     mtd = MassTraceDetection()
     mtd.setParameters(params)
@@ -188,13 +188,7 @@ def _run_mass_trace_detection(state: ViewerState, params: Any) -> Any:
         f.setRT(trace.getCentroidRT())
         f.setMZ(trace.getCentroidMZ())
         f.setIntensity(trace.computePeakArea())
-        # Build convex hull spanning the trace's RT range at its centroid m/z
-        if trace.getSize() > 0:
-            rt_vals = [trace.getRT(i) for i in range(trace.getSize())]
-            mz = trace.getCentroidMZ()
-            hull = ConvexHull2D()
-            hull.addPoints([[min(rt_vals), mz], [max(rt_vals), mz]])
-            f.getConvexHulls().append(hull)
+        f.getConvexHulls().append(trace.getConvexhull())
         fm.push_back(f)
     return fm
 
