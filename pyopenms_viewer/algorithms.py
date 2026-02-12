@@ -73,14 +73,37 @@ def _build_registry() -> list[AlgorithmDescriptor]:
         pass
 
     try:
-        from pyopenms import FeatureFinderMetabo
+        from pyopenms import ElutionPeakDetection, FeatureFindingMetabo, MassTraceDetection, Param
+
+        registry.append(
+            AlgorithmDescriptor(
+                name="Mass Trace Detection",
+                category="Feature Finder",
+                description="Detect mass traces in LC-MS data (first step of metabolomics feature finding)",
+                get_params_fn=lambda: MassTraceDetection().getParameters(),
+                run_fn=_run_mass_trace_detection,
+            )
+        )
+
+        def _get_ff_metabo_params():
+            combined = Param()
+            mtd_params = MassTraceDetection().getParameters()
+            epd_params = ElutionPeakDetection().getParameters()
+            ffm_params = FeatureFindingMetabo().getParameters()
+            combined.insert("mtd:", mtd_params)
+            combined.insert("epd:", epd_params)
+            combined.insert("ffm:", ffm_params)
+            combined.setSectionDescription("mtd", "Mass Trace Detection")
+            combined.setSectionDescription("epd", "Elution Peak Detection")
+            combined.setSectionDescription("ffm", "Feature Finding Metabo")
+            return combined
 
         registry.append(
             AlgorithmDescriptor(
                 name="FeatureFinder Metabo",
                 category="Feature Finder",
                 description="Metabolomics feature detection (mass traces + elution peaks + feature finding)",
-                get_params_fn=lambda: FeatureFinderMetabo().getParameters(),
+                get_params_fn=_get_ff_metabo_params,
                 run_fn=_run_ff_metabo,
             )
         )
@@ -151,19 +174,50 @@ def _run_ff_multiplex(state: ViewerState, params: Any) -> Any:
     return algo.getFeatureMap()
 
 
-def _run_ff_metabo(state: ViewerState, params: Any) -> Any:
-    from pyopenms import ElutionPeakDetection, FeatureFinderMetabo, FeatureMap, MassTraceDetection
+def _run_mass_trace_detection(state: ViewerState, params: Any) -> Any:
+    from pyopenms import ConvexHull2D, Feature, FeatureMap, MassTraceDetection
 
     mtd = MassTraceDetection()
+    mtd.setParameters(params)
+    mass_traces = []
+    mtd.run(state.exp, mass_traces, 0)
+
+    fm = FeatureMap()
+    for trace in mass_traces:
+        f = Feature()
+        f.setRT(trace.getCentroidRT())
+        f.setMZ(trace.getCentroidMZ())
+        f.setIntensity(trace.computePeakArea())
+        # Build convex hull spanning the trace's RT range at its centroid m/z
+        if trace.getSize() > 0:
+            rt_vals = [trace.getRT(i) for i in range(trace.getSize())]
+            mz = trace.getCentroidMZ()
+            hull = ConvexHull2D()
+            hull.addPoints([[min(rt_vals), mz], [max(rt_vals), mz]])
+            f.getConvexHulls().append(hull)
+        fm.push_back(f)
+    return fm
+
+
+def _run_ff_metabo(state: ViewerState, params: Any) -> Any:
+    from pyopenms import ElutionPeakDetection, FeatureFindingMetabo, FeatureMap, MassTraceDetection
+
+    mtd_params = params.copy("mtd:", True)
+    epd_params = params.copy("epd:", True)
+    ffm_params = params.copy("ffm:", True)
+
+    mtd = MassTraceDetection()
+    mtd.setParameters(mtd_params)
     mass_traces = []
     mtd.run(state.exp, mass_traces, 0)
 
     epd = ElutionPeakDetection()
+    epd.setParameters(epd_params)
     mass_traces_split = []
     epd.detectPeaks(mass_traces, mass_traces_split)
 
-    ffm = FeatureFinderMetabo()
-    ffm.setParameters(params)
+    ffm = FeatureFindingMetabo()
+    ffm.setParameters(ffm_params)
     fm = FeatureMap()
     chromatograms = []
     ffm.run(mass_traces_split, fm, chromatograms)
@@ -245,6 +299,21 @@ def _build_param_widgets(param, container, show_advanced: bool) -> dict:
             ui.label("No configurable parameters").classes("text-xs text-gray-400 p-2")
         return widgets
 
+    # Pre-compute which section prefixes have visible params (to avoid empty headers)
+    visible_sections: set[str] = set()
+    for key in param_dict:
+        try:
+            tags = param.getTags(key)
+        except Exception:
+            tags = []
+        if not show_advanced and b"advanced" in tags:
+            continue
+        # Section prefix is the first colon-delimited part (e.g. "mtd" from "mtd:param_name")
+        if ":" in key:
+            visible_sections.add(key.split(":")[0])
+
+    current_section = None
+
     with container:
         for key, value in param_dict.items():
             # Tags are bytes (e.g. b"advanced")
@@ -255,6 +324,18 @@ def _build_param_widgets(param, container, show_advanced: bool) -> dict:
 
             if not show_advanced and b"advanced" in tags:
                 continue
+
+            # Emit section header when prefix changes
+            section = key.split(":")[0] if ":" in key else ""
+            if section and section in visible_sections and section != current_section:
+                current_section = section
+                try:
+                    section_desc = param.getSectionDescription(section)
+                except Exception:
+                    section_desc = section
+                if current_section is not None:
+                    ui.separator().classes("my-1")
+                ui.label(section_desc or section).classes("text-sm font-bold text-gray-600 mt-1 mb-0.5")
 
             try:
                 desc = param.getDescription(key)
