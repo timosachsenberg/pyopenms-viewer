@@ -1,0 +1,38 @@
+[
+  {
+    "name": "Biosaur2",
+    "category": "Feature Finder",
+    "description": "Feature detection using the Biosaur2 algorithm for LC-MS data",
+    "code": "# Biosaur2\n# Feature detection using the Biosaur2 algorithm for LC-MS data\nalgo = oms.Biosaur2Algorithm()\nparams = algo.getParameters()\n# params.setValue(\"rt_window\", 60.0)  # edit parameters here\nalgo.setParameters(params)\nalgo.setMSData(exp)\nfm = oms.FeatureMap()\nalgo.run(fm)\nfeature_map = fm\nprint(f\"Found {feature_map.size()} features\")"
+  },
+  {
+    "name": "FeatureFinder Multiplex",
+    "category": "Feature Finder",
+    "description": "Detect peptide features with multiplex labeling support",
+    "code": "# FeatureFinder Multiplex\n# Detect peptide features with multiplex labeling support\nalgo = oms.FeatureFinderMultiplexAlgorithm()\nparams = algo.getDefaults()\n# params.setValue(\"algorithm:labels\", \"\")  # edit parameters here\nalgo.setParameters(params)\nexp_copy = oms.MSExperiment(exp)\nalgo.run(exp_copy, True)\nfeature_map = algo.getFeatureMap()\nprint(f\"Found {feature_map.size()} features\")"
+  },
+  {
+    "name": "Mass Trace Detection",
+    "category": "Feature Finder",
+    "description": "Detect mass traces in LC-MS data (first step of metabolomics feature finding)",
+    "code": "# Mass Trace Detection\n# Detect mass traces in LC-MS data\nmtd = oms.MassTraceDetection()\nparams = mtd.getParameters()\n# params.setValue(\"mass_error_ppm\", 10.0)  # edit parameters here\nmtd.setParameters(params)\nmass_traces = []\nmtd.run(exp, mass_traces, 0)\n\nfm = oms.FeatureMap()\nfor trace in mass_traces:\n    f = oms.Feature()\n    f.setRT(trace.getCentroidRT())\n    f.setMZ(trace.getCentroidMZ())\n    f.setIntensity(trace.computePeakArea())\n    f.getConvexHulls().append(trace.getConvexhull())\n    fm.push_back(f)\nfeature_map = fm\nprint(f\"Found {feature_map.size()} features from {len(mass_traces)} mass traces\")"
+  },
+  {
+    "name": "FeatureFinder Metabo",
+    "category": "Feature Finder",
+    "description": "Metabolomics feature detection (mass traces + elution peaks + feature finding)",
+    "code": "# FeatureFinder Metabo\n# Full metabolomics pipeline: mass traces -> elution peaks -> features\nmtd = oms.MassTraceDetection()\nmtd_params = mtd.getParameters()\n# mtd_params.setValue(\"mass_error_ppm\", 10.0)  # edit parameters here\nmtd.setParameters(mtd_params)\nmass_traces = []\nmtd.run(exp, mass_traces, 0)\nprint(f\"Mass traces: {len(mass_traces)}\")\n\nepd = oms.ElutionPeakDetection()\nepd_params = epd.getParameters()\nepd.setParameters(epd_params)\nmass_traces_split = []\nepd.detectPeaks(mass_traces, mass_traces_split)\nprint(f\"Split traces: {len(mass_traces_split)}\")\n\nffm = oms.FeatureFindingMetabo()\nffm_params = ffm.getParameters()\nffm.setParameters(ffm_params)\nfm = oms.FeatureMap()\nchromatograms = []\nffm.run(mass_traces_split, fm, chromatograms)\nfeature_map = fm\nprint(f\"Found {feature_map.size()} features\")"
+  },
+  {
+    "name": "PeakPicker HiRes",
+    "category": "Peak Picker",
+    "description": "High-resolution peak picking using wavelet-based approach",
+    "code": "# PeakPicker HiRes\n# High-resolution peak picking using wavelet-based approach\npp = oms.PeakPickerHiRes()\nparams = pp.getParameters()\n# params.setValue(\"signal_to_noise\", 1.0)  # edit parameters here\npp.setParameters(params)\noutput = oms.MSExperiment()\npp.pickExperiment(exp, output, True)\nexp = output\nprint(f\"Peak picking complete: {exp.getNrSpectra()} spectra\")"
+  },
+  {
+    "name": "PeakPicker IM",
+    "category": "Peak Picker",
+    "description": "Peak picking optimized for ion mobility data",
+    "code": "# PeakPicker IM\n# Peak picking optimized for ion mobility data\n# Methods: \"Cluster\", \"ElutionProfiles\", \"Traces\"\nmethod = \"Cluster\"\npp = oms.PeakPickerIM()\npick_fn = {\n    \"Cluster\": pp.pickIMCluster,\n    \"ElutionProfiles\": pp.pickIMElutionProfiles,\n    \"Traces\": pp.pickIMTraces,\n}[method]\noutput = oms.MSExperiment()\nfor i in range(exp.getNrSpectra()):\n    spec = exp.getSpectrum(i)\n    try:\n        pick_fn(spec)\n    except Exception:\n        pass\n    output.addSpectrum(spec)\nexp = output\nprint(f\"Peak picking complete: {exp.getNrSpectra()} spectra\")"
+  }
+]

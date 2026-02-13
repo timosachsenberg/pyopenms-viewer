@@ -4,13 +4,27 @@ Provides a code editor for running custom pyOpenMS scripts against loaded data.
 """
 
 import io
+import json
 import sys
 import traceback
+from pathlib import Path
 
 from nicegui import run, ui
 
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.panels.base_panel import BasePanel
+
+_SNIPPETS_FILE = Path(__file__).parent.parent / "snippets.json"
+
+
+def _load_snippets() -> list[dict]:
+    if _SNIPPETS_FILE.exists():
+        with open(_SNIPPETS_FILE) as f:
+            return json.load(f)
+    return []
+
+
+_SNIPPETS = _load_snippets()
 
 _DEFAULT_CODE = (
     "# Variables: exp, feature_map, peptide_ids, protein_ids, state\n"
@@ -36,12 +50,22 @@ class ScriptingPanel(BasePanel):
         self._editor = None
         self._output_log = None
         self._force_refresh = None
+        self._snippet_select = None
 
     def build(self, container: ui.element) -> ui.expansion:
         with container:
             self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
 
             with self.expansion:
+                if _SNIPPETS:
+                    snippet_options = {s["name"]: s["name"] for s in _SNIPPETS}
+                    self._snippet_select = (
+                        ui.select(options=snippet_options, label="Load snippet...", clearable=True)
+                        .classes("w-full")
+                        .props("dense")
+                        .on("update:model-value", self._on_snippet_selected)
+                    )
+
                 self._editor = ui.codemirror(value=_DEFAULT_CODE, language="Python").classes("w-full").style(
                     "max-height: 400px;"
                 )
@@ -70,6 +94,15 @@ class ScriptingPanel(BasePanel):
 
     def _on_data_loaded(self, data_type: str) -> None:
         self.update_visibility()
+
+    def _on_snippet_selected(self, e) -> None:
+        name = e.args
+        if not name or self._editor is None:
+            return
+        for snippet in _SNIPPETS:
+            if snippet["name"] == name:
+                self._editor.value = snippet["code"]
+                break
 
     def _clear_output(self) -> None:
         if self._output_log is not None:

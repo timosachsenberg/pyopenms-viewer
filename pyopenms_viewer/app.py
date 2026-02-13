@@ -687,16 +687,6 @@ async def create_ui():
 
             ui.button(icon="tune", on_click=show_panel_settings).props("flat dense").tooltip("Panel Settings")
 
-            ui.separator().props("vertical").classes("h-6")
-
-            # Algorithm button
-            from pyopenms_viewer.algorithms import show_algorithm_dialog
-
-            async def on_algorithm_click():
-                await show_algorithm_dialog(state, feature_info_label)
-
-            ui.button(icon="science", on_click=on_algorithm_click).props("flat dense").tooltip("Run Algorithm")
-
             # Spacer to push info to the right
             ui.space()
 
