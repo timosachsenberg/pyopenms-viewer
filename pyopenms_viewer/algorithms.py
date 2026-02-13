@@ -168,11 +168,12 @@ def _run_biosaur2(state: ViewerState, params: Any) -> Any:
 
 
 def _run_ff_multiplex(state: ViewerState, params: Any) -> Any:
-    from pyopenms import FeatureFinderMultiplexAlgorithm
+    from pyopenms import FeatureFinderMultiplexAlgorithm, MSExperiment
 
     algo = FeatureFinderMultiplexAlgorithm()
     algo.setParameters(params)
-    algo.run(state.exp, True)
+    exp_copy = MSExperiment(state.exp)
+    algo.run(exp_copy, True)
     return algo.getFeatureMap()
 
 
