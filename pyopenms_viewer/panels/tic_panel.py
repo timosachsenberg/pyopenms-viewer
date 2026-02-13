@@ -110,7 +110,11 @@ class TICPanel(BasePanel):
         )
 
         # Add selected spectrum marker
-        if self.state.selected_spectrum_idx is not None and self.state.exp is not None:
+        if (
+            self.state.selected_spectrum_idx is not None
+            and self.state.exp is not None
+            and 0 <= self.state.selected_spectrum_idx < len(self.state.exp)
+        ):
             spec = self.state.exp[self.state.selected_spectrum_idx]
             marker_rt = spec.getRT() / rt_divisor
             fig.add_vline(

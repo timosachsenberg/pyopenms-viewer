@@ -58,10 +58,9 @@ async def create_ui():
         except Exception:
             pass
 
-    # Create or reuse a shared state (persist across page reloads to avoid
-    # reloading large mzML/DFs when the frontend reconnects or times out).
-    # We keep a module-level singleton so repeated NiceGUI page handler
-    # invocations reuse the already-loaded data.
+    # Reuse shared state across page reloads to preserve loaded data
+    # (avoids re-parsing large mzML files on browser disconnect/reconnect).
+    # Selection state is reset to avoid stale indices referencing invalid data.
     global _GLOBAL_VIEWER_STATE
 
     try:
@@ -74,6 +73,17 @@ async def create_ui():
         _GLOBAL_VIEWER_STATE = state
     else:
         state = _GLOBAL_VIEWER_STATE
+
+    # Reset transient UI state on page reload. Data (exp, df, feature_map, etc.)
+    # is preserved, but event handlers and selection indices are cleared so the
+    # new page's panels can register fresh handlers without interference from
+    # dead UI elements.
+    state._event_bus.clear()
+    state.selected_spectrum_idx = None
+    state.selected_feature_idx = None
+    state.selected_id_idx = None
+    state.hover_feature_idx = None
+    state.hover_id_idx = None
 
     # Initialize or reconfigure data manager with CLI options (safe to call repeatedly)
     cache_dir = Path(cli_options["cache_dir"]) if cli_options["cache_dir"] else None
