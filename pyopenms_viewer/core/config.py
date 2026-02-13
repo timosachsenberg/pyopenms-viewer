@@ -147,6 +147,7 @@ PANEL_DEFINITIONS = {
     "custom_range": {"name": "Custom Range", "icon": "tune"},
     "export": {"name": "Data Export", "icon": "file_download"},
     "log": {"name": "Algorithm Log", "icon": "terminal"},
+    "scripting": {"name": "Python Scripting", "icon": "code"},
     "legend": {"name": "Help", "icon": "help"},
 }
 
@@ -162,6 +163,7 @@ DEFAULT_PANEL_ORDER = [
     "custom_range",
     "export",
     "log",
+    "scripting",
     "legend",
 ]
 
@@ -178,5 +180,6 @@ DEFAULT_PANEL_VISIBILITY = {
     "custom_range": True,
     "export": "auto",
     "log": "auto",
+    "scripting": "auto",
     "legend": True,
 }

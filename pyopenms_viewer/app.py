@@ -23,6 +23,7 @@ from pyopenms_viewer.panels import (
     LogPanel,
     PanelManager,
     PeakMapPanel,
+    ScriptingPanel,
     SpectraTablePanel,
     SpectrumPanel,
     TICPanel,
@@ -501,7 +502,7 @@ async def create_ui():
                     visibility_container = ui.column().classes("w-full gap-1 mb-4")
 
                     # Panels that support "auto" visibility
-                    auto_panels = {"chromatograms", "im_peakmap", "features_table", "log"}
+                    auto_panels = {"chromatograms", "im_peakmap", "features_table", "log", "scripting"}
 
                     def refresh_visibility():
                         visibility_container.clear()
@@ -756,6 +757,7 @@ async def create_ui():
             FeaturesTablePanel(state),
             ExportPanel(state),
             LogPanel(state),
+            ScriptingPanel(state),
         ]
 
         for panel in panels:
