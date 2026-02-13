@@ -36,8 +36,9 @@ class LogPanel(BasePanel):
         for msg in self.state.log_messages:
             self._log_element.push(msg)
 
-        # Subscribe to new log output
+        # Subscribe to new log output and data-clear events
         self.state.on_algorithm_log(self._on_algorithm_log)
+        self.state.on_data_loaded(self._on_data_loaded)
 
         # Start hidden (auto-visibility)
         self.update_visibility()
@@ -66,6 +67,13 @@ class LogPanel(BasePanel):
         self.update_visibility()
         if self.expansion is not None:
             self.expansion.value = True
+
+    def _on_data_loaded(self, data_type: str) -> None:
+        """React to data-clear events: if log_messages was emptied, sync the UI."""
+        if data_type == "mzml" and not self.state.log_messages:
+            if self._log_element is not None:
+                self._log_element.clear()
+            self.update_visibility()
 
     def _clear_log(self) -> None:
         self.state.log_messages.clear()

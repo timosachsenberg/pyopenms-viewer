@@ -884,6 +884,7 @@ class ViewerState:
         self.clear_mzml_data()
         self.clear_feature_data()
         self.clear_id_data()
+        self.log_messages.clear()
 
     # ========== UI ELEMENT REFERENCES ==========
     # These are set by panels when they build their UI
