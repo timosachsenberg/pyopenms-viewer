@@ -554,6 +554,10 @@ class PeakMapPanel(BasePanel):
                         self.faims_container.clear()
                     self.faims_cv_minimaps = {}
                     self.faims_cv_labels = {}
+        elif data_type in ("features", "ids"):
+            # Re-render peak map to show/hide feature or ID overlays
+            if self._has_data():
+                self.update()
 
     def _clear_display(self):
         """Clear the peak map display."""
