@@ -17,7 +17,9 @@ _DEFAULT_CODE = (
     "# Selection: selected_spectrum_idx, selected_feature_idx, selected_id_idx\n"
     "# Chromatograms: chromatogram_data, selected_chromatogram_indices\n"
     "# Modules: pyopenms (also as oms), np (numpy), pd (pandas)\n"
-    "print(f'Spectra: {exp.getNrSpectra()}')\n"
+    "# Note: exp[i] returns a copy — modify and write back: exp[i] = spec\n"
+    "s = selected_spectrum_idx\n"
+    "print(f'Selected spectrum: {s}, total: {exp.getNrSpectra()}')\n"
 )
 
 
