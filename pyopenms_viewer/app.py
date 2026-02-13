@@ -11,6 +11,7 @@ from pathlib import Path
 
 from nicegui import app, run, ui
 
+from pyopenms_viewer.components.file_picker_storage import get_last_directory
 from pyopenms_viewer.components.local_file_picker import LocalFilePicker
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.loaders import FeatureLoader, IDLoader, MzMLLoader
@@ -151,7 +152,7 @@ async def create_ui():
                 elif state.df is not None:
                     peak_count = len(state.df)
                 else:
-                    peak_count = 0
+                    peak_count = state.total_peaks
                 info_text = f"Loaded: {name} | Spectra: {len(state.exp):,} | Peaks: {peak_count:,}"
                 if state.has_faims:
                     info_text += f" | FAIMS: {len(state.faims_cvs)} CVs"
@@ -378,7 +379,8 @@ async def create_ui():
 
             async def open_local_file_picker():
                 """Open local file picker dialog to browse server filesystem."""
-                picker = LocalFilePicker(directory=str(Path.cwd()), upper_limit=None, multiple=True)
+                start_dir = get_last_directory() or str(Path.cwd())
+                picker = LocalFilePicker(directory=start_dir, upper_limit=None, multiple=True)
                 picker.open()
                 result = await picker
                 if not result:

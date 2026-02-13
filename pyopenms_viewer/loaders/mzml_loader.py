@@ -325,6 +325,8 @@ class MzMLLoader:
             if total_peaks == 0:
                 return False
 
+            self.state.total_peaks = total_peaks
+
             if progress_callback:
                 progress_callback("Building data structures...", 0.72)
 

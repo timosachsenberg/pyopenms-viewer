@@ -112,6 +112,9 @@ class ViewerState:
         self.tic_source: str = "MS1 TIC"  # Description (e.g., "MS1 TIC", "MS2 BPC")
         self.faims_tic: dict[float, tuple[np.ndarray, np.ndarray]] = {}  # CV -> (rt, intensity)
 
+        # ========== PEAK COUNT ==========
+        self.total_peaks: int = 0  # Total MS1 peaks (set by loader)
+
         # ========== DATA BOUNDS (full extent) ==========
         self.rt_min: float = 0.0
         self.rt_max: float = 1.0
