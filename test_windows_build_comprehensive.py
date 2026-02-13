@@ -378,7 +378,7 @@ try:
     pyd_to_pyopenms = 0
     dll_to_pyopenms_dlls = 0
 
-    for root, dirs, files in os.walk(pkg_dir):
+    for root, _dirs, files in os.walk(pkg_dir):
         for file in files:
             rel_path = os.path.relpath(root, pkg_dir)
             dest_dir = os.path.join("pyopenms", rel_path) if rel_path != "." else "pyopenms"
@@ -408,7 +408,7 @@ try:
     # Verify expected extension modules exist
     expected_modules = [f"_pyopenms_{i}" for i in range(1, 9)]
     found_modules = []
-    for root, dirs, files in os.walk(pkg_dir):
+    for _root, _dirs, files in os.walk(pkg_dir):
         for file in files:
             for mod in expected_modules:
                 if mod in file and file.endswith((".pyd", ".so")):

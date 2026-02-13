@@ -1013,7 +1013,7 @@ class TestRasterizationSupport:
             with patch.object(state_with_exp.exp, "get2DPeakDataLong", return_value=mock_return) as mock_get2d:
                 # Render (will call _render_points since we're in deep zoom)
                 renderer = PeakMapRenderer()
-                result = renderer.render(state_with_exp, fast=False)
+                renderer.render(state_with_exp, fast=False)
 
                 # Verify that get2DPeakDataLong was called with correct bounds and ms_level
                 mock_get2d.assert_called()
@@ -1070,7 +1070,7 @@ class TestRasterizationSupport:
 
             # Render
             renderer = PeakMapRenderer()
-            result = renderer.render(state_with_exp, fast=False)
+            renderer.render(state_with_exp, fast=False)
 
             # Verify that temp_peak_df was created and stored in state
             assert state_with_exp.temp_peak_df is not None
@@ -1121,7 +1121,7 @@ class TestRasterizationSupport:
 
             # First render
             renderer = PeakMapRenderer()
-            result1 = renderer.render(state_with_exp, fast=False)
+            renderer.render(state_with_exp, fast=False)
 
             # Save reference to temp_peak_df after first render
             temp_df_first = state_with_exp.temp_peak_df
@@ -1129,7 +1129,7 @@ class TestRasterizationSupport:
             assert len(temp_df_first) >= 2  # At least 2 rows (may use fallback)
 
             # Second render with same bounds (should reuse)
-            result2 = renderer.render(state_with_exp, fast=False)
+            renderer.render(state_with_exp, fast=False)
 
             # Verify temp_peak_df is still available for reuse
             temp_df_second = state_with_exp.temp_peak_df
@@ -1240,7 +1240,7 @@ class TestRasterizationSupport:
             state_with_exp.exp.get2DPeakDataLong = mock_get2d
 
             renderer = PeakMapRenderer()
-            result = renderer.render(state_with_exp, fast=False)
+            renderer.render(state_with_exp, fast=False)
 
             # Verify temp_peak_df was created (may use fallback if mock doesn't work)
             assert state_with_exp.temp_peak_df is not None
@@ -1250,7 +1250,7 @@ class TestRasterizationSupport:
             state_with_exp.temp_peak_df = None
             mock_get2d.side_effect = RuntimeError("get2DPeakDataLong failed")
 
-            result = renderer.render(state_with_exp, fast=False)
+            renderer.render(state_with_exp, fast=False)
 
             # Should have used state.df instead
             assert state_with_exp.temp_peak_df is not None
@@ -1272,7 +1272,7 @@ class TestRasterizationSupport:
             )
             state_with_exp.get_peaks_in_view = MagicMock(return_value=fallback_df)
 
-            result = renderer.render(state_with_exp, fast=False)
+            renderer.render(state_with_exp, fast=False)
 
             # Should have used get_peaks_in_view
             assert state_with_exp.get_peaks_in_view.called
@@ -1287,7 +1287,7 @@ class TestRasterizationSupport:
         import pytest
 
         try:
-            from pyopenms_viewer.panels.peak_map_panel import PeakMapPanel
+            from pyopenms_viewer.panels.peak_map_panel import PeakMapPanel  # noqa: F401
         except ImportError:
             pytest.skip("pyopenms_viewer.panels not available")
 

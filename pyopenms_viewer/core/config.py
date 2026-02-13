@@ -146,6 +146,7 @@ PANEL_DEFINITIONS = {
     "features_table": {"name": "Features", "icon": "scatter_plot"},
     "custom_range": {"name": "Custom Range", "icon": "tune"},
     "export": {"name": "Data Export", "icon": "file_download"},
+    "log": {"name": "Algorithm Log", "icon": "terminal"},
     "legend": {"name": "Help", "icon": "help"},
 }
 
@@ -160,6 +161,7 @@ DEFAULT_PANEL_ORDER = [
     "features_table",
     "custom_range",
     "export",
+    "log",
     "legend",
 ]
 
@@ -175,5 +177,6 @@ DEFAULT_PANEL_VISIBILITY = {
     "features_table": "auto",
     "custom_range": True,
     "export": "auto",
+    "log": "auto",
     "legend": True,
 }

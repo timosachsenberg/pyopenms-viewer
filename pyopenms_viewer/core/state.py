@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import numpy as np
 import pandas as pd
-import threading
 
 from pyopenms_viewer.core.config import (
     DEFAULT_PANEL_ORDER,
@@ -248,6 +247,9 @@ class ViewerState:
         # ========== UI UPDATE FLAGS ==========
         self._updating_from_tic: bool = False
         self._hover_update_pending: bool = False
+
+        # ========== ALGORITHM LOG ==========
+        self.log_messages: list[str] = []
 
         # ========== RASTERIZATION CACHE ==========
         self.cached_minimap_raster: Optional[np.ndarray] = None  # Cached minimap rasterization
@@ -686,6 +688,8 @@ class ViewerState:
                 return len(self.feature_data) > 0
             elif panel_id == "export":
                 return self.exp is not None
+            elif panel_id == "log":
+                return len(self.log_messages) > 0
             else:
                 return True
         return True
@@ -749,6 +753,23 @@ class ViewerState:
             value: New value
         """
         self._event_bus.emit("display_options_changed", option_name=option_name, value=value)
+
+    def on_algorithm_log(self, callback: Callable) -> Callable:
+        """Register a callback for algorithm log output.
+
+        Callback signature: callback(algo_name: str, output: str)
+        """
+        return self._event_bus.subscribe("algorithm_log", callback)
+
+    def emit_algorithm_log(self, algo_name: str, output: str) -> None:
+        """Emit algorithm log output event.
+
+        Args:
+            algo_name: Name of the algorithm that produced the output
+            output: Captured stdout/stderr text
+        """
+        self.log_messages.append(f"[{algo_name}]\n{output}")
+        self._event_bus.emit("algorithm_log", algo_name=algo_name, output=output)
 
     # ========== SELECTION HELPERS ==========
 

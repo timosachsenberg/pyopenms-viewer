@@ -23,7 +23,7 @@ try:
         print(f"hook-pyopenms: Collecting from {pkg_dir} (no import)")
 
         # Collect all Python files as datas to preserve package structure
-        for root, dirs, files in os.walk(pkg_dir):
+        for root, _dirs, files in os.walk(pkg_dir):
             for file in files:
                 src = os.path.join(root, file)
                 rel_path = os.path.relpath(root, pkg_dir)
@@ -51,7 +51,7 @@ try:
         qt_plugins_dir = os.path.join(pkg_dir, "Qt6", "plugins")
         if os.path.exists(qt_plugins_dir):
             print(f"hook-pyopenms: Collecting Qt6 plugins from {qt_plugins_dir}")
-            for root, dirs, files in os.walk(qt_plugins_dir):
+            for root, _dirs, files in os.walk(qt_plugins_dir):
                 for file in files:
                     if file.endswith(".dll"):
                         src = os.path.join(root, file)
@@ -64,7 +64,7 @@ try:
     share_dir = os.path.join(pkg_base, "share")
     if os.path.exists(share_dir):
         print(f"hook-pyopenms: Collecting from share directory: {share_dir}")
-        for root, dirs, files in os.walk(share_dir):
+        for root, _dirs, files in os.walk(share_dir):
             for file in files:
                 src = os.path.join(root, file)
                 if file.endswith((".dll", ".so", ".dylib")):

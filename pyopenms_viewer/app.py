@@ -7,17 +7,12 @@ using the modular panel architecture.
 import asyncio
 import os
 import tempfile
-import asyncio
 from pathlib import Path
 
 from nicegui import app, run, ui
 
 from pyopenms_viewer.components.local_file_picker import LocalFilePicker
 from pyopenms_viewer.core.state import ViewerState
-
-# Map of filepath -> asyncio.Event used to signal completion of an in-progress load
-_LOAD_EVENTS: dict[str, asyncio.Event] = {}
-_LOAD_EVENTS_LOCK = asyncio.Lock()
 from pyopenms_viewer.loaders import FeatureLoader, IDLoader, MzMLLoader
 from pyopenms_viewer.panels import (
     ChromatogramPanel,
@@ -25,12 +20,17 @@ from pyopenms_viewer.panels import (
     FAIMSPanel,
     FeaturesTablePanel,
     IMPeakMapPanel,
+    LogPanel,
     PanelManager,
     PeakMapPanel,
     SpectraTablePanel,
     SpectrumPanel,
     TICPanel,
 )
+
+# Map of filepath -> asyncio.Event used to signal completion of an in-progress load
+_LOAD_EVENTS: dict[str, asyncio.Event] = {}
+_LOAD_EVENTS_LOCK = asyncio.Lock()
 
 
 async def create_ui():
@@ -65,7 +65,7 @@ async def create_ui():
     global _GLOBAL_VIEWER_STATE
 
     try:
-        _GLOBAL_VIEWER_STATE
+        _GLOBAL_VIEWER_STATE  # noqa: B018
     except NameError:
         _GLOBAL_VIEWER_STATE = None
 
@@ -491,7 +491,7 @@ async def create_ui():
                     visibility_container = ui.column().classes("w-full gap-1 mb-4")
 
                     # Panels that support "auto" visibility
-                    auto_panels = {"chromatograms", "im_peakmap", "features_table"}
+                    auto_panels = {"chromatograms", "im_peakmap", "features_table", "log"}
 
                     def refresh_visibility():
                         visibility_container.clear()
@@ -745,6 +745,7 @@ async def create_ui():
             SpectraTablePanel(state),
             FeaturesTablePanel(state),
             ExportPanel(state),
+            LogPanel(state),
         ]
 
         for panel in panels:

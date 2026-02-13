@@ -1433,7 +1433,7 @@ class PeakMapPanel(BasePanel):
             # Calculate aspect ratio to match 2D peak map visual proportions
             # pyopenms-viz plots with x=RT, y=m/z regardless of our swap_axes setting
             # We need to match how RT and m/z are visually mapped in the 2D view
-            
+
             if self.state.swap_axes:
                 # In 2D: m/z on x-axis (gets plot_width), RT on y-axis (gets plot_height)
                 # In 3D: RT is x-axis, m/z is y-axis

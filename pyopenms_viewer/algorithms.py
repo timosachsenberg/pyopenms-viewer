@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import math
+import os
+import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -126,7 +128,7 @@ def _build_registry() -> list[AlgorithmDescriptor]:
         pass
 
     try:
-        from pyopenms import PeakPickerIM
+        from pyopenms import PeakPickerIM  # noqa: F401
 
         def _get_ppim_params():
             from pyopenms import Param
@@ -419,6 +421,90 @@ def _apply_params_from_widgets(param, widgets: dict) -> None:
             pass
 
 
+# ========== C++ stdout/stderr Capture ==========
+
+# Process-wide lock: fd redirection affects fds 1/2 globally, so only one
+# capture can be active at a time.
+_capture_lock = threading.Lock()
+
+
+def _capture_fd_output(func, *args):
+    """Run *func(*args)* while capturing C-level stdout and stderr.
+
+    pyOpenMS algorithms write diagnostics at the C++ level which bypasses
+    Python's sys.stdout. We redirect file descriptors 1 and 2 into a pipe,
+    run the function, then restore the original fds.
+
+    A background reader thread drains the pipe to prevent deadlock when the
+    output exceeds the OS pipe buffer (~64 KB).
+
+    Returns:
+        (result, captured_text) tuple. If func raises, the exception is
+        re-raised wrapped in CapturedOutputError so the caller can access
+        both the error and any diagnostic output.
+    """
+    with _capture_lock:
+        read_fd, write_fd = os.pipe()
+
+        # Save original fds
+        saved_stdout = os.dup(1)
+        saved_stderr = os.dup(2)
+
+        captured_chunks: list[bytes] = []
+
+        def _reader():
+            """Drain the read end of the pipe in a background thread."""
+            try:
+                while True:
+                    chunk = os.read(read_fd, 4096)
+                    if not chunk:
+                        break
+                    captured_chunks.append(chunk)
+            except OSError:
+                pass  # read_fd closed externally after join timeout
+
+        reader_thread = threading.Thread(target=_reader, daemon=True)
+        exc_to_raise = None
+        result = None
+
+        try:
+            # Redirect stdout and stderr to the write end of the pipe
+            os.dup2(write_fd, 1)
+            os.dup2(write_fd, 2)
+            reader_thread.start()
+
+            result = func(*args)
+        except Exception as e:
+            exc_to_raise = e
+        finally:
+            # Restore original fds
+            os.dup2(saved_stdout, 1)
+            os.dup2(saved_stderr, 2)
+            os.close(saved_stdout)
+            os.close(saved_stderr)
+
+            # Close write end so the reader sees EOF
+            os.close(write_fd)
+            if reader_thread.is_alive():
+                reader_thread.join(timeout=5)
+            os.close(read_fd)
+
+        captured_text = b"".join(captured_chunks).decode("utf-8", errors="replace")
+
+        if exc_to_raise is not None:
+            raise CapturedOutputError(captured_text) from exc_to_raise
+
+    return result, captured_text
+
+
+class CapturedOutputError(Exception):
+    """Wraps an algorithm exception while preserving captured fd output."""
+
+    def __init__(self, captured_output: str):
+        self.captured_output = captured_output
+        super().__init__()
+
+
 # ========== Result Handling ==========
 
 
@@ -439,13 +525,27 @@ async def _execute_algorithm(
     await asyncio.sleep(0)  # Let UI update before heavy computation
 
     try:
-        result = await run.io_bound(algo.run_fn, state, params)
+        result, captured_output = await run.io_bound(_capture_fd_output, algo.run_fn, state, params)
+    except CapturedOutputError as coe:
+        # Algorithm failed but we captured its output — emit before reporting error
+        if coe.captured_output and coe.captured_output.strip():
+            state.emit_algorithm_log(algo.name, coe.captured_output.strip())
+        original = coe.__cause__
+        ui.notify(f"{algo.name} failed: {original}", type="negative")
+        import traceback
+
+        traceback.print_exc()
+        return
     except Exception as e:
         ui.notify(f"{algo.name} failed: {e}", type="negative")
         import traceback
 
         traceback.print_exc()
         return
+
+    # Emit captured C++ output to the log panel
+    if captured_output and captured_output.strip():
+        state.emit_algorithm_log(algo.name, captured_output.strip())
 
     if result is None:
         ui.notify(f"{algo.name} returned no result", type="warning")
