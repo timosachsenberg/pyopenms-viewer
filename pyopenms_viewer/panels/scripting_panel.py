@@ -59,12 +59,9 @@ class ScriptingPanel(BasePanel):
             with self.expansion:
                 if _SNIPPETS:
                     snippet_options = {s["name"]: s["name"] for s in _SNIPPETS}
-                    self._snippet_select = (
-                        ui.select(options=snippet_options, label="Load snippet...", clearable=True)
-                        .classes("w-full")
-                        .props("dense")
-                        .on("update:model-value", self._on_snippet_selected)
-                    )
+                    self._snippet_select = ui.select(
+                        options=snippet_options, label="Load snippet...", clearable=True, on_change=self._on_snippet_selected
+                    ).classes("w-full").props("dense")
 
                 self._editor = ui.codemirror(value=_DEFAULT_CODE, language="Python").classes("w-full").style(
                     "max-height: 400px;"
@@ -96,7 +93,7 @@ class ScriptingPanel(BasePanel):
         self.update_visibility()
 
     def _on_snippet_selected(self, e) -> None:
-        name = e.args
+        name = e.value
         if not name or self._editor is None:
             return
         for snippet in _SNIPPETS:
