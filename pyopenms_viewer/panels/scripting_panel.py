@@ -51,7 +51,7 @@ class ScriptingPanel(BasePanel):
                     ui.button("Clear Output", icon="delete_outline", on_click=self._clear_output).props(
                         "flat dense size=sm"
                     )
-                    self._force_refresh = ui.checkbox("Force refresh after run").props("dense").classes(
+                    self._force_refresh = ui.checkbox("Force refresh after run", value=True).props("dense").classes(
                         "ml-4 text-sm"
                     )
 
