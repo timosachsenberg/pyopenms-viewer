@@ -3,13 +3,12 @@
 
 Fast mzML peak map viewer using NiceGUI, Datashader, and pyOpenMS.
 
-## 🚀 Native Desktop Installers (One-Click)
+## Native Desktop Installers (One-Click)
 
 Download the latest native installers for Windows, macOS, and Linux from the [GitHub Releases page](https://github.com/timosachsenberg/pyopenms-viewer/releases).
 
 - **Windows:** Download and run the `.exe` installer
-- **macOS:** Download the `.dmg` or `.app` bundle, drag to Applications, and open (right-click → Open if unsigned)
-- **Linux:** Download the `.AppImage` (preferred) or `.deb`/`.rpm` and run
+
 
 **No Python or dependencies required!**
 
@@ -31,7 +30,6 @@ Designed to handle **50+ million peaks** with smooth zooming and panning using s
 
 > **Note on Vendor Files**: 
 > - **Windows**: Direct vendor file loading works out-of-the-box
-> - **macOS/Linux**: Automatic conversion to mzML using Docker (install Docker Desktop first)
 > - **Manual conversion**: See [Vendor File Conversion Guide](docs/VENDOR_FILE_CONVERSION.md)
 
 
