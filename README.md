@@ -22,10 +22,17 @@ Designed to handle **50+ million peaks** with smooth zooming and panning using s
 ## Features
 
 - **Peak Map Visualization** - Datashader-powered rendering for massive datasets
+- **Vendor File Support** - Direct loading of Thermo RAW, Bruker .d, and Sciex WIFF files (Windows only, via AlphaRaw)
+- **Auto-Conversion** - Automatic vendor file to mzML conversion on macOS/Linux (requires Docker)
 - **FeatureMap Overlay** - Display centroids, bounding boxes, and convex hulls
 - **idXML Overlay** - Show peptide identification precursor positions
 - **MS2 Spectrum Viewer** - Annotated spectrum viewer for peptide identifications
 - **TIC Display** - Total Ion Chromatogram with clickable MS1 spectrum viewer
+
+> **Note on Vendor Files**: 
+> - **Windows**: Direct vendor file loading works out-of-the-box
+> - **macOS/Linux**: Automatic conversion to mzML using Docker (install Docker Desktop first)
+> - **Manual conversion**: See [Vendor File Conversion Guide](docs/VENDOR_FILE_CONVERSION.md)
 
 
 ## Prerequisites (for source install)
@@ -126,6 +133,12 @@ You can load files in two ways:
 # Load an mzML file
 uv run pyopenms-viewer sample.mzML
 
+# Load vendor RAW files directly (Windows only!)
+# Note: Vendor file support requires Windows. On macOS/Linux, convert to mzML first.
+uv run pyopenms-viewer sample.raw              # Thermo RAW (Windows)
+uv run pyopenms-viewer sample.d                # Bruker .d folder (Windows)
+uv run pyopenms-viewer sample.wiff             # Sciex WIFF (Windows)
+
 # Load mzML with feature overlay
 uv run pyopenms-viewer sample.mzML features.featureXML
 
@@ -138,7 +151,7 @@ uv run pyopenms-viewer sample.mzML features.featureXML ids.idXML
 
 **Via the web interface:**
 - Drag and drop files onto the upload area
-- Supports `.mzML`, `.featureXML`, and `.idXML` files
+- Supports `.mzML`, `.raw`, `.d`, `.wiff`, `.featureXML`, and `.idXML` files
 
 
 **Via native file dialog (native mode only):**

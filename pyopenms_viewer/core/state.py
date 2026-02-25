@@ -89,6 +89,7 @@ class ViewerState:
         # These are the large data structures that must be shared
         # In out-of-core mode, df and im_df may be None after registration
         self.exp = None  # MSExperiment - pyOpenMS C++ object (~500MB)
+        self.vendor_reader = None  # AlphaRawLoader instance (set when a vendor file is loaded)
         self.df: Optional[pd.DataFrame] = None  # All peaks: rt, mz, intensity, log_intensity (~2GB)
         self.im_df: Optional[pd.DataFrame] = None  # Ion mobility peaks: mz, im, intensity, log_intensity
         self.faims_data: dict[float, pd.DataFrame] = {}  # CV -> DataFrame (views into self.df)
@@ -690,7 +691,7 @@ class ViewerState:
             elif panel_id == "features_table":
                 return len(self.feature_data) > 0
             elif panel_id == "export":
-                return self.exp is not None
+                return self.exp is not None or self.vendor_reader is not None
             elif panel_id == "log":
                 return len(self.log_messages) > 0
             else:
@@ -776,6 +777,42 @@ class ViewerState:
 
     # ========== SELECTION HELPERS ==========
 
+    def get_num_spectra(self) -> int:
+        """Return total number of spectra, regardless of data source (mzML or vendor file).
+
+        Returns:
+            Number of spectra in the loaded file, or 0 if nothing is loaded.
+        """
+        if self.exp is not None:
+            return len(self.exp)
+        if self.vendor_reader is not None:
+            return len(self.vendor_reader.raw_reader.spectrum_df)
+        return 0
+
+    def get_spectrum(self, idx: int):
+        """Return a spectrum-like object for the given index, regardless of data source.
+
+        For mzML files returns the native pyOpenMS MSSpectrum.
+        For vendor files (AlphaRaw) returns a VendorSpectrumAdapter with the same interface.
+
+        Args:
+            idx: Spectrum index (0-based).
+
+        Returns:
+            MSSpectrum or VendorSpectrumAdapter, or None if index is out of range.
+        """
+        if self.exp is not None:
+            if 0 <= idx < len(self.exp):
+                return self.exp[idx]
+            return None
+        if self.vendor_reader is not None:
+            from pyopenms_viewer.loaders.alpharaw_loader import VendorSpectrumAdapter
+            n = len(self.vendor_reader.raw_reader.spectrum_df)
+            if 0 <= idx < n:
+                return VendorSpectrumAdapter(self.vendor_reader.raw_reader, idx)
+            return None
+        return None
+
     def select_spectrum(self, index: Optional[int], emit_event: bool = True) -> None:
         """Select a spectrum by index.
 
@@ -818,6 +855,7 @@ class ViewerState:
             self.data_manager.clear()
 
         self.exp = None
+        self.vendor_reader = None
         self.df = None
         self.current_file = None
         self.tic_rt = None
@@ -974,7 +1012,7 @@ class ViewerState:
             emit_event: If True, emit view_changed event
         """
         # Check if we have data (in-memory, out-of-core, or rasterization mode)
-        if self.df is None and self.data_manager is None and self.exp is None:
+        if self.df is None and self.data_manager is None and self.exp is None and self.vendor_reader is None:
             return
 
         # Save current state to zoom history
@@ -1030,7 +1068,7 @@ class ViewerState:
             emit_event: If True, emit view_changed event
         """
         # Check if we have data (in-memory, out-of-core, or rasterization mode)
-        if self.df is None and self.data_manager is None and self.exp is None:
+        if self.df is None and self.data_manager is None and self.exp is None and self.vendor_reader is None:
             return
 
         # Convert minimap fractions to data coordinates (depends on axis orientation)
@@ -1105,7 +1143,7 @@ class ViewerState:
     def zoom_in(self, emit_event: bool = True) -> None:
         """Zoom in by 10% on all axes."""
         # Check if we have data (in-memory, out-of-core, or rasterization mode)
-        if self.df is None and self.data_manager is None and self.exp is None:
+        if self.df is None and self.data_manager is None and self.exp is None and self.vendor_reader is None:
             return
 
         rt_range = (self.view_rt_max - self.view_rt_min) * 0.1
@@ -1122,7 +1160,7 @@ class ViewerState:
     def zoom_out(self, emit_event: bool = True) -> None:
         """Zoom out by 10% on all axes."""
         # Check if we have data (in-memory, out-of-core, or rasterization mode)
-        if self.df is None and self.data_manager is None and self.exp is None:
+        if self.df is None and self.data_manager is None and self.exp is None and self.vendor_reader is None:
             return
 
         rt_range = (self.view_rt_max - self.view_rt_min) * 0.1
@@ -1145,7 +1183,7 @@ class ViewerState:
             emit_event: If True, emit view_changed event
         """
         # Check if we have data (in-memory, out-of-core, or rasterization mode)
-        if self.df is None and self.data_manager is None and self.exp is None:
+        if self.df is None and self.data_manager is None and self.exp is None and self.vendor_reader is None:
             return
 
         rt_range = self.view_rt_max - self.view_rt_min
@@ -1243,13 +1281,14 @@ class ViewerState:
         Returns:
             ID index if found, None otherwise
         """
-        if self.exp is None or not self.peptide_ids:
+        if not self.peptide_ids:
             return None
 
-        if spectrum_idx < 0 or spectrum_idx >= len(self.exp):
+        n = self.get_num_spectra()
+        if n == 0 or spectrum_idx < 0 or spectrum_idx >= n:
             return None
 
-        spec = self.exp[spectrum_idx]
+        spec = self.get_spectrum(spectrum_idx)
 
         # Only MS2 spectra can have peptide IDs
         if spec.getMSLevel() != 2:
@@ -1294,10 +1333,11 @@ class ViewerState:
         Returns:
             Spectrum index if found, None otherwise
         """
-        if self.exp is None or not self.peptide_ids:
+        if not self.peptide_ids:
             return None
 
-        if id_idx < 0 or id_idx >= len(self.peptide_ids):
+        n = self.get_num_spectra()
+        if n == 0 or id_idx < 0 or id_idx >= len(self.peptide_ids):
             return None
 
         pep_id = self.peptide_ids[id_idx]
@@ -1307,9 +1347,9 @@ class ViewerState:
         best_spec_idx = None
         best_rt_diff = float("inf")
 
-        for i in range(len(self.exp)):
-            spec = self.exp[i]
-            if spec.getMSLevel() != 2:
+        for i in range(n):
+            spec = self.get_spectrum(i)
+            if spec is None or spec.getMSLevel() != 2:
                 continue
 
             spec_rt = spec.getRT()

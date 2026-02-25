@@ -156,7 +156,7 @@ class ExportPanel(BasePanel):
         self._populate_from_state()
 
     def _has_data(self) -> bool:
-        return self.state.exp is not None
+        return self.state.exp is not None or self.state.vendor_reader is not None
 
     def _on_data_loaded(self, data_type: str) -> None:
         if data_type == "mzml":
@@ -164,7 +164,7 @@ class ExportPanel(BasePanel):
             self.update_visibility()
 
     def _populate_from_state(self) -> None:
-        if self.state.exp is None:
+        if self.state.exp is None and self.state.vendor_reader is None:
             return
 
         # Set range inputs to full data bounds
@@ -215,7 +215,7 @@ class ExportPanel(BasePanel):
         return {lvl for lvl, cb in self._level_checkboxes.items() if cb.value}
 
     def _update_preview(self, _=None) -> None:
-        if self.state.exp is None or not self.state.spectrum_data:
+        if not self.state.spectrum_data:
             self._preview_label.set_text("")
             return
 
@@ -232,8 +232,12 @@ class ExportPanel(BasePanel):
 
     def _get_filter_params(self):
         """Validate and return filter parameters, or None if invalid."""
-        if self.state.exp is None:
+        if self.state.exp is None and self.state.vendor_reader is None:
             ui.notify("No data loaded", type="warning")
+            return None
+
+        if self.state.exp is None:
+            ui.notify("mzML export is only available for mzML files, not vendor files", type="warning")
             return None
 
         selected_levels = self._get_selected_levels()

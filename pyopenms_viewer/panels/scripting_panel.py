@@ -87,7 +87,7 @@ class ScriptingPanel(BasePanel):
         pass
 
     def _has_data(self) -> bool:
-        return self.state.exp is not None
+        return self.state.exp is not None or self.state.vendor_reader is not None
 
     def _on_data_loaded(self, data_type: str) -> None:
         self.update_visibility()

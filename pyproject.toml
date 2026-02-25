@@ -42,6 +42,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+vendor = [
+    "alpharaw>=0.4.5",
+]
 native = [
     "pywebview>=4.0.0",
     "qtpy>=2.0.0",

@@ -166,7 +166,7 @@ class SpectrumPanel(BasePanel):
 
             ui.button(
                 ">|",
-                on_click=lambda: self._navigate_to(len(self.state.exp) - 1 if self.state.exp else 0),
+                on_click=lambda: self._navigate_to(self.state.get_num_spectra() - 1),
             ).props("dense size=sm").tooltip("Last")
 
             ui.label("|").classes("mx-1 text-gray-600")
@@ -264,7 +264,7 @@ class SpectrumPanel(BasePanel):
 
     def _has_data(self) -> bool:
         """Check if panel has data to display."""
-        return self.state.exp is not None and len(self.state.exp) > 0
+        return self.state.get_num_spectra() > 0
 
     def show_spectrum(self, spectrum_idx: int) -> None:
         """Display a spectrum in the panel.
@@ -274,11 +274,11 @@ class SpectrumPanel(BasePanel):
         Args:
             spectrum_idx: Index of spectrum to display
         """
-        if self.state.exp is None or spectrum_idx < 0 or spectrum_idx >= len(self.state.exp):
+        if self.state.get_num_spectra() == 0 or spectrum_idx < 0 or spectrum_idx >= self.state.get_num_spectra():
             return
 
         self.state.selected_spectrum_idx = spectrum_idx
-        spec = self.state.exp[spectrum_idx]
+        spec = self.state.get_spectrum(spectrum_idx)
 
         mz_array, int_array = spec.get_peaks()
         rt = spec.getRT()
@@ -331,7 +331,7 @@ class SpectrumPanel(BasePanel):
 
         # Update navigation label
         if self.nav_label is not None:
-            self.nav_label.set_text(f"Spectrum {spectrum_idx + 1} of {len(self.state.exp)}")
+            self.nav_label.set_text(f"Spectrum {spectrum_idx + 1} of {self.state.get_num_spectra()}")
 
     def _create_spectrum_figure(
         self, spec, mz_array: np.ndarray, int_array: np.ndarray, spectrum_idx: int
@@ -962,10 +962,10 @@ class SpectrumPanel(BasePanel):
                 return
 
             # Get current spectrum data
-            if self.state.selected_spectrum_idx is None or self.state.exp is None:
+            if self.state.selected_spectrum_idx is None or self.state.get_num_spectra() == 0:
                 return
 
-            spec = self.state.exp[self.state.selected_spectrum_idx]
+            spec = self.state.get_spectrum(self.state.selected_spectrum_idx)
             mz_array, int_array = spec.get_peaks()
 
             if len(mz_array) == 0:
@@ -1276,10 +1276,10 @@ class SpectrumPanel(BasePanel):
             if hovered_mz is None:
                 return
 
-            if self.state.selected_spectrum_idx is None or self.state.exp is None:
+            if self.state.selected_spectrum_idx is None or self.state.get_num_spectra() == 0:
                 return
 
-            spec = self.state.exp[self.state.selected_spectrum_idx]
+            spec = self.state.get_spectrum(self.state.selected_spectrum_idx)
             mz_array, int_array = spec.get_peaks()
 
             if len(mz_array) == 0:
@@ -1319,7 +1319,8 @@ class SpectrumPanel(BasePanel):
 
     def _navigate(self, direction: int):
         """Navigate to prev/next spectrum."""
-        if self.state.exp is None or len(self.state.exp) == 0:
+        n = self.state.get_num_spectra()
+        if n == 0:
             return
 
         if self.state.selected_spectrum_idx is None:
@@ -1327,31 +1328,35 @@ class SpectrumPanel(BasePanel):
         else:
             new_idx = self.state.selected_spectrum_idx + direction
 
-        new_idx = max(0, min(len(self.state.exp) - 1, new_idx))
+        new_idx = max(0, min(n - 1, new_idx))
         self.show_spectrum(new_idx)
 
     def _navigate_to(self, index: int):
         """Navigate to a specific spectrum index."""
-        if self.state.exp is None or len(self.state.exp) == 0:
+        n = self.state.get_num_spectra()
+        if n == 0:
             return
-        index = max(0, min(len(self.state.exp) - 1, index))
+        index = max(0, min(n - 1, index))
         self.show_spectrum(index)
 
     def _navigate_by_ms_level(self, direction: int, ms_level: int):
         """Navigate to prev/next spectrum of specific MS level."""
-        if self.state.exp is None or len(self.state.exp) == 0:
+        n = self.state.get_num_spectra()
+        if n == 0:
             return
 
         start_idx = self.state.selected_spectrum_idx if self.state.selected_spectrum_idx is not None else -1
 
         if direction > 0:
-            for i in range(start_idx + 1, len(self.state.exp)):
-                if self.state.exp[i].getMSLevel() == ms_level:
+            for i in range(start_idx + 1, n):
+                spec = self.state.get_spectrum(i)
+                if spec is not None and spec.getMSLevel() == ms_level:
                     self.show_spectrum(i)
                     return
         else:
             for i in range(start_idx - 1, -1, -1):
-                if self.state.exp[i].getMSLevel() == ms_level:
+                spec = self.state.get_spectrum(i)
+                if spec is not None and spec.getMSLevel() == ms_level:
                     self.show_spectrum(i)
                     return
 

@@ -112,17 +112,17 @@ class TICPanel(BasePanel):
         # Add selected spectrum marker
         if (
             self.state.selected_spectrum_idx is not None
-            and self.state.exp is not None
-            and 0 <= self.state.selected_spectrum_idx < len(self.state.exp)
+            and 0 <= self.state.selected_spectrum_idx < self.state.get_num_spectra()
         ):
-            spec = self.state.exp[self.state.selected_spectrum_idx]
-            marker_rt = spec.getRT() / rt_divisor
-            fig.add_vline(
-                x=marker_rt,
-                line_color="#ff6b6b",
-                line_width=2,
-                line_dash="dash",
-            )
+            spec = self.state.get_spectrum(self.state.selected_spectrum_idx)
+            if spec is not None:
+                marker_rt = spec.getRT() / rt_divisor
+                fig.add_vline(
+                    x=marker_rt,
+                    line_color="#ff6b6b",
+                    line_width=2,
+                    line_dash="dash",
+                )
 
         # Layout
         rt_unit = "min" if self.state.rt_in_minutes else "s"
@@ -198,14 +198,17 @@ class TICPanel(BasePanel):
             clicked_rt *= 60.0
 
         # Find closest spectrum
-        if self.state.exp is not None:
+        n = self.state.get_num_spectra()
+        if n > 0:
             best_idx = 0
             best_diff = float("inf")
-            for i in range(len(self.state.exp)):
-                diff = abs(self.state.exp[i].getRT() - clicked_rt)
-                if diff < best_diff:
-                    best_diff = diff
-                    best_idx = i
+            for i in range(n):
+                spec = self.state.get_spectrum(i)
+                if spec is not None:
+                    diff = abs(spec.getRT() - clicked_rt)
+                    if diff < best_diff:
+                        best_diff = diff
+                        best_idx = i
 
             # Select spectrum (triggers spectrum panel update)
             self.state.select_spectrum(best_idx)

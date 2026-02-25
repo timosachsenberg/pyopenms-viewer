@@ -115,12 +115,14 @@ def _check_native_available() -> bool:
 def main(files, port, host, open_browser, native, dark, out_of_core, cache_dir):
     """pyopenms-viewer - Fast visualization of mass spectrometry data.
 
-    Load mzML, featureXML, and idXML files for visualization.
+    Load mzML, vendor RAW files, featureXML, and idXML files for visualization.
 
     \b
     Examples:
         pyopenms-viewer                              # Start empty
         pyopenms-viewer sample.mzML                  # Load mzML file
+        pyopenms-viewer sample.raw                   # Load Thermo RAW file
+        pyopenms-viewer sample.d                     # Load Bruker .d file
         pyopenms-viewer sample.mzML features.featureXML  # Load with features
         pyopenms-viewer sample.mzML ids.idXML        # Load with IDs
     """
@@ -135,6 +137,9 @@ def main(files, port, host, open_browser, native, dark, out_of_core, cache_dir):
         path = Path(filepath)
         ext = path.suffix.lower()
         if ext == ".mzml":
+            _cli_files["mzml"] = str(path.absolute())
+        elif ext in [".raw", ".d", ".wiff", ".wiff2"]:
+            # Vendor files - treat as mzml for loading
             _cli_files["mzml"] = str(path.absolute())
         elif ext == ".featurexml":
             _cli_files["featurexml"] = str(path.absolute())

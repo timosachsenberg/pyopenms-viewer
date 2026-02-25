@@ -14,7 +14,14 @@ from nicegui import app, run, ui
 from pyopenms_viewer.components.file_picker_storage import get_last_directory
 from pyopenms_viewer.components.local_file_picker import LocalFilePicker
 from pyopenms_viewer.core.state import ViewerState
-from pyopenms_viewer.loaders import FeatureLoader, IDLoader, MzMLLoader
+from pyopenms_viewer.loaders import (
+    ALPHARAW_AVAILABLE,
+    AlphaRawLoader,
+    FeatureLoader,
+    IDLoader,
+    MzMLLoader,
+    is_vendor_file,
+)
 from pyopenms_viewer.panels import (
     ChromatogramPanel,
     ExportPanel,
@@ -288,6 +295,47 @@ async def create_ui():
                     if filename.endswith(".mzml"):
                         await load_mzml(tmp_path, original_name)
 
+                    elif filename.endswith((".raw", ".d", ".wiff", ".wiff2")):
+                        # Vendor file - load directly with AlphaRaw
+                        # Special case: .d is a folder — cannot be uploaded via browser
+                        if filename.endswith(".d"):
+                            ui.notify(
+                                "Bruker .d folders cannot be uploaded via drag-and-drop. "
+                                "Use the open-file button in native mode (--native) or the local file picker.",
+                                type="warning",
+                                timeout=10000,
+                            )
+                        elif not ALPHARAW_AVAILABLE:
+                            ui.notify(
+                                "Vendor file support not available. Install with: uv sync --extra vendor",
+                                type="warning",
+                                timeout=10000
+                            )
+                        else:
+                            loader = AlphaRawLoader(state)
+                            ui.notify(f"Loading vendor file {original_name}...", type="info")
+                            success = await run.io_bound(loader.load_sync, tmp_path)
+                            if success:
+                                state.emit_data_loaded("mzml")
+                                if state.data_manager is not None:
+                                    peak_count = state.data_manager.get_peak_count()
+                                elif state.df is not None:
+                                    peak_count = len(state.df)
+                                else:
+                                    peak_count = 0
+                                info_text = f"Loaded: {original_name} | Spectra: {len(state.spectrum_data):,} | Peaks: {peak_count:,}"
+                                if state.out_of_core:
+                                    info_text += " | Out-of-core"
+                                if info_label:
+                                    info_label.set_text(info_text)
+                                ui.notify(f"Loaded vendor file {original_name} ({peak_count:,} peaks)", type="positive")
+                            else:
+                                ui.notify(
+                                    f"Failed to load vendor file {original_name}",
+                                    type="warning",
+                                    timeout=10000
+                                )
+
                     elif filename.endswith(".featurexml") or (filename.endswith(".xml") and "feature" in filename):
                         loader = FeatureLoader(state)
                         success = await run.io_bound(loader.load_sync, tmp_path)
@@ -314,11 +362,20 @@ async def create_ui():
 
                     else:
                         ui.notify(
-                            f"Unknown file type: {original_name}. Supported: .mzML, .featureXML, .idXML", type="warning"
+                            f"Unknown file type: {original_name}. Supported: .mzML, .raw, .d, .wiff, .featureXML, .idXML",
+                            type="warning"
                         )
 
                 except Exception as ex:
-                    ui.notify(f"Error loading {original_name}: {ex}", type="negative")
+                    # Ensure we're in UI context when showing error notification
+                    import traceback
+                    error_msg = f"Error loading {original_name}: {ex}"
+                    print(f"ERROR: {error_msg}")
+                    print(traceback.format_exc())
+                    try:
+                        ui.notify(error_msg, type="negative", timeout=10000)
+                    except Exception as notify_ex:
+                        print(f"Failed to show UI notification: {notify_ex}")
 
                 finally:
                     # Clean up temp file
@@ -337,8 +394,9 @@ async def create_ui():
                     files = await app.native.main_window.create_file_dialog(
                         allow_multiple=True,
                         file_types=(
-                            "Mass Spec Files (*.mzML;*.featureXML;*.idXML)",
+                            "Mass Spec Files (*.mzML;*.raw;*.d;*.wiff;*.wiff2;*.featureXML;*.idXML)",
                             "mzML Files (*.mzML)",
+                            "Vendor RAW Files (*.raw;*.d;*.wiff;*.wiff2)",
                             "Feature Files (*.featureXML)",
                             "ID Files (*.idXML)",
                             "All Files (*.*)",
@@ -355,6 +413,32 @@ async def create_ui():
                         try:
                             if ext == ".mzml":
                                 await load_mzml(filepath, name)
+                            elif ext in [".raw", ".d", ".wiff", ".wiff2"] or is_vendor_file(filepath):
+                                # Vendor file - use AlphaRaw
+                                if not ALPHARAW_AVAILABLE:
+                                    ui.notify(
+                                        "Vendor file support not available. Install with: uv sync --extra vendor",
+                                        type="warning",
+                                        timeout=10000
+                                    )
+                                else:
+                                    loader = AlphaRawLoader(state)
+                                    ui.notify(f"Loading vendor file {name}...", type="info")
+                                    success = await run.io_bound(loader.load_sync, filepath)
+                                    if success:
+                                        state.emit_data_loaded("mzml")
+                                        if state.data_manager is not None:
+                                            peak_count = state.data_manager.get_peak_count()
+                                        elif state.df is not None:
+                                            peak_count = len(state.df)
+                                        else:
+                                            peak_count = 0
+                                        info_text = f"Loaded: {name} | Spectra: {len(state.spectrum_data):,} | Peaks: {peak_count:,}"
+                                        if state.out_of_core:
+                                            info_text += " | Out-of-core"
+                                        if info_label:
+                                            info_label.set_text(info_text)
+                                        ui.notify(f"Loaded vendor file {name} ({peak_count:,} peaks)", type="positive")
                             elif ext == ".featurexml":
                                 loader = FeatureLoader(state)
                                 success = await run.io_bound(loader.load_sync, filepath)
@@ -437,7 +521,7 @@ async def create_ui():
 
             with upload_container:
                 ui.upload(on_upload=handle_upload, auto_upload=True, multiple=True).props(
-                    'hide-upload-btn no-thumbnails accept=".mzML,.mzml,.featureXML,.featurexml,.idXML,.idxml,.xml"'
+                    'hide-upload-btn no-thumbnails accept=".mzML,.mzml,.raw,.d,.wiff,.wiff2,.featureXML,.featurexml,.idXML,.idxml,.xml"'
                 ).classes("w-full border rounded")
 
             ui.separator().props("vertical").classes("h-6")
@@ -934,7 +1018,24 @@ async def create_ui():
         cli_files = get_cli_files()
 
         if cli_files["mzml"]:
-            await load_mzml(cli_files["mzml"])
+            filepath = cli_files["mzml"]
+            # Check if it's a vendor file
+            if is_vendor_file(filepath) or Path(filepath).suffix.lower() in [".raw", ".d", ".wiff", ".wiff2"]:
+                if not ALPHARAW_AVAILABLE:
+                    ui.notify(
+                        "Vendor file support not available. Install with: uv sync --extra vendor",
+                        type="warning",
+                        timeout=10000
+                    )
+                else:
+                    loader = AlphaRawLoader(state)
+                    ui.notify(f"Loading vendor file {Path(filepath).name}...", type="info")
+                    success = await run.io_bound(loader.load_sync, filepath)
+                    if success:
+                        state.emit_data_loaded("mzml")
+                        ui.notify(f"Loaded vendor file {Path(filepath).name}", type="positive")
+            else:
+                await load_mzml(filepath)
 
         if cli_files["featurexml"]:
             loader = FeatureLoader(state)

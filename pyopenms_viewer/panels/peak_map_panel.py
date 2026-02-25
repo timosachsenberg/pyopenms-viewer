@@ -519,6 +519,9 @@ class PeakMapPanel(BasePanel):
         # Phase 1 rasterization mode: exp is present even when df is None
         if self.state.exp is not None and len(self.state.exp) > 0:
             return True
+        # Vendor file mode: vendor_reader is set (peaks are in state.df or data_manager)
+        if self.state.vendor_reader is not None:
+            return True
         # In-memory mode with DataFrame
         if self.state.df is not None:
             return True
@@ -987,15 +990,18 @@ class PeakMapPanel(BasePanel):
                 )
 
         # Select nearest spectrum at the clicked RT
-        if self.state.exp is not None:
+        n = self.state.get_num_spectra()
+        if n > 0:
             clicked_rt, _ = self._pixel_to_data(e.image_x, e.image_y)
             best_idx = 0
             best_diff = float("inf")
-            for i in range(len(self.state.exp)):
-                diff = abs(self.state.exp[i].getRT() - clicked_rt)
-                if diff < best_diff:
-                    best_diff = diff
-                    best_idx = i
+            for i in range(n):
+                spec = self.state.get_spectrum(i)
+                if spec is not None:
+                    diff = abs(spec.getRT() - clicked_rt)
+                    if diff < best_diff:
+                        best_diff = diff
+                        best_idx = i
             self.state.select_spectrum(best_idx)
 
             # Also select nearest IM frame if ion mobility data is present
