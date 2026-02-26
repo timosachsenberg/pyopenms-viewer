@@ -22,7 +22,6 @@ Designed to handle **50+ million peaks** with smooth zooming and panning using s
 
 - **Peak Map Visualization** - Datashader-powered rendering for massive datasets
 - **Vendor File Support** - Direct loading of Thermo RAW, Bruker .d, and Sciex WIFF files (Windows only, via AlphaRaw)
-- **Auto-Conversion** - Automatic vendor file to mzML conversion on macOS/Linux (requires Docker)
 - **FeatureMap Overlay** - Display centroids, bounding boxes, and convex hulls
 - **idXML Overlay** - Show peptide identification precursor positions
 - **MS2 Spectrum Viewer** - Annotated spectrum viewer for peptide identifications
