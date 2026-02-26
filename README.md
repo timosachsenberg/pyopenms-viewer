@@ -29,7 +29,7 @@ Designed to handle **50+ million peaks** with smooth zooming and panning using s
 
 > **Note on Vendor Files**: 
 > - **Windows**: Direct vendor file loading works out-of-the-box
-> - **Manual conversion**: See [Vendor File Conversion Guide](docs/VENDOR_FILE_CONVERSION.md)
+
 
 
 ## Prerequisites (for source install)
