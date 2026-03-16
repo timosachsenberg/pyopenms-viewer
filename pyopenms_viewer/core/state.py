@@ -132,6 +132,7 @@ class ViewerState:
         self.view_im_max: Optional[float] = None
 
         # ========== FLAGS ==========
+        self.has_imzml: bool = False  # True when an imzML/ibd file pair is loaded
         self.has_faims: bool = False
         self.has_ion_mobility: bool = False
         self.has_chromatograms: bool = False
@@ -150,6 +151,8 @@ class ViewerState:
         self.current_file: Optional[str] = None
         self.features_file: Optional[str] = None
         self.id_file: Optional[str] = None
+        # Last load error message (set by loaders on failure)
+        self._last_load_error: str = ""
         # Tracks files currently being loaded to avoid duplicate concurrent loads
         self._loading_files: set[str] = set()
         # Thread-safe events for threads waiting on an in-progress load
@@ -847,6 +850,8 @@ class ViewerState:
         self.zoom_history = []
         self.spectrum_measurements = {}
         self.peak_annotations = {}
+        self.has_imzml = False
+        self._last_load_error = ""
 
     def clear_feature_data(self) -> None:
         """Clear feature-related data."""

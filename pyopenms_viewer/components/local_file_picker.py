@@ -24,6 +24,8 @@ from pyopenms_viewer.components.file_picker_storage import (
 # Map of file extensions to (icon, type label)
 _FILE_TYPE_INFO: dict[str, tuple[str, str]] = {
     ".mzml": ("science", "mzML File"),
+    ".imzml": ("biotech", "imzML File"),
+    ".ibd": ("storage", "imzML Binary Data"),
     ".featurexml": ("scatter_plot", "featureXML File"),
     ".idxml": ("fingerprint", "idXML File"),
     ".xml": ("code", "XML File"),
@@ -44,7 +46,7 @@ def _human_readable_size(size_bytes: int) -> str:
 class LocalFilePicker(ui.dialog):
     """A dialog for picking files from the local filesystem."""
 
-    SUPPORTED_EXTENSIONS = {".mzml", ".featurexml", ".idxml", ".xml"}
+    SUPPORTED_EXTENSIONS = {".mzml", ".imzml", ".ibd", ".featurexml", ".idxml", ".xml"}
 
     def __init__(
         self,
