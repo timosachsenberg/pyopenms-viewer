@@ -38,9 +38,7 @@ class ImzMLLoader:
     def __init__(self, state: ViewerState) -> None:
         self.state = state
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+  
 
     def load_sync(
         self,
@@ -84,9 +82,6 @@ class ImzMLLoader:
                 self.state._last_load_error = "No spectra found in imzML file"
                 return False
 
-            # ----------------------------------------------------------
-            # Phase 1 – iterate pixels and build MSExperiment + peak lists
-            # ----------------------------------------------------------
             from pyopenms import MSExperiment, MSSpectrum
 
             exp = MSExperiment()
@@ -145,9 +140,6 @@ class ImzMLLoader:
                         0.05 + 0.65 * (i + 1) / n_spectra,
                     )
 
-            # ----------------------------------------------------------
-            # Phase 2 – build peak DataFrame
-            # ----------------------------------------------------------
             _prog("Building peak DataFrame…", 0.72)
 
             # Ensure pyOpenMS knows the RT/mz extents (needed by rasterizeRTMZ)
@@ -171,9 +163,7 @@ class ImzMLLoader:
             )
             df["log_intensity"] = np.log1p(df["intensity"])
 
-            # ----------------------------------------------------------
-            # Phase 3 – build spectrum_data table (for spectra table panel)
-            # ----------------------------------------------------------
+       
             _prog("Extracting spectrum metadata…", 0.85)
             from pyopenms_viewer.loaders.spectrum_extractor import extract_spectrum_data
 
@@ -181,9 +171,6 @@ class ImzMLLoader:
             self.state.exp = exp
             spectrum_data = extract_spectrum_data(self.state, spectrum_stats=spectrum_stats)
 
-            # ----------------------------------------------------------
-            # Phase 4 – populate state
-            # ----------------------------------------------------------
             _prog("Updating viewer state…", 0.92)
 
             coords_arr = np.array(parser.coordinates)
