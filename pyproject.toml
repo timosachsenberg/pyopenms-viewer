@@ -30,7 +30,7 @@ dependencies = [
     "numpy>=1.24.0",
     "colorcet>=3.0.0",
     "pillow>=10.0.0",
-    "pyopenms==3.6.0.dev20260205",
+    "pyopenms>=3.0.0",
     "pyopenms-viz>=0.1.0",
     "click>=8.0.0",
     "plotly>=5.0.0",
