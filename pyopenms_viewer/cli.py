@@ -167,6 +167,23 @@ def main(files, port, host, open_browser, native, dark, out_of_core, cache_dir):
     # Store dark mode preference
     os.environ["PYOPENMS_VIEWER_DARK_MODE"] = "1" if dark else "0"
 
+    # If the requested port is busy, find a free one automatically
+    import socket
+
+    def _is_port_free(p: int) -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                s.bind(("", p))
+                return True
+            except OSError:
+                return False
+
+    if not _is_port_free(port):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("", 0))
+            port = s.getsockname()[1]
+
     # Run the UI
     ui.run(
         title="pyopenms-viewer",

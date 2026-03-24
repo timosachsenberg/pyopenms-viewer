@@ -94,6 +94,20 @@ datas += tmp_ret[0]
 binaries += tmp_ret[1]
 hiddenimports += tmp_ret[2]
 
+# Collect pywebview (native window mode)
+tmp_ret = collect_all('webview')
+datas += tmp_ret[0]
+binaries += tmp_ret[1]
+hiddenimports += tmp_ret[2]
+
+hiddenimports += [
+    'webview',
+    'webview.platforms.cocoa',
+    'webview.platforms.gtk',
+    'webview.platforms.winforms',
+    'pywebview',
+]
+
 # Add explicit hidden imports for pyopenms
 # These tell PyInstaller what to look for, but don't actually import
 hiddenimports += [
