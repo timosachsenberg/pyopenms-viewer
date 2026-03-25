@@ -168,3 +168,21 @@ if getattr(sys, "frozen", False) and sys.platform == "win32":
                 debug_print("[pyi_rth_pyopenms] WARNING: share/OpenMS not found, OPENMS_DATA_PATH not set")
 
         debug_print("[pyi_rth_pyopenms] Runtime hook completed successfully")
+
+if getattr(sys, "frozen", False) and sys.platform == "darwin":
+    exe_dir = getattr(sys, "_MEIPASS", None)
+    if exe_dir:
+        # Set OPENMS_DATA_PATH so MzMLFile().load() can find CV/data files (psi-ms.obo etc.)
+        openms_share_dir = os.path.join(exe_dir, "share", "OpenMS")
+        if os.path.exists(openms_share_dir):
+            os.environ["OPENMS_DATA_PATH"] = openms_share_dir
+        else:
+            share_dir = os.path.join(exe_dir, "share")
+            if os.path.exists(share_dir):
+                os.environ["OPENMS_DATA_PATH"] = share_dir
+
+        # Help the dynamic linker find bundled dylibs from pyopenms_dlls/
+        pyopenms_dlls_dir = os.path.join(exe_dir, "pyopenms_dlls")
+        if os.path.exists(pyopenms_dlls_dir):
+            existing = os.environ.get("DYLD_LIBRARY_PATH", "")
+            os.environ["DYLD_LIBRARY_PATH"] = pyopenms_dlls_dir + (":" + existing if existing else "")

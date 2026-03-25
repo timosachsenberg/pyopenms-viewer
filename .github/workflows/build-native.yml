@@ -109,10 +109,9 @@ jobs:
       - name: Package macOS app
         if: runner.os == 'macOS'
         run: |
-          # macOS packaging: build an app bundle and zip it for release
-          python -m PyInstaller --noconfirm --onedir --windowed --name pyopenms-viewer \
-            --collect-all plotly --additional-hooks-dir=. \
-            pyopenms_viewer/__main__.py
+          # The .app bundle was already built by the spec in "Build native app (macOS)".
+          # Only zip it here — do NOT re-run PyInstaller with minimal flags, as that
+          # would overwrite the fully-configured spec build with a broken minimal one.
           ls -lh dist/
           ditto -c -k --sequesterRsrc --keepParent dist/pyopenms-viewer.app dist/pyopenms-viewer-macos.zip
       - name: Build native app (Linux)

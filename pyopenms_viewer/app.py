@@ -147,7 +147,7 @@ async def create_ui():
 
             def _update_info_label(name: str) -> int:
                 """Build info text from state, update the info label, and return peak count."""
-                if state.data_manager is not None:
+                if state.data_manager is not None and state.data_manager._peaks_registered:
                     peak_count = state.data_manager.get_peak_count()
                 elif state.df is not None:
                     peak_count = len(state.df)
