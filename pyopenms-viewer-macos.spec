@@ -35,7 +35,7 @@ hiddenimports += tmp_ret[2]
 
 # Strip any PyQt6 binaries/datas that collect_all may have pulled in transitively.
 # pyopenms ships its own Qt dylibs; loading both causes a duplicate-QtCore SIGSEGV.
-binaries = [(dest, src, typ) for (dest, src, typ) in binaries if 'PyQt6' not in dest and 'PyQt6' not in src]
+binaries = [(src, dest) for (src, dest) in binaries if 'PyQt6' not in src and 'PyQt6' not in dest]
 datas    = [(src, dest) for (src, dest) in datas    if 'PyQt6' not in src and 'PyQt6' not in dest]
 
 hiddenimports += [
