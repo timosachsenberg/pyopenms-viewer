@@ -151,4 +151,59 @@ if getattr(sys, "frozen", False) and sys.platform == "win32":
             os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = qt_plugins_dir
             debug_print(f"[pyi_rth_pyopenms] QT_PLUGIN_PATH set to: {qt_plugins_dir}")
 
+        # CRITICAL: Set OPENMS_DATA_PATH so pyopenms can find its CV/data files
+        # Without this, MzMLFile().load() may fail CV validation or error on
+        # the first mzML load because it cannot locate psi-ms.obo and similar files.
+        # pyopenms may ship share/OpenMS/ either at exe_dir level or inside exe_dir/pyopenms/
+        _openms_data_set = False
+        for _candidate in [
+            os.path.join(exe_dir, "share", "OpenMS"),
+            os.path.join(exe_dir, "pyopenms", "share", "OpenMS"),
+        ]:
+            if os.path.exists(_candidate):
+                os.environ["OPENMS_DATA_PATH"] = _candidate
+                debug_print(f"[pyi_rth_pyopenms] OPENMS_DATA_PATH set to: {_candidate}")
+                _openms_data_set = True
+                break
+        if not _openms_data_set:
+            # Fallback: point at the share/ root and let OpenMS search sub-dirs
+            for _candidate in [
+                os.path.join(exe_dir, "share"),
+                os.path.join(exe_dir, "pyopenms", "share"),
+            ]:
+                if os.path.exists(_candidate):
+                    os.environ["OPENMS_DATA_PATH"] = _candidate
+                    debug_print(f"[pyi_rth_pyopenms] OPENMS_DATA_PATH set to share/ root: {_candidate}")
+                    _openms_data_set = True
+                    break
+        if not _openms_data_set:
+            debug_print("[pyi_rth_pyopenms] WARNING: share/OpenMS not found in any location, OPENMS_DATA_PATH not set")
+
         debug_print("[pyi_rth_pyopenms] Runtime hook completed successfully")
+
+if getattr(sys, "frozen", False) and sys.platform == "darwin":
+    exe_dir = getattr(sys, "_MEIPASS", None)
+    if exe_dir:
+        # Set OPENMS_DATA_PATH so MzMLFile().load() can find CV/data files (psi-ms.obo etc.)
+        # Try both exe_dir/share/OpenMS and exe_dir/pyopenms/share/OpenMS
+        for _candidate in [
+            os.path.join(exe_dir, "share", "OpenMS"),
+            os.path.join(exe_dir, "pyopenms", "share", "OpenMS"),
+        ]:
+            if os.path.exists(_candidate):
+                os.environ["OPENMS_DATA_PATH"] = _candidate
+                break
+        else:
+            for _candidate in [
+                os.path.join(exe_dir, "share"),
+                os.path.join(exe_dir, "pyopenms", "share"),
+            ]:
+                if os.path.exists(_candidate):
+                    os.environ["OPENMS_DATA_PATH"] = _candidate
+                    break
+
+        # Help the dynamic linker find bundled dylibs from pyopenms_dlls/
+        pyopenms_dlls_dir = os.path.join(exe_dir, "pyopenms_dlls")
+        if os.path.exists(pyopenms_dlls_dir):
+            existing = os.environ.get("DYLD_LIBRARY_PATH", "")
+            os.environ["DYLD_LIBRARY_PATH"] = pyopenms_dlls_dir + (":" + existing if existing else "")
