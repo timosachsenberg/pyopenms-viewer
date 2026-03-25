@@ -76,7 +76,19 @@ if sys.platform == 'win32':
                 elif file.endswith('.py'):
                     # Python source files
                     datas.append((src, dest_dir))
-                    
+
+        # Also collect pyopenms.libs/ — on some pyopenms builds (e.g. 3.6 dev)
+        # native DLLs live in a sibling directory rather than inside the package.
+        pyopenms_libs_dir = os.path.join(pkg_base, 'pyopenms.libs')
+        if os.path.exists(pyopenms_libs_dir):
+            print(f"[SPEC] Collecting pyopenms.libs DLLs from {pyopenms_libs_dir}", flush=True)
+            for root, dirs, files in os.walk(pyopenms_libs_dir):
+                for file in files:
+                    if file.endswith('.dll'):
+                        src = os.path.join(root, file)
+                        binaries.append((src, 'pyopenms_dlls'))
+                        print(f"[SPEC] Collected pyopenms.libs DLL: {file} -> pyopenms_dlls/", flush=True)
+            
         print(f"[SPEC] Total binaries collected: {len(binaries)}", flush=True)
         
     except Exception as e:

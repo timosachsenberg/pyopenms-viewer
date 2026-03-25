@@ -151,4 +151,20 @@ if getattr(sys, "frozen", False) and sys.platform == "win32":
             os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = qt_plugins_dir
             debug_print(f"[pyi_rth_pyopenms] QT_PLUGIN_PATH set to: {qt_plugins_dir}")
 
+        # CRITICAL: Set OPENMS_DATA_PATH so pyopenms can find its CV/data files
+        # Without this, MzMLFile().load() may fail CV validation or error on
+        # the first mzML load because it cannot locate psi-ms.obo and similar files.
+        openms_share_dir = os.path.join(exe_dir, "share", "OpenMS")
+        if os.path.exists(openms_share_dir):
+            os.environ["OPENMS_DATA_PATH"] = openms_share_dir
+            debug_print(f"[pyi_rth_pyopenms] OPENMS_DATA_PATH set to: {openms_share_dir}")
+        else:
+            # Fallback: point at the share/ root and let OpenMS search sub-dirs
+            share_dir = os.path.join(exe_dir, "share")
+            if os.path.exists(share_dir):
+                os.environ["OPENMS_DATA_PATH"] = share_dir
+                debug_print(f"[pyi_rth_pyopenms] OPENMS_DATA_PATH set to share/ root: {share_dir}")
+            else:
+                debug_print("[pyi_rth_pyopenms] WARNING: share/OpenMS not found, OPENMS_DATA_PATH not set")
+
         debug_print("[pyi_rth_pyopenms] Runtime hook completed successfully")

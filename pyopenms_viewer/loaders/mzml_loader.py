@@ -124,13 +124,22 @@ class MzMLLoader:
         """
         try:
             filename = Path(filepath).name
+            # Ensure filepath is a plain str (not Path) so pyopenms C++ binding
+            # receives a native string on all platforms including Windows.
+            fp_str = str(filepath)
             print(f"[PID:{os.getpid()} TID:{threading.get_ident()}] Reading {filename} with MzMLFile (this may take a while)...")
             self.state.exp = MSExperiment()
-            MzMLFile().load(filepath, self.state.exp)
+            MzMLFile().load(fp_str, self.state.exp)
             print(f"[PID:{os.getpid()} TID:{threading.get_ident()}] Loaded {len(self.state.exp)} spectra from {filename}")
-            return len(self.state.exp) > 0
+            if len(self.state.exp) == 0:
+                self.state.last_load_error = f"The file '{filename}' was parsed but contains no spectra."
+                return False
+            return True
         except Exception as e:
-            print(f"Error parsing mzML: {e}")
+            import traceback as _tb
+            details = _tb.format_exc()
+            print(f"Error parsing mzML: {e}\n{details}")
+            self.state.last_load_error = str(e)
             return False
 
     def process(

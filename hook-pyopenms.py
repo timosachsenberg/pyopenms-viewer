@@ -76,6 +76,18 @@ try:
                     rel_path = os.path.relpath(root, pkg_base)
                     datas.append((src, rel_path))
 
+    # Collect pyopenms.libs/ (sibling directory used by some pyopenms wheel builds,
+    # e.g. 3.6.0.dev, to store native libraries outside the package directory).
+    pyopenms_libs_dir = os.path.join(pkg_base, "pyopenms.libs")
+    if os.path.exists(pyopenms_libs_dir):
+        print(f"hook-pyopenms: Collecting pyopenms.libs DLLs from {pyopenms_libs_dir}")
+        for root, _dirs, files in os.walk(pyopenms_libs_dir):
+            for file in files:
+                if file.endswith((".dll", ".so", ".dylib")):
+                    src = os.path.join(root, file)
+                    binaries.append((src, "pyopenms_dlls"))
+                    print(f"hook-pyopenms: Found pyopenms.libs DLL: {file} -> pyopenms_dlls/")
+
     # Discover hidden imports by scanning __init__.py without importing
     # This avoids the import-time DLL failure
     init_file = os.path.join(pkg_dir, "__init__.py")

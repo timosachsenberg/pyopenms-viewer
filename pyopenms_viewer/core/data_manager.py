@@ -120,9 +120,10 @@ class DataManager:
             self._peak_cache_path = cache_path
 
             # Register Parquet as view
+            # Use as_posix() so DuckDB receives forward-slash paths on Windows too
             self.conn.execute(f"""
                 CREATE VIEW peaks AS
-                SELECT * FROM read_parquet('{cache_path}')
+                SELECT * FROM read_parquet('{cache_path.as_posix()}')
             """)
             self._peaks_registered = True
             self._df = None
@@ -170,7 +171,7 @@ class DataManager:
 
             self.conn.execute(f"""
                 CREATE VIEW im_peaks AS
-                SELECT * FROM read_parquet('{cache_path}')
+                SELECT * FROM read_parquet('{cache_path.as_posix()}')
             """)
             self._im_peaks_registered = True
             self._im_df = None

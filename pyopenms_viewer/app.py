@@ -263,7 +263,8 @@ async def create_ui():
                     peak_count = _update_info_label(name)
                     safe_notify(f"Loaded {peak_count:,} peaks from {name}", type="positive")
                 else:
-                    safe_notify(f"Failed to load {name}", type="negative")
+                    err = state.last_load_error or "unknown error"
+                    safe_notify(f"Failed to load {name}: {err}", type="negative")
 
             # Store loaders in state for use by panels
             state._load_mzml = load_mzml
