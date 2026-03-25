@@ -42,8 +42,9 @@ try:
                     # The runtime hook will add this directory to PATH
                     binaries.append((src, "pyopenms_dlls"))
                     print(f"hook-pyopenms: Found DLL: {file} -> pyopenms_dlls/")
-                elif file.endswith((".pyi", ".json", ".xml", ".txt", ".dat")):
-                    # Data files preserve structure
+                elif not file.endswith((".pyd", ".so", ".dll", ".dylib", ".pdb", ".pyc", ".pyo")):
+                    # Collect ALL data files (includes .obo, .ini, .fasta, .json, .xml, .txt, etc.)
+                    # The .obo CV files (psi-ms.obo) are critical for MzMLFile().load()
                     datas.append((src, dest_dir))
 
         # CRITICAL: Manually collect Qt6 plugins that pyopenms needs
@@ -60,7 +61,20 @@ try:
                         binaries.append((src, rel_path))
                         print(f"hook-pyopenms: Found Qt6 plugin: {file}")
 
-    # Also collect share/ directory if it exists (OpenMS THIRDPARTY libs)
+    # Also check for share/ INSIDE the package directory (pyopenms may ship share/OpenMS/ inside pkg_dir)
+    share_in_pkg_dir = os.path.join(pkg_dir, "share")
+    if os.path.exists(share_in_pkg_dir):
+        print(f"hook-pyopenms: Collecting from share inside pkg_dir: {share_in_pkg_dir}")
+        for root, _dirs, files in os.walk(share_in_pkg_dir):
+            for file in files:
+                src = os.path.join(root, file)
+                rel_path = os.path.join("pyopenms", os.path.relpath(root, pkg_dir))
+                if file.endswith((".dll", ".so", ".dylib")):
+                    binaries.append((src, "pyopenms_dlls"))
+                else:
+                    datas.append((src, rel_path))
+
+    # Also collect share/ directory at the pkg_base level (OpenMS THIRDPARTY libs)
     share_dir = os.path.join(pkg_base, "share")
     if os.path.exists(share_dir):
         print(f"hook-pyopenms: Collecting from share directory: {share_dir}")

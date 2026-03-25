@@ -73,9 +73,12 @@ if sys.platform == 'win32':
                     # DLLs go to pyopenms_dlls/ to avoid Qt6 conflicts
                     binaries.append((src, 'pyopenms_dlls'))
                     print(f"[SPEC] Collected .dll: {file} -> pyopenms_dlls/", flush=True)
-                elif file.endswith('.py'):
-                    # Python source files
+                elif not file.endswith(('.pyd', '.dll', '.pdb', '.pyc', '.pyo')):
+                    # Collect ALL data files: .py, .obo (CV files!), .json, .xml, .ini, .txt, etc.
+                    # .obo files like psi-ms.obo are critical for MzMLFile().load()
                     datas.append((src, dest_dir))
+                    if not file.endswith('.py'):
+                        print(f"[SPEC] Collected data: {file} -> {dest_dir}/", flush=True)
 
         # Also collect pyopenms.libs/ — on some pyopenms builds (e.g. 3.6 dev)
         # native DLLs live in a sibling directory rather than inside the package.
