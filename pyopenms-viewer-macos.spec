@@ -33,11 +33,6 @@ datas += tmp_ret[0]
 binaries += tmp_ret[1]
 hiddenimports += tmp_ret[2]
 
-# Strip any PyQt6 binaries/datas that collect_all may have pulled in transitively.
-# pyopenms ships its own Qt dylibs; loading both causes a duplicate-QtCore SIGSEGV.
-binaries = [(src, dest) for (src, dest) in binaries if 'PyQt6' not in src and 'PyQt6' not in dest]
-datas    = [(src, dest) for (src, dest) in datas    if 'PyQt6' not in src and 'PyQt6' not in dest]
-
 hiddenimports += [
     'webview',
     'webview.platforms.cocoa',
@@ -70,12 +65,7 @@ a = Analysis(
     hookspath=['.', 'pre_safe_import_module'],
     hooksconfig={},
     runtime_hooks=['pyi_rth_pyopenms.py'],
-    # Exclude PyQt6 entirely on macOS: pyopenms bundles its own Qt dylibs in
-    # __dot__dylibs/, and the app uses NiceGUI (web) + pywebview (WebKit) which
-    # do not need PyQt6. Bundling both causes a duplicate QtCore crash:
-    # PyQt6/QtCore.abi3.so and pyopenms/__dot__dylibs/QtCore are both loaded,
-    # their global constructors collide, and CFBundleCopyBundleURL segfaults.
-    excludes=['PyQt6', 'PyQt5', 'PySide2', 'PySide6'],
+    excludes=[],
     noarchive=False,
     optimize=0,
 )

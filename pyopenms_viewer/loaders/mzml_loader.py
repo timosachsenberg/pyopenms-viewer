@@ -8,11 +8,8 @@ Two-phase loading:
 2. process() - Extract peaks, TIC, chromatograms, ion mobility data
 """
 
-import gzip
 import os
 import re
-import shutil
-import tempfile
 import threading
 from pathlib import Path
 from typing import Callable, Optional
@@ -129,24 +126,7 @@ class MzMLLoader:
         # Ensure filepath is a plain str (not Path) so pyopenms C++ binding
         # receives a native string on all platforms including Windows.
         fp_str = str(filepath)
-
-        tmp_path: Optional[str] = None
         try:
-            # Detect gzip-compressed files (magic bytes 0x1f 0x8b).
-            # Some software writes gzip-compressed mzML with a plain .mzML extension
-            # rather than .mzML.gz, which causes OpenMS's XML parser to fail with a
-            # cryptic "Parse Error" / fatalError from XMLHandler.cpp.
-            with open(fp_str, "rb") as _fh:
-                magic = _fh.read(2)
-            if magic == b"\x1f\x8b":
-                print(f"[PID:{os.getpid()} TID:{threading.get_ident()}] "
-                      f"{filename} is gzip-compressed – decompressing to temp file...")
-                fd, tmp_path = tempfile.mkstemp(suffix=".mzML")
-                os.close(fd)
-                with gzip.open(fp_str, "rb") as gz_in, open(tmp_path, "wb") as tmp_out:
-                    shutil.copyfileobj(gz_in, tmp_out)
-                fp_str = tmp_path
-
             print(f"[PID:{os.getpid()} TID:{threading.get_ident()}] Reading {filename} with MzMLFile (this may take a while)...")
             self.state.exp = MSExperiment()
             MzMLFile().load(fp_str, self.state.exp)
@@ -159,23 +139,8 @@ class MzMLLoader:
             import traceback as _tb
             details = _tb.format_exc()
             print(f"Error parsing mzML: {e}\n{details}")
-            msg = str(e)
-            # Translate the raw C++ XMLHandler fatalError into something readable
-            if "fatalError" in msg or "Parse Error" in msg or "XMLHandler" in msg:
-                msg = (
-                    f"XML parse error in '{filename}': the file may be malformed, "
-                    "use an unsupported encoding, or be corrupted. "
-                    "Try opening it in a text editor to check for obvious issues."
-                )
-            self.state.last_load_error = msg
+            self.state.last_load_error = str(e)
             return False
-        finally:
-            # Clean up the decompressed temp file (if any)
-            if tmp_path is not None:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
 
     def process(
         self,
