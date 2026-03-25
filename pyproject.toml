@@ -78,6 +78,9 @@ build-backend = "hatchling.build"
 packages = ["pyopenms_viewer"]
 
 [tool.ruff]
+ 
+[tool.pip]
+extra-index-url = ["https://pypi.cs.uni-tuebingen.de/simple/"]
 line-length = 120
 target-version = "py39"
 

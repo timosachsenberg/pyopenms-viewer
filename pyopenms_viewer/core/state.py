@@ -150,6 +150,7 @@ class ViewerState:
         self.current_file: Optional[str] = None
         self.features_file: Optional[str] = None
         self.id_file: Optional[str] = None
+        self.last_load_error: Optional[str] = None  # Set by loaders on failure
         # Tracks files currently being loaded to avoid duplicate concurrent loads
         self._loading_files: set[str] = set()
         # Thread-safe events for threads waiting on an in-progress load

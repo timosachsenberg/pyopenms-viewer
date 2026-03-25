@@ -25,7 +25,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller pyinstaller-hooks-contrib
-          pip install -e ".[native]"
+          pip install --extra-index-url https://pypi.cs.uni-tuebingen.de/simple/ "pyopenms==3.6.0.dev20260205" -e ".[native]"
 
       - name: Prepare DLL search paths for PyInstaller
         shell: pwsh

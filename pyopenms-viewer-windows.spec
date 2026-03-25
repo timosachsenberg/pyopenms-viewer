@@ -73,10 +73,25 @@ if sys.platform == 'win32':
                     # DLLs go to pyopenms_dlls/ to avoid Qt6 conflicts
                     binaries.append((src, 'pyopenms_dlls'))
                     print(f"[SPEC] Collected .dll: {file} -> pyopenms_dlls/", flush=True)
-                elif file.endswith('.py'):
-                    # Python source files
+                elif not file.endswith(('.pyd', '.dll', '.pdb', '.pyc', '.pyo')):
+                    # Collect ALL data files: .py, .obo (CV files!), .json, .xml, .ini, .txt, etc.
+                    # .obo files like psi-ms.obo are critical for MzMLFile().load()
                     datas.append((src, dest_dir))
-                    
+                    if not file.endswith('.py'):
+                        print(f"[SPEC] Collected data: {file} -> {dest_dir}/", flush=True)
+
+        # Also collect pyopenms.libs/ — on some pyopenms builds (e.g. 3.6 dev)
+        # native DLLs live in a sibling directory rather than inside the package.
+        pyopenms_libs_dir = os.path.join(pkg_base, 'pyopenms.libs')
+        if os.path.exists(pyopenms_libs_dir):
+            print(f"[SPEC] Collecting pyopenms.libs DLLs from {pyopenms_libs_dir}", flush=True)
+            for root, dirs, files in os.walk(pyopenms_libs_dir):
+                for file in files:
+                    if file.endswith('.dll'):
+                        src = os.path.join(root, file)
+                        binaries.append((src, 'pyopenms_dlls'))
+                        print(f"[SPEC] Collected pyopenms.libs DLL: {file} -> pyopenms_dlls/", flush=True)
+            
         print(f"[SPEC] Total binaries collected: {len(binaries)}", flush=True)
         
     except Exception as e:
@@ -93,6 +108,20 @@ tmp_ret = collect_all('nicegui')
 datas += tmp_ret[0]
 binaries += tmp_ret[1]
 hiddenimports += tmp_ret[2]
+
+# Collect pywebview (native window mode)
+tmp_ret = collect_all('webview')
+datas += tmp_ret[0]
+binaries += tmp_ret[1]
+hiddenimports += tmp_ret[2]
+
+hiddenimports += [
+    'webview',
+    'webview.platforms.cocoa',
+    'webview.platforms.gtk',
+    'webview.platforms.winforms',
+    'pywebview',
+]
 
 # Add explicit hidden imports for pyopenms
 # These tell PyInstaller what to look for, but don't actually import

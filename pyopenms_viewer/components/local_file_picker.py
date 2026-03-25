@@ -210,6 +210,14 @@ class LocalFilePicker(ui.dialog):
             if desktop.is_dir():
                 self._sidebar_item("desktop_windows", "Desktop", desktop)
 
+            downloads = Path.home() / "Downloads"
+            if downloads.is_dir():
+                self._sidebar_item("download", "Downloads", downloads)
+
+            documents = Path.home() / "Documents"
+            if documents.is_dir():
+                self._sidebar_item("description", "Documents", documents)
+
             # Windows drive letters
             if platform.system() == "Windows":
                 try:
