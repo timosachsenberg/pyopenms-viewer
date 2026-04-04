@@ -271,7 +271,9 @@ async def create_ui():
                     peak_count = _update_info_label(name)
                     safe_notify(f"Loaded {peak_count:,} peaks from {name}", type="positive")
                 else:
-                    safe_notify(f"Failed to load {name}", type="negative")
+                    err = state.last_load_error or "unknown error"
+                    safe_notify(f"Failed to load {name}: {err}", type="negative")
+                    safe_set_label(info_label, f"Load failed: {err}")
 
             # Store loaders in state for use by panels
             state._load_mzml = load_mzml
@@ -329,7 +331,16 @@ async def create_ui():
                 suffix = Path(filename).suffix
                 fd, tmp_path = tempfile.mkstemp(suffix=suffix)
                 os.close(fd)
-                await file.save(tmp_path)
+                try:
+                    await file.save(tmp_path)
+                except Exception as save_ex:
+                    safe_notify(f"Failed to save upload for {original_name}: {save_ex}", type="negative")
+                    safe_set_label(info_label, f"Upload save failed: {save_ex}")
+                    try:
+                        Path(tmp_path).unlink()
+                    except Exception:
+                        pass
+                    return
 
                 try:
                     if filename.endswith(".mzml"):
@@ -406,6 +417,7 @@ async def create_ui():
 
                 except Exception as ex:
                     ui.notify(f"Error loading {original_name}: {ex}", type="negative")
+                    safe_set_label(info_label, f"Load error: {ex}")
 
                 finally:
                     # Clean up temp file
