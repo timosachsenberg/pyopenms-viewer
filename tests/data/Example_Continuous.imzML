@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Source: https://github.com/alexandrovteam/pyimzML/tree/master/tests/data - License: Apache 2.0 -->
 <mzML xmlns="http://psi.hupo.org/ms/mzml"
       xmlns:cv="http://psi.hupo.org/ms/mzml"
       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
