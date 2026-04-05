@@ -136,6 +136,8 @@ def main(files, port, host, open_browser, native, dark, out_of_core, cache_dir):
         ext = path.suffix.lower()
         if ext == ".mzml":
             _cli_files["mzml"] = str(path.absolute())
+        elif ext == ".imzml":
+            _cli_files["imzml"] = str(path.absolute())
         elif ext == ".featurexml":
             _cli_files["featurexml"] = str(path.absolute())
         elif ext == ".idxml":
