@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="ISO-8859-1"?>
+<!-- Source: https://github.com/alexandrovteam/pyimzML/tree/master/tests/data - License: Apache 2.0 -->
 <mzML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://psi.hupo.org/ms/mzml http://psidev.info/files/ms/mzML/xsd/mzML1.1.0.xsd" xmlns="http://psi.hupo.org/ms/mzml" version="1.1">
   <cvList count="4">
     <cv URI="http://ontologies.berkeleybop.org/pato.obo" fullName="Phenotype And Trait Ontology" id="PATO" version="releases/2017-07-10"/>
@@ -23,8 +24,8 @@
     </sourceFileList>
     <contact>
       <cvParam cvRef="MS" accession="MS:1000586" name="contact name" value="Thorsten Schramm"/>
-      <cvParam cvRef="MS" accession="MS:1000590" name="contact affiliation" value="Institut für Anorganische und Analytische Chemie"/>
-      <cvParam cvRef="MS" accession="MS:1000587" name="contact address" value="Schubertstraße 60, Haus 16, Gießen, Germany"/>
+      <cvParam cvRef="MS" accession="MS:1000590" name="contact affiliation" value="Institut fÃ¼r Anorganische und Analytische Chemie"/>
+      <cvParam cvRef="MS" accession="MS:1000587" name="contact address" value="SchubertstraÃŸe 60, Haus 16, GieÃŸen, Germany"/>
       <cvParam cvRef="MS" accession="MS:1000589" name="contact email" value="thorsten.schramm@anorg.chemie.uni-.giessen.de"/>
     </contact>
   </fileDescription>
