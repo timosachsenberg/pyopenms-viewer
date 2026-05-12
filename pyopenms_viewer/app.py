@@ -9,7 +9,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from nicegui import app, run, ui
+from nicegui import app, context, run, ui
 
 from pyopenms_viewer.components.file_picker_storage import get_last_directory
 from pyopenms_viewer.components.local_file_picker import LocalFilePicker
@@ -37,6 +37,22 @@ _LOAD_EVENTS_LOCK = asyncio.Lock()
 # Temporary directories used for pairing imzML + ibd uploads.
 # Key: lowercase file stem; value: Path to temp directory.
 _IMZML_UPLOAD_DIRS: dict[str, Path] = {}
+
+# Native window file-drop wiring. `_drop_loader` is reassigned by each
+# `create_ui()` call so the latest page's client/state is the load target;
+# `app.native.on('drop', ...)` is registered only once per process because
+# the underlying handler list appends on every registration.
+_drop_loader = None
+_drop_registered = False
+
+
+async def _handle_native_drop(e) -> None:
+    """Forward files dropped onto the native window to the active page loader."""
+    if _drop_loader is None:
+        return
+    for path in e.args.get("files", []) or []:
+        if path:
+            await _drop_loader(path)
 
 
 async def create_ui():
@@ -317,6 +333,50 @@ async def create_ui():
                         type="negative",
                     )
 
+            async def load_file_by_path(filepath: str) -> None:
+                """Dispatch a filesystem path to the right loader by extension."""
+                ext = Path(filepath).suffix.lower()
+                name = Path(filepath).name
+                try:
+                    if ext == ".mzml":
+                        await load_mzml(filepath, name)
+                    elif ext == ".imzml":
+                        await load_imzml(filepath, name)
+                    elif ext == ".featurexml":
+                        loader = FeatureLoader(state)
+                        success = await run.io_bound(loader.load_sync, filepath)
+                        if success:
+                            state.emit_data_loaded("features")
+                            ui.notify(
+                                f"Loaded {state.feature_map.size():,} features from {name}", type="positive"
+                            )
+                    elif ext == ".idxml":
+                        loader = IDLoader(state)
+                        success = await run.io_bound(loader.load_sync, filepath)
+                        if success:
+                            state.emit_data_loaded("ids")
+                            ui.notify(f"Loaded IDs from {name}", type="positive")
+                    else:
+                        ui.notify(f"Unknown file type: {name}", type="warning")
+                except Exception as ex:
+                    ui.notify(f"Error loading {name}: {ex}", type="negative")
+
+            # Wire the native window file-drop event into this page's loader.
+            # `app.native.on` is a process-global event manager that appends on
+            # each call, so we register the bridge once and use a module-level
+            # pointer that always refers to the latest page's dispatcher.
+            client = context.client
+
+            async def _drop_dispatch(filepath: str) -> None:
+                with client:
+                    await load_file_by_path(filepath)
+
+            global _drop_loader, _drop_registered
+            _drop_loader = _drop_dispatch
+            if not _drop_registered and app.native.main_window:
+                app.native.on("drop", _handle_native_drop)
+                _drop_registered = True
+
             async def handle_upload(e):
                 """Handle uploaded file - detect type and load appropriately.
 
@@ -448,32 +508,7 @@ async def create_ui():
                         return
 
                     for filepath in files:
-                        ext = Path(filepath).suffix.lower()
-                        name = Path(filepath).name
-
-                        try:
-                            if ext == ".mzml":
-                                await load_mzml(filepath, name)
-                            elif ext == ".imzml":
-                                await load_imzml(filepath, name)
-                            elif ext == ".featurexml":
-                                loader = FeatureLoader(state)
-                                success = await run.io_bound(loader.load_sync, filepath)
-                                if success:
-                                    state.emit_data_loaded("features")
-                                    ui.notify(
-                                        f"Loaded {state.feature_map.size():,} features from {name}", type="positive"
-                                    )
-                            elif ext == ".idxml":
-                                loader = IDLoader(state)
-                                success = await run.io_bound(loader.load_sync, filepath)
-                                if success:
-                                    state.emit_data_loaded("ids")
-                                    ui.notify(f"Loaded IDs from {name}", type="positive")
-                            else:
-                                ui.notify(f"Unknown file type: {name}", type="warning")
-                        except Exception as ex:
-                            ui.notify(f"Error loading {name}: {ex}", type="negative")
+                        await load_file_by_path(filepath)
 
                 except Exception as ex:
                     ui.notify(f"File dialog error: {ex}", type="negative")
@@ -488,30 +523,7 @@ async def create_ui():
                     return
 
                 for filepath in result:
-                    ext = Path(filepath).suffix.lower()
-                    name = Path(filepath).name
-
-                    try:
-                        if ext == ".mzml":
-                            await load_mzml(filepath, name)
-                        elif ext == ".imzml":
-                            await load_imzml(filepath, name)
-                        elif ext == ".featurexml":
-                            loader = FeatureLoader(state)
-                            success = await run.io_bound(loader.load_sync, filepath)
-                            if success:
-                                state.emit_data_loaded("features")
-                                ui.notify(f"Loaded {state.feature_map.size():,} features from {name}", type="positive")
-                        elif ext == ".idxml":
-                            loader = IDLoader(state)
-                            success = await run.io_bound(loader.load_sync, filepath)
-                            if success:
-                                state.emit_data_loaded("ids")
-                                ui.notify(f"Loaded IDs from {name}", type="positive")
-                        else:
-                            ui.notify(f"Unknown file type: {name}", type="warning")
-                    except Exception as ex:
-                        ui.notify(f"Error loading {name}: {ex}", type="negative")
+                    await load_file_by_path(filepath)
 
             async def open_files():
                 """Open files using native dialog (native mode) or local file picker (web mode)."""
