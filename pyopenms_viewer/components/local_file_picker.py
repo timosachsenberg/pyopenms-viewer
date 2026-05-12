@@ -93,50 +93,53 @@ class LocalFilePicker(ui.dialog):
                     )
                 )
 
-                # File grid
-                self.grid = (
-                    ui.aggrid(
-                        {
-                            "columnDefs": [
-                                {
-                                    "field": "name",
-                                    "headerName": "Name",
-                                    "flex": 3,
-                                    "minWidth": 250,
-                                    "sortable": False,
-                                },
-                                {
-                                    "field": "size",
-                                    "headerName": "Size",
-                                    "flex": 1,
-                                    "minWidth": 90,
-                                    "sortable": False,
-                                    "cellStyle": {"textAlign": "right"},
-                                },
-                                {
-                                    "field": "type",
-                                    "headerName": "Type",
-                                    "flex": 1,
-                                    "minWidth": 110,
-                                    "sortable": False,
-                                },
-                                {
-                                    "field": "modified",
-                                    "headerName": "Date Modified",
-                                    "flex": 1,
-                                    "minWidth": 140,
-                                    "sortable": False,
-                                },
-                            ],
-                            "rowSelection": {"mode": "multiRow" if multiple else "singleRow"},
-                        },
-                        html_columns=[0],
+                # File grid — keep_alive (NiceGUI 3.11) keeps the aggrid mounted
+                # while the dialog is closed, preserving column widths/scroll if
+                # the picker instance is reused.
+                with ui.keep_alive():
+                    self.grid = (
+                        ui.aggrid(
+                            {
+                                "columnDefs": [
+                                    {
+                                        "field": "name",
+                                        "headerName": "Name",
+                                        "flex": 3,
+                                        "minWidth": 250,
+                                        "sortable": False,
+                                    },
+                                    {
+                                        "field": "size",
+                                        "headerName": "Size",
+                                        "flex": 1,
+                                        "minWidth": 90,
+                                        "sortable": False,
+                                        "cellStyle": {"textAlign": "right"},
+                                    },
+                                    {
+                                        "field": "type",
+                                        "headerName": "Type",
+                                        "flex": 1,
+                                        "minWidth": 110,
+                                        "sortable": False,
+                                    },
+                                    {
+                                        "field": "modified",
+                                        "headerName": "Date Modified",
+                                        "flex": 1,
+                                        "minWidth": 140,
+                                        "sortable": False,
+                                    },
+                                ],
+                                "rowSelection": {"mode": "multiRow" if multiple else "singleRow"},
+                            },
+                            html_columns=[0],
+                        )
+                        .classes("flex-grow")
+                        .style("flex: 1; min-height: 400px")
+                        .on("cellDoubleClicked", self._handle_double_click)
+                        .on("columnHeaderClicked", self._handle_header_click)
                     )
-                    .classes("flex-grow")
-                    .style("flex: 1; min-height: 400px")
-                    .on("cellDoubleClicked", self._handle_double_click)
-                    .on("columnHeaderClicked", self._handle_header_click)
-                )
 
             # Footer
             with ui.row().classes("w-full justify-between items-center px-2"):
