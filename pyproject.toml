@@ -24,7 +24,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "nicegui>=3.7.1",
+    "nicegui>=3.11.1",
     "datashader>=0.18.2",
     "pandas>=2.0.0",
     "numpy>=1.24.0",
