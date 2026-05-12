@@ -5,8 +5,8 @@ components to communicate without tight coupling. Components subscribe to
 events and receive callbacks when those events are emitted.
 """
 
+from collections.abc import Callable
 from enum import Enum, auto
-from typing import Callable
 
 
 class EventType(Enum):

@@ -230,7 +230,10 @@ class ScriptingPanel(BasePanel):
 
     def _refresh_ids(self) -> None:
         """Re-derive ID data and emit event."""
-        from pyopenms_viewer.loaders.id_loader import extract_id_data, link_ids_to_spectra
+        from pyopenms_viewer.loaders.id_loader import (
+            extract_id_data,
+            link_ids_to_spectra,
+        )
 
         self.state.id_data = extract_id_data(self.state)
         link_ids_to_spectra(self.state)

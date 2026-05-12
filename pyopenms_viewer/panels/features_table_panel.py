@@ -4,7 +4,7 @@ This panel displays a table of detected features from featureXML files
 with filtering and zoom-to-feature functionality.
 """
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from nicegui import ui
 
@@ -37,7 +37,7 @@ class FeaturesTablePanel(BasePanel):
         self.charge_select = None
 
         # Callback for feature selection
-        self._on_feature_selected: Optional[Callable] = None
+        self._on_feature_selected: Callable | None = None
 
     def build(self, container: ui.element) -> ui.expansion:
         """Build the features table panel UI.

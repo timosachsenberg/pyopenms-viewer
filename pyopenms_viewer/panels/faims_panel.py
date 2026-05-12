@@ -1,6 +1,5 @@
 """FAIMS multi-CV peak map panel."""
 
-from typing import Optional
 
 from nicegui import ui
 
@@ -28,10 +27,10 @@ class FAIMSPanel:
             state: ViewerState instance (shared reference)
         """
         self.state = state
-        self.card: Optional[ui.card] = None
-        self.images_row: Optional[ui.row] = None
+        self.card: ui.card | None = None
+        self.images_row: ui.row | None = None
         self.cv_images: dict[float, ui.image] = {}  # CV -> image element
-        self.renderer: Optional[PeakMapRenderer] = None
+        self.renderer: PeakMapRenderer | None = None
 
     def build(self, container: ui.element) -> ui.card:
         """Build the FAIMS panel UI.

@@ -4,7 +4,7 @@ This panel displays individual MS spectra with interactive features
 including peak measurement, annotation, and navigation.
 """
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import numpy as np
 import plotly.graph_objects as go
@@ -46,14 +46,14 @@ class SpectrumPanel(BasePanel):
         super().__init__(state, "spectrum", "1D Spectrum", "show_chart")
 
         # UI elements
-        self.spectrum_plot: Optional[ui.plotly] = None
-        self.nav_label: Optional[ui.label] = None
-        self.info_label: Optional[ui.label] = None
+        self.spectrum_plot: ui.plotly | None = None
+        self.nav_label: ui.label | None = None
+        self.info_label: ui.label | None = None
         self.measure_btn = None
         self.annotation_btn = None
 
         # References to external update callbacks
-        self._on_spectrum_changed_callback: Optional[Callable] = None
+        self._on_spectrum_changed_callback: Callable | None = None
 
         # Plotly config (must be included in figure dict)
         self._plotly_config = {
@@ -394,7 +394,7 @@ class SpectrumPanel(BasePanel):
         # Add spectrum as vertical lines (stem plot)
         x_stems = []
         y_stems = []
-        for mz, intensity in zip(mz_display, int_display):
+        for mz, intensity in zip(mz_display, int_display, strict=True):
             x_stems.extend([mz, mz, None])
             y_stems.extend([0, intensity, None])
 
@@ -940,7 +940,7 @@ class SpectrumPanel(BasePanel):
         if self.info_label is not None:
             self.info_label.set_text("No spectrum loaded")
 
-    def _on_selection_changed(self, selection_type: str, index: Optional[int]):
+    def _on_selection_changed(self, selection_type: str, index: int | None):
         """Handle selection changed event."""
         if selection_type == "spectrum" and index is not None:
             self.show_spectrum(index)
@@ -1041,8 +1041,8 @@ class SpectrumPanel(BasePanel):
             pass
 
     def _snap_to_peak(
-        self, target_mz: float, mz_array: np.ndarray, int_array: np.ndarray, target_int: Optional[float] = None
-    ) -> Optional[tuple[float, float]]:
+        self, target_mz: float, mz_array: np.ndarray, int_array: np.ndarray, target_int: float | None = None
+    ) -> tuple[float, float] | None:
         """Snap to the nearest peak using 2D distance (m/z and intensity).
 
         Args:
@@ -1091,7 +1091,7 @@ class SpectrumPanel(BasePanel):
 
     def _find_measurement_at_position(
         self, mz: float, y: float, mz_array: np.ndarray, int_array: np.ndarray
-    ) -> Optional[int]:
+    ) -> int | None:
         """Find if a click position is near an existing measurement line.
 
         Args:
@@ -1187,7 +1187,7 @@ class SpectrumPanel(BasePanel):
 
         dialog.open()
 
-    def _add_or_edit_peak_annotation(self, spectrum_idx: int, mz: float, intensity: float, label: Optional[str] = None):
+    def _add_or_edit_peak_annotation(self, spectrum_idx: int, mz: float, intensity: float, label: str | None = None):
         """Add or edit a peak annotation.
 
         Args:

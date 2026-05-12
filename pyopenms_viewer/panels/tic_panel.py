@@ -1,6 +1,5 @@
 """TIC (Total Ion Chromatogram) panel implementation."""
 
-from typing import Optional
 
 import plotly.graph_objects as go
 from nicegui import ui
@@ -21,7 +20,7 @@ class TICPanel(BasePanel):
 
     def __init__(self, state: ViewerState):
         super().__init__(state, "tic", "TIC", "show_chart")
-        self.plot: Optional[ui.plotly] = None
+        self.plot: ui.plotly | None = None
         self._updating_from_tic: bool = False
 
         # Plotly config (must be included in figure dict)
@@ -180,7 +179,7 @@ class TICPanel(BasePanel):
         if not self._updating_from_tic:
             self.update()
 
-    def _on_selection_changed(self, selection_type: str, index: Optional[int]) -> None:
+    def _on_selection_changed(self, selection_type: str, index: int | None) -> None:
         if selection_type == "spectrum":
             self.update()
 

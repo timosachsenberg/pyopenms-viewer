@@ -14,7 +14,10 @@ import pandas as pd
 import xarray as xr
 from PIL import Image, ImageDraw
 
-from pyopenms_viewer.annotation.tick_formatter import calculate_nice_ticks, format_tick_label
+from pyopenms_viewer.annotation.tick_formatter import (
+    calculate_nice_ticks,
+    format_tick_label,
+)
 from pyopenms_viewer.core.config import COLORMAPS, get_colormap_background
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.rendering.fonts import get_font
@@ -1014,7 +1017,7 @@ class IMPeakMapRenderer:
 
         # Draw as a filled area plot
         points = []
-        for im_val, intensity in zip(im_values, intensities):
+        for im_val, intensity in zip(im_values, intensities, strict=True):
             # Y position (IM axis, inverted - low IM at bottom)
             y_frac = 1.0 - (im_val - view_im_min) / im_range
             y = mob_top + int(y_frac * self.plot_height)
@@ -1118,7 +1121,7 @@ class IMPeakMapRenderer:
 
         # Build points for the mobilogram line
         points = []
-        for im_val, intensity in zip(im_values, intensities):
+        for im_val, intensity in zip(im_values, intensities, strict=True):
             y_frac = 1.0 - (im_val - view_im_min) / im_range
             y = mob_top + int(y_frac * self.plot_height)
             x_frac = intensity / max_intensity

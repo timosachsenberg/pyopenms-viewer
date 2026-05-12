@@ -9,9 +9,10 @@ Components access data via properties that return references or views (masks).
 """
 
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -81,16 +82,16 @@ class ViewerState:
 
     def __init__(self):
         # ========== DATA MANAGER (unified DuckDB interface) ==========
-        self.data_manager: Optional[DataManager] = None
+        self.data_manager: DataManager | None = None
         self.out_of_core: bool = DEFAULTS.OUT_OF_CORE
-        self._cache_dir: Optional[Path] = None
+        self._cache_dir: Path | None = None
 
         # ========== PRIMARY DATA (NEVER COPIED) ==========
         # These are the large data structures that must be shared
         # In out-of-core mode, df and im_df may be None after registration
         self.exp = None  # MSExperiment - pyOpenMS C++ object (~500MB)
-        self.df: Optional[pd.DataFrame] = None  # All peaks: rt, mz, intensity, log_intensity (~2GB)
-        self.im_df: Optional[pd.DataFrame] = None  # Ion mobility peaks: mz, im, intensity, log_intensity
+        self.df: pd.DataFrame | None = None  # All peaks: rt, mz, intensity, log_intensity (~2GB)
+        self.im_df: pd.DataFrame | None = None  # Ion mobility peaks: mz, im, intensity, log_intensity
         self.faims_data: dict[float, pd.DataFrame] = {}  # CV -> DataFrame (views into self.df)
         self.chromatogram_data: dict[int, tuple[np.ndarray, np.ndarray]] = {}  # idx -> (rt, intensity) arrays
 
@@ -107,8 +108,8 @@ class ViewerState:
         self.chromatograms: list[dict] = []  # Chromatogram metadata
 
         # ========== TIC DATA ==========
-        self.tic_rt: Optional[np.ndarray] = None
-        self.tic_intensity: Optional[np.ndarray] = None
+        self.tic_rt: np.ndarray | None = None
+        self.tic_intensity: np.ndarray | None = None
         self.tic_source: str = "MS1 TIC"  # Description (e.g., "MS1 TIC", "MS2 BPC")
         self.faims_tic: dict[float, tuple[np.ndarray, np.ndarray]] = {}  # CV -> (rt, intensity)
 
@@ -124,12 +125,12 @@ class ViewerState:
         self.im_max: float = 1.0
 
         # ========== VIEW BOUNDS (current view) ==========
-        self.view_rt_min: Optional[float] = None
-        self.view_rt_max: Optional[float] = None
-        self.view_mz_min: Optional[float] = None
-        self.view_mz_max: Optional[float] = None
-        self.view_im_min: Optional[float] = None
-        self.view_im_max: Optional[float] = None
+        self.view_rt_min: float | None = None
+        self.view_rt_max: float | None = None
+        self.view_mz_min: float | None = None
+        self.view_mz_max: float | None = None
+        self.view_im_min: float | None = None
+        self.view_im_max: float | None = None
 
         # ========== FLAGS ==========
         self.has_imzml: bool = False  # True when an imzML/ibd file pair is loaded
@@ -137,20 +138,20 @@ class ViewerState:
         self.has_ion_mobility: bool = False
         self.has_chromatograms: bool = False
         self.faims_cvs: list[float] = []
-        self.im_type: Optional[str] = None  # "ion mobility", "inverse reduced ion mobility", etc.
+        self.im_type: str | None = None  # "ion mobility", "inverse reduced ion mobility", etc.
         self.im_unit: str = ""
-        self.selected_im_frame_idx: Optional[int] = None  # Index into exp for selected IM frame
+        self.selected_im_frame_idx: int | None = None  # Index into exp for selected IM frame
         self.im_frame_indices: list[int] = []  # MS1 IM frame indices in exp
-        self.im_frame_rts: Optional[np.ndarray] = None  # Parallel RT values (sorted)
+        self.im_frame_rts: np.ndarray | None = None  # Parallel RT values (sorted)
         self.show_faims_view: bool = False
-        self.selected_faims_cv: Optional[float] = None  # Currently selected CV for filtering peak map
+        self.selected_faims_cv: float | None = None  # Currently selected CV for filtering peak map
         self.faims_experiments: dict = {}  # CV -> MSExperiment (MS1 only, for rasterization)
         self.faims_minimap_rasters: dict = {}  # CV -> cached np.ndarray minimap raster
 
         # ========== FILE PATHS ==========
-        self.current_file: Optional[str] = None
-        self.features_file: Optional[str] = None
-        self.id_file: Optional[str] = None
+        self.current_file: str | None = None
+        self.features_file: str | None = None
+        self.id_file: str | None = None
         # Last load error message (set by loaders on failure)
         self._last_load_error: str = ""
         # Tracks files currently being loaded to avoid duplicate concurrent loads
@@ -162,21 +163,21 @@ class ViewerState:
         self.load_progress: dict[str, tuple[str, float]] = {}
 
         # ========== SELECTION STATE ==========
-        self.selected_spectrum_idx: Optional[int] = None
-        self.selected_feature_idx: Optional[int] = None
-        self.selected_id_idx: Optional[int] = None
+        self.selected_spectrum_idx: int | None = None
+        self.selected_feature_idx: int | None = None
+        self.selected_id_idx: int | None = None
         self.selected_chromatogram_indices: list[int] = []
-        self.hover_feature_idx: Optional[int] = None
-        self.hover_id_idx: Optional[int] = None
+        self.hover_feature_idx: int | None = None
+        self.hover_id_idx: int | None = None
 
         # ========== SPECTRUM MEASUREMENT STATE ==========
         self.spectrum_measure_mode: bool = False
-        self.spectrum_measure_start: Optional[tuple[float, float]] = None
+        self.spectrum_measure_start: tuple[float, float] | None = None
         self.spectrum_measurements: dict[int, list] = {}  # spectrum_idx -> list of measurements
-        self.spectrum_hover_peak: Optional[tuple[float, float]] = None
-        self.spectrum_selected_measurement_idx: Optional[int] = None
+        self.spectrum_hover_peak: tuple[float, float] | None = None
+        self.spectrum_selected_measurement_idx: int | None = None
         self.spectrum_dragging: bool = False
-        self.spectrum_zoom_range: Optional[tuple[float, float]] = None
+        self.spectrum_zoom_range: tuple[float, float] | None = None
 
         # ========== PEAK ANNOTATION STATE ==========
         self.peak_annotations: dict[int, list[dict]] = {}  # spectrum_idx -> list of annotations
@@ -258,9 +259,9 @@ class ViewerState:
         self.log_messages: list[str] = []
 
         # ========== RASTERIZATION CACHE ==========
-        self.cached_minimap_raster: Optional[np.ndarray] = None  # Cached minimap rasterization
-        self.temp_peak_df: Optional[pd.DataFrame] = None  # Temporary DataFrame for deep zoom/3D view
-        self.last_3d_view_bounds: Optional[tuple] = None  # View bounds when 3D was last updated
+        self.cached_minimap_raster: np.ndarray | None = None  # Cached minimap rasterization
+        self.temp_peak_df: pd.DataFrame | None = None  # Temporary DataFrame for deep zoom/3D view
+        self.last_3d_view_bounds: tuple | None = None  # View bounds when 3D was last updated
         self.is_3d_in_sync: bool = True  # Whether 3D view matches current 2D view
 
     # ========== COMPUTED PROPERTIES ==========
@@ -280,7 +281,7 @@ class ViewerState:
     def init_data_manager(
         self,
         out_of_core: bool = False,
-        cache_dir: Optional[Path] = None,
+        cache_dir: Path | None = None,
     ) -> None:
         """Initialize the data manager for unified DuckDB queries.
 
@@ -577,12 +578,12 @@ class ViewerState:
 
     def set_view(
         self,
-        rt_min: Optional[float] = None,
-        rt_max: Optional[float] = None,
-        mz_min: Optional[float] = None,
-        mz_max: Optional[float] = None,
-        im_min: Optional[float] = None,
-        im_max: Optional[float] = None,
+        rt_min: float | None = None,
+        rt_max: float | None = None,
+        mz_min: float | None = None,
+        mz_max: float | None = None,
+        im_min: float | None = None,
+        im_max: float | None = None,
         emit_event: bool = True,
     ) -> None:
         """Set view bounds.
@@ -742,7 +743,7 @@ class ViewerState:
         """Emit view changed event."""
         self._event_bus.emit("view_changed")
 
-    def emit_selection_changed(self, selection_type: str, index: Optional[int]) -> None:
+    def emit_selection_changed(self, selection_type: str, index: int | None) -> None:
         """Emit selection changed event.
 
         Args:
@@ -779,7 +780,7 @@ class ViewerState:
 
     # ========== SELECTION HELPERS ==========
 
-    def select_spectrum(self, index: Optional[int], emit_event: bool = True) -> None:
+    def select_spectrum(self, index: int | None, emit_event: bool = True) -> None:
         """Select a spectrum by index.
 
         Args:
@@ -790,7 +791,7 @@ class ViewerState:
         if emit_event:
             self.emit_selection_changed("spectrum", index)
 
-    def select_feature(self, index: Optional[int], emit_event: bool = True) -> None:
+    def select_feature(self, index: int | None, emit_event: bool = True) -> None:
         """Select a feature by index.
 
         Args:
@@ -801,7 +802,7 @@ class ViewerState:
         if emit_event:
             self.emit_selection_changed("feature", index)
 
-    def select_id(self, index: Optional[int], emit_event: bool = True) -> None:
+    def select_id(self, index: int | None, emit_event: bool = True) -> None:
         """Select an identification by index.
 
         Args:
@@ -1235,7 +1236,7 @@ class ViewerState:
         spectrum_idx: int,
         rt_tolerance: float = 5.0,
         mz_tolerance: float = 0.5,
-    ) -> Optional[int]:
+    ) -> int | None:
         """Find peptide ID matching the given spectrum.
 
         Matches based on RT and precursor m/z within tolerance.
@@ -1288,7 +1289,7 @@ class ViewerState:
         id_idx: int,
         rt_tolerance: float = 5.0,
         mz_tolerance: float = 0.5,
-    ) -> Optional[int]:
+    ) -> int | None:
         """Find spectrum index matching the given peptide ID.
 
         Args:

@@ -13,8 +13,8 @@ Strategy:
 - Force rt_in_minutes=False so pixel coordinates are not divided by 60.
 """
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
 
 import numpy as np
 import pandas as pd
@@ -38,12 +38,12 @@ class ImzMLLoader:
     def __init__(self, state: ViewerState) -> None:
         self.state = state
 
-  
+
 
     def load_sync(
         self,
         filepath: str,
-        progress_cb: Optional[Callable[[str, float], None]] = None,
+        progress_cb: Callable[[str, float], None] | None = None,
     ) -> bool:
         """Load an imzML file synchronously (blocking).
 
@@ -163,7 +163,7 @@ class ImzMLLoader:
             )
             df["log_intensity"] = np.log1p(df["intensity"])
 
-       
+
             _prog("Extracting spectrum metadata…", 0.85)
             from pyopenms_viewer.loaders.spectrum_extractor import extract_spectrum_data
 

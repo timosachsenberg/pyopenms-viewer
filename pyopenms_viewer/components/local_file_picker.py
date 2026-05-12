@@ -7,7 +7,6 @@ detail columns (size, date, type), and favorites/recent quick access.
 import platform
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from nicegui import events, ui
 
@@ -52,7 +51,7 @@ class LocalFilePicker(ui.dialog):
         self,
         directory: str,
         *,
-        upper_limit: Optional[str] = ...,
+        upper_limit: str | None = ...,
         multiple: bool = True,
         show_hidden_files: bool = False,
     ) -> None:

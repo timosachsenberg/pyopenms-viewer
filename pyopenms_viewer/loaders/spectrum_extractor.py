@@ -1,13 +1,13 @@
 """Spectrum metadata extraction from mzML experiments."""
 
-from typing import Any, Optional
+from typing import Any
 
 from pyopenms_viewer.core.state import ViewerState
 
 
 def extract_spectrum_data(
     state: ViewerState,
-    spectrum_stats: Optional[list[dict[str, Any]]] = None,
+    spectrum_stats: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Extract spectrum metadata for the unified spectrum table.
 

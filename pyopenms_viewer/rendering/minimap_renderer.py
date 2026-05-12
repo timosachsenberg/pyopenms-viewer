@@ -7,7 +7,6 @@ re-shading with different colormaps.
 
 import base64
 import io
-from typing import Optional
 
 import datashader.transfer_functions as tf
 import numpy as np
@@ -34,7 +33,7 @@ class MinimapRenderer:
         self.width = width
         self.height = height
 
-    def render(self, state) -> Optional[str]:
+    def render(self, state) -> str | None:
         """Render the minimap showing full data extent with view rectangle overlay.
 
         Uses cached rasterization when available for efficient re-shading with different
@@ -51,7 +50,7 @@ class MinimapRenderer:
             return None
         return self._render_with_rasterization(state)
 
-    def _render_with_rasterization(self, state) -> Optional[str]:
+    def _render_with_rasterization(self, state) -> str | None:
         """Render minimap using cached rasterization from pyOpenMS.
 
         When a FAIMS CV is selected, uses the per-CV experiment and its cached raster
@@ -235,7 +234,7 @@ class MinimapRenderer:
             draw.line([(x + 1, 0), (x + 1, self.height)], fill=color, width=1)
             draw.line([(x + 2, 0), (x + 2, self.height)], fill=(0, 0, 0, 200), width=1)
 
-    def render_for_cv(self, state, cv: float, width: int = None, height: int = None) -> Optional[str]:
+    def render_for_cv(self, state, cv: float, width: int = None, height: int = None) -> str | None:
         """Render a minimap for a specific FAIMS CV value.
 
         Tries rasterization from per-CV MSExperiment first (with caching),
@@ -264,7 +263,7 @@ class MinimapRenderer:
 
     def _render_cv_with_rasterization(
         self, state, cv: float, cv_exp, render_width: int, render_height: int
-    ) -> Optional[str]:
+    ) -> str | None:
         """Render per-CV minimap using rasterization with caching.
 
         Args:

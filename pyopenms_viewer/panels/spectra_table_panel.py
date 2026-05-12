@@ -4,7 +4,7 @@ This panel displays a table of all spectra with their metadata,
 including identification information when available.
 """
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from nicegui import ui
 
@@ -46,7 +46,7 @@ class SpectraTablePanel(BasePanel):
         self.mirror_view_cb = None
 
         # Callback for spectrum selection
-        self._on_spectrum_selected: Optional[Callable] = None
+        self._on_spectrum_selected: Callable | None = None
 
     def build(self, container: ui.element) -> ui.expansion:
         """Build the spectra table panel UI.

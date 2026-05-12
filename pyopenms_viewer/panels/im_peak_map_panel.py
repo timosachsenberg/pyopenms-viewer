@@ -4,7 +4,6 @@ This panel displays the 2D ion mobility vs m/z visualization
 for TIMS, drift tube, and other ion mobility data.
 """
 
-from typing import Optional
 
 from nicegui import ui
 
@@ -34,9 +33,9 @@ class IMPeakMapPanel(BasePanel):
         super().__init__(state, "im_peakmap", "Ion Mobility Frame", "blur_on")
 
         # UI elements
-        self.im_image_element: Optional[ui.interactive_image] = None
-        self.info_label: Optional[ui.label] = None
-        self.range_label: Optional[ui.label] = None
+        self.im_image_element: ui.interactive_image | None = None
+        self.info_label: ui.label | None = None
+        self.range_label: ui.label | None = None
         self.link_checkbox = None
         self.mobilogram_checkbox = None
 

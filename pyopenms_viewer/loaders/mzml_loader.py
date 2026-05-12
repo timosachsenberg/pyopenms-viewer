@@ -11,8 +11,8 @@ Two-phase loading:
 import os
 import re
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
 
 import numpy as np
 from pyopenms import DriftTimeUnit, MSExperiment, MzMLFile
@@ -23,7 +23,7 @@ from pyopenms_viewer.core.state import ViewerState
 _CV_FILTER_PATTERN = re.compile(r"\bcv=(-?\d+(?:\.\d+)?)\b", re.IGNORECASE)
 
 
-def get_cv_from_spectrum(spec) -> Optional[float]:
+def get_cv_from_spectrum(spec) -> float | None:
     """Extract FAIMS compensation voltage from spectrum metadata.
 
     Uses getDriftTimeUnit() to check if spectrum has FAIMS CV data, then
@@ -145,7 +145,7 @@ class MzMLLoader:
     def process(
         self,
         filepath: str,
-        progress_callback: Optional[Callable[[str, float], None]] = None,
+        progress_callback: Callable[[str, float], None] | None = None,
     ) -> bool:
         """Process parsed mzML data to extract peaks and create DataFrame.
 
@@ -380,7 +380,9 @@ class MzMLLoader:
                 progress_callback("Extracting chromatograms...", 0.75)
 
             # Extract chromatograms (iterates over chromatograms, not spectra)
-            from pyopenms_viewer.loaders.chromatogram_loader import extract_chromatograms
+            from pyopenms_viewer.loaders.chromatogram_loader import (
+                extract_chromatograms,
+            )
 
             extract_chromatograms(self.state)
 
@@ -469,9 +471,9 @@ class MzMLLoader:
         im_mz_list: list,
         im_im_list: list,
         im_int_list: list,
-        detected_im_name: Optional[str],
+        detected_im_name: str | None,
         filepath: str,
-        im_frame_indices: Optional[list] = None,
+        im_frame_indices: list | None = None,
     ) -> None:
         """Process pre-extracted ion mobility data.
 
@@ -549,7 +551,7 @@ class MzMLLoader:
 
         self.state.has_ion_mobility = True
 
-    def load_sync(self, filepath: str, progress_callback: Optional[Callable[[str, float], None]] = None) -> bool:
+    def load_sync(self, filepath: str, progress_callback: Callable[[str, float], None] | None = None) -> bool:
         """Load mzML file synchronously (for background thread).
 
         Convenience method that calls both parse and process phases.

@@ -5,7 +5,6 @@ ViewerState. This ensures memory efficiency and consistent state management.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from nicegui import ui
 
@@ -57,7 +56,7 @@ class BasePanel(ABC):
         self.panel_id = panel_id
         self.name = name
         self.icon = icon
-        self.expansion: Optional[ui.expansion] = None
+        self.expansion: ui.expansion | None = None
         self._is_built = False
 
     @abstractmethod

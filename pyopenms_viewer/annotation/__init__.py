@@ -5,7 +5,9 @@ from pyopenms_viewer.annotation.spectrum_annotator import (
     get_external_peak_annotations,
     parse_fragment_annotation_string,
 )
-from pyopenms_viewer.annotation.theoretical_spectrum import generate_theoretical_spectrum
+from pyopenms_viewer.annotation.theoretical_spectrum import (
+    generate_theoretical_spectrum,
+)
 from pyopenms_viewer.annotation.tick_formatter import (
     calculate_nice_ticks,
     format_intensity,

@@ -4,7 +4,6 @@ This panel displays extracted ion chromatograms (XICs) and other
 chromatogram data from mzML files.
 """
 
-from typing import Optional
 
 import plotly.graph_objects as go
 from nicegui import ui
@@ -32,9 +31,9 @@ class ChromatogramPanel(BasePanel):
         super().__init__(state, "chromatograms", "Chromatograms", "timeline")
 
         # UI elements
-        self.chromatogram_plot: Optional[ui.plotly] = None
+        self.chromatogram_plot: ui.plotly | None = None
         self.chromatogram_table = None
-        self.info_label: Optional[ui.label] = None
+        self.info_label: ui.label | None = None
 
         # Color palette for multiple chromatograms
         self.colors = [

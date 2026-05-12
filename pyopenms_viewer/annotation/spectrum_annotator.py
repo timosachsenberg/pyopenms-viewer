@@ -2,7 +2,6 @@
 
 import re
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 import plotly.graph_objects as go
@@ -14,7 +13,9 @@ from pyopenms import (
     TheoreticalSpectrumGenerator,
 )
 
-from pyopenms_viewer.annotation.theoretical_spectrum import generate_theoretical_spectrum
+from pyopenms_viewer.annotation.theoretical_spectrum import (
+    generate_theoretical_spectrum,
+)
 from pyopenms_viewer.core.config import ION_COLORS
 
 
@@ -77,7 +78,7 @@ def compute_spectrum_annotation(
     charge: int,
     precursor_mz: float,
     tolerance_da: float = 0.05,
-    external_annotations: Optional[list[tuple[int, str, str]]] = None,
+    external_annotations: list[tuple[int, str, str]] | None = None,
 ) -> SpectrumAnnotationData:
     """Compute complete annotation data for a spectrum.
 
@@ -616,7 +617,7 @@ def create_annotated_spectrum_plot(
     annotate: bool = True,
     mirror_mode: bool = False,
     show_unmatched: bool = True,
-    annotation_data: Optional[SpectrumAnnotationData] = None,
+    annotation_data: SpectrumAnnotationData | None = None,
 ) -> go.Figure:
     """Create an annotated spectrum plot using Plotly.
 
@@ -644,7 +645,7 @@ def create_annotated_spectrum_plot(
     # Add experimental spectrum as vertical lines (stem plot)
     x_stems = []
     y_stems = []
-    for mz, intensity in zip(exp_mz, exp_int_norm):
+    for mz, intensity in zip(exp_mz, exp_int_norm, strict=True):
         x_stems.extend([mz, mz, None])
         y_stems.extend([0, intensity, None])
 
@@ -763,7 +764,7 @@ def _draw_matched_ions(
     # Build stems
     x_stems: list[float | None] = []
     y_stems: list[float | None] = []
-    for ion, intensity in zip(ions, intensities):
+    for ion, intensity in zip(ions, intensities, strict=True):
         x_stems.extend([ion.exp_mz, ion.exp_mz, None])
         y_stems.extend([0, sign * intensity, None])
 
@@ -780,7 +781,7 @@ def _draw_matched_ions(
     )
 
     # Add markers and labels
-    for ion, intensity in zip(ions, intensities):
+    for ion, intensity in zip(ions, intensities, strict=True):
         y_val = sign * intensity
         formatted_name = format_ion_label_with_superscript(ion.ion_name)
         if is_theoretical:

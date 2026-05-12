@@ -5,7 +5,7 @@ with interactive mouse controls for zoom, pan, and measurement.
 """
 
 import time
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -44,15 +44,15 @@ class PeakMapPanel(BasePanel):
         super().__init__(state, "peakmap", "2D Peak Map", "grid_on")
 
         # UI elements
-        self.image_element: Optional[ui.interactive_image] = None
-        self.minimap_image: Optional[ui.image] = None
-        self.coord_label: Optional[ui.label] = None
-        self.breadcrumb_label: Optional[ui.label] = None
-        self.scene_3d_container: Optional[ui.column] = None
+        self.image_element: ui.interactive_image | None = None
+        self.minimap_image: ui.image | None = None
+        self.coord_label: ui.label | None = None
+        self.breadcrumb_label: ui.label | None = None
+        self.scene_3d_container: ui.column | None = None
         self.plot_3d = None
-        self.view_3d_status: Optional[ui.label] = None
-        self.view_3d_sync_warning: Optional[ui.label] = None
-        self.view_3d_auto_update_cb: Optional[ui.checkbox] = None
+        self.view_3d_status: ui.label | None = None
+        self.view_3d_sync_warning: ui.label | None = None
+        self.view_3d_auto_update_cb: ui.checkbox | None = None
         self.view_3d_btn = None
 
         # Checkboxes for overlay options
@@ -65,8 +65,8 @@ class PeakMapPanel(BasePanel):
         self.spectrum_marker_cb = None
 
         # FAIMS UI elements
-        self.faims_checkbox: Optional[ui.checkbox] = None
-        self.faims_container: Optional[ui.column] = None
+        self.faims_checkbox: ui.checkbox | None = None
+        self.faims_container: ui.column | None = None
         self.faims_cv_minimaps: dict[float, ui.image] = {}
         self.faims_cv_labels: dict[float, ui.label] = {}
 
@@ -99,7 +99,7 @@ class PeakMapPanel(BasePanel):
         }
 
         # Callback for external update triggers
-        self._on_update_callback: Optional[Callable] = None
+        self._on_update_callback: Callable | None = None
 
         # Last hover update time for debouncing
         self._last_hover_update: float = 0.0
@@ -796,7 +796,7 @@ class PeakMapPanel(BasePanel):
 
         return (x + self.state.margin_left, y + self.state.margin_top)
 
-    def _find_nearest_feature(self, pixel_x: int, pixel_y: int) -> Optional[int]:
+    def _find_nearest_feature(self, pixel_x: int, pixel_y: int) -> int | None:
         """Find the nearest feature centroid to the given pixel position.
 
         Args:
