@@ -11,7 +11,10 @@ from pathlib import Path
 
 from nicegui import app, context, run, ui
 
-from pyopenms_viewer.components.file_picker_storage import get_last_directory
+from pyopenms_viewer.components.file_picker_storage import (
+    get_last_directory,
+    save_window_size,
+)
 from pyopenms_viewer.components.local_file_picker import LocalFilePicker
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.loaders import FeatureLoader, IDLoader, ImzMLLoader, MzMLLoader
@@ -45,6 +48,16 @@ _IMZML_UPLOAD_DIRS: dict[str, Path] = {}
 _drop_loader = None
 _drop_registered = False
 
+# Native window resize debounce. pywebview fires resized on every pixel during
+# a drag; we coalesce writes by canceling the previous save task on each event
+# and only persisting after a quiet period.
+_resize_save_task: asyncio.Task | None = None
+_resize_registered = False
+
+# Shared viewer state, captured by the global exception handler so unhandled
+# async errors can be routed to the active page's LogPanel.
+_GLOBAL_VIEWER_STATE: ViewerState | None = None
+
 
 async def _handle_native_drop(e) -> None:
     """Forward files dropped onto the native window to the active page loader."""
@@ -53,6 +66,41 @@ async def _handle_native_drop(e) -> None:
     for path in e.args.get("files", []) or []:
         if path:
             await _drop_loader(path)
+
+
+async def _delayed_save_window_size(width: int, height: int) -> None:
+    try:
+        await asyncio.sleep(1.0)
+        save_window_size(width, height)
+    except asyncio.CancelledError:
+        pass
+
+
+def _handle_native_resized(e) -> None:
+    """Debounce-save the native window size."""
+    global _resize_save_task
+    width = e.args.get("width")
+    height = e.args.get("height")
+    if not (isinstance(width, int) and isinstance(height, int) and width > 0 and height > 0):
+        return
+    if _resize_save_task is not None and not _resize_save_task.done():
+        _resize_save_task.cancel()
+    _resize_save_task = asyncio.create_task(_delayed_save_window_size(width, height))
+
+
+def _global_exception_handler(exc: Exception) -> None:
+    """Route unhandled async-handler exceptions to the active page's LogPanel."""
+    state = _GLOBAL_VIEWER_STATE
+    if state is None:
+        return
+    try:
+        state.emit_algorithm_log("unhandled-exception", repr(exc))
+    except Exception:
+        # Never raise from the exception handler.
+        pass
+
+
+app.on_exception(_global_exception_handler)
 
 
 async def create_ui():
@@ -84,11 +132,6 @@ async def create_ui():
     # (avoids re-parsing large mzML files on browser disconnect/reconnect).
     # Selection state is reset to avoid stale indices referencing invalid data.
     global _GLOBAL_VIEWER_STATE
-
-    try:
-        _GLOBAL_VIEWER_STATE  # noqa: B018
-    except NameError:
-        _GLOBAL_VIEWER_STATE = None
 
     if _GLOBAL_VIEWER_STATE is None:
         state = ViewerState()
@@ -371,11 +414,14 @@ async def create_ui():
                 with client:
                     await load_file_by_path(filepath)
 
-            global _drop_loader, _drop_registered
+            global _drop_loader, _drop_registered, _resize_registered
             _drop_loader = _drop_dispatch
             if not _drop_registered and app.native.main_window:
                 app.native.on("drop", _handle_native_drop)
                 _drop_registered = True
+            if not _resize_registered and app.native.main_window:
+                app.native.on("resized", _handle_native_resized)
+                _resize_registered = True
 
             async def handle_upload(e):
                 """Handle uploaded file - detect type and load appropriately.

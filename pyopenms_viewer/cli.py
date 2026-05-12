@@ -161,6 +161,7 @@ def main(files, port, host, open_browser, native, dark, out_of_core, cache_dir):
     from nicegui.core import sio
 
     import pyopenms_viewer.app  # noqa: F401
+    from pyopenms_viewer.components.file_picker_storage import get_window_size
 
     # Increase Socket.IO buffer size for large Plotly figure updates
     # Default is 1MB, increase to 10MB for spectra with many peaks
@@ -168,6 +169,12 @@ def main(files, port, host, open_browser, native, dark, out_of_core, cache_dir):
 
     # Store dark mode preference
     os.environ["PYOPENMS_VIEWER_DARK_MODE"] = "1" if dark else "0"
+
+    # Restore last native window size; saved on resize via the 3.9 native event
+    # bridge wired in pyopenms_viewer.app.
+    window_size = None
+    if use_native:
+        window_size = get_window_size() or (1400, 900)
 
     # Run the UI
     ui.run(
@@ -177,9 +184,10 @@ def main(files, port, host, open_browser, native, dark, out_of_core, cache_dir):
         reload=False,
         show=open_browser and not use_native,
         native=use_native,
-        window_size=(1400, 900) if use_native else None,
+        window_size=window_size,
         dark=dark,
         reconnect_timeout=60.0,
+        markdown=True,
     )
 
 

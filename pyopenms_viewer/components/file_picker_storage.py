@@ -95,3 +95,22 @@ def is_favorite(directory: str) -> bool:
     prefs = _load_prefs()
     directory = str(Path(directory).resolve())
     return directory in prefs.get("favorites", [])
+
+
+def get_window_size() -> tuple[int, int] | None:
+    """Return last-saved native window size as (width, height), or None if missing/invalid."""
+    size = _load_prefs().get("window_size")
+    if (
+        isinstance(size, list)
+        and len(size) == 2
+        and all(isinstance(v, int) and v > 0 for v in size)
+    ):
+        return (size[0], size[1])
+    return None
+
+
+def save_window_size(width: int, height: int) -> None:
+    """Persist the native window size."""
+    prefs = _load_prefs()
+    prefs["window_size"] = [int(width), int(height)]
+    _save_prefs(prefs)
