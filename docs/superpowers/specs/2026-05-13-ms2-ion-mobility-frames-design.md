@@ -15,7 +15,7 @@ Target data: diaPASEF (wide, repeating precursor isolation windows). The user's 
 2. Allow the IM panel to render any selected spectrum that has an IM array, regardless of MS level.
 3. Drive IM-panel selection from the existing spectrum panel: when an MS2 spectrum with IM is selected, the IM panel updates to show that frame.
 4. When the selected spectrum has no IM array, the IM panel clears and shows a placeholder.
-5. Preserve all existing MS1 behavior, including TIC-click → nearest MS1 IM frame.
+5. Preserve the visible MS1 experience: the IM panel still renders an MS1 frame by default, and TIC clicks still land on MS1 IM frames (now via spectrum selection rather than a parallel IM-only path).
 
 ## Non-Goals
 
@@ -38,15 +38,17 @@ New and modified attributes on `ViewerState`:
 
 - `im_frame_indices: list[int]` *(existing)* — now includes every spectrum index whose spectrum carries an IM float-data-array, regardless of MS level. Sorted by RT (existing invariant preserved).
 - `im_frame_rts: np.ndarray` *(existing)* — parallel to `im_frame_indices`.
-- `im_frame_ms_levels: np.ndarray[int]` **(new)** — parallel; MS level per frame.
-- `im_frame_precursor_mz: np.ndarray[float]` **(new)** — parallel; precursor target m/z for MS2, `np.nan` for MS1.
-- `im_frame_precursor_lower: np.ndarray[float]` **(new)** — parallel; isolation-window lower bound (`mz - getIsolationWindowLowerOffset()`), `np.nan` for MS1.
-- `im_frame_precursor_upper: np.ndarray[float]` **(new)** — parallel; isolation-window upper bound (`mz + getIsolationWindowUpperOffset()`), `np.nan` for MS1.
+- `im_frame_ms_levels: np.ndarray` **(new)**, dtype `np.int32` — parallel; MS level per frame.
+- `im_frame_precursor_mz: np.ndarray` **(new)**, dtype `np.float64` — parallel; precursor target m/z for MS2, `np.nan` for MS1.
+- `im_frame_precursor_lower: np.ndarray` **(new)**, dtype `np.float64` — parallel; isolation-window lower bound (`mz - getIsolationWindowLowerOffset()`), `np.nan` for MS1.
+- `im_frame_precursor_upper: np.ndarray` **(new)**, dtype `np.float64` — parallel; isolation-window upper bound (`mz + getIsolationWindowUpperOffset()`), `np.nan` for MS1.
 - `im_frame_position_by_index: dict[int, int]` **(new)** — maps spectrum index → position into the parallel arrays. Built once at load time. Used for O(1) membership testing (via `in`) from the spectrum panel and for O(1) lookup of per-frame metadata from helper methods.
-- `ms1_im_frame_indices: list[int]` **(new, derived)** — `im_frame_indices` filtered to MS1, used exclusively by `select_nearest_im_frame` so TIC click never lands on MS2.
+- `ms1_im_frame_indices: list[int]` **(new, derived)** — `im_frame_indices` filtered to MS1, used exclusively by `find_nearest_ms1_im_frame_idx` so TIC click never lands on MS2.
 - `ms1_im_frame_rts: np.ndarray` **(new, derived)** — parallel to `ms1_im_frame_indices`.
 
 Rationale for parallel numpy arrays: a few thousand floats fit easily in memory, allow vectorized filtering by MS level, and avoid per-frame dict lookups in hot paths. Storing precursor center plus lower/upper covers DDA-PASEF (narrow windows) and diaPASEF (wider windows) uniformly. NaN sentinels for MS1 let the info-label code decide whether to display precursor-window text without branching on MS level explicitly.
+
+**State teardown:** all new attributes must be cleared alongside `selected_im_frame_idx` in `state.py:839` (the existing reset path). Reset arrays to empty `np.ndarray` / empty dict / empty list as appropriate so the panel can rely on truthiness checks.
 
 ## Loader Changes
 
@@ -65,37 +67,59 @@ Rationale for parallel numpy arrays: a few thousand floats fit easily in memory,
 
 Memory impact: rasterization path stores no per-frame peaks (only the index arrays grow). Each new array adds ~8 bytes × n_IM_frames. For a 60-minute PASEF run with ~50k MS2 frames, this is ~400 KB per array — negligible.
 
-## Spectrum-Panel Integration
+## Selection Integration
 
-In `pyopenms_viewer/panels/spectrum_panel.py:show_spectrum` (~line 280), after `state.selected_spectrum_idx = spectrum_idx`:
+**Event flow today:** `state.select_spectrum(idx)` sets `selected_spectrum_idx` and emits `selection_changed`. The spectrum panel subscribes to `on_selection_changed` and calls `show_spectrum` to redraw. The IM panel does *not* subscribe to selection events — it only listens to `on_view_changed`.
+
+**New integration:** the IM panel subscribes to `state.on_selection_changed` directly. No changes to `spectrum_panel.show_spectrum`. This avoids cross-panel coupling and avoids touching the ~25 call sites of `show_spectrum`.
+
+In `pyopenms_viewer/panels/im_peak_map_panel.py.build()`, after the existing `on_view_changed` subscription:
 
 ```python
-if state.has_ion_mobility:
-    if spectrum_idx in state.im_frame_position_by_index:
-        state.selected_im_frame_idx = spectrum_idx
+self.state.on_selection_changed(self._on_selection_changed)
+
+def _on_selection_changed(self, selection_type: str, index: int | None) -> None:
+    if selection_type != "spectrum":
+        return
+    if not self.state.has_ion_mobility:
+        return
+    if index is not None and index in self.state.im_frame_position_by_index:
+        self.state.selected_im_frame_idx = index
     else:
-        state.selected_im_frame_idx = None
-    state.emit_view_changed()
+        self.state.selected_im_frame_idx = None
+    self._refresh_image()  # whichever existing method re-renders the canvas
 ```
 
-This makes the IM panel always reflect the spectrum-panel selection.
+The IM panel becomes the single writer of `selected_im_frame_idx` for selection-driven updates (loader still writes the default at load time; reset still clears it).
 
-**TIC-click path:** Currently `tic_panel.py:200-214` selects the nearest spectrum of *any* MS level and *separately* selects the nearest MS1 IM frame — under the new design this would diverge the two panels. Change TIC click so the selected spectrum is the nearest MS1 IM frame (use `ms1_im_frame_indices` / `ms1_im_frame_rts` to find it), then call `state.select_spectrum(best_idx)`. The downstream `show_spectrum` hook sets `selected_im_frame_idx` automatically, so the separate `select_nearest_im_frame` call becomes redundant and is removed. Both panels end up synced on the same MS1 IM frame.
+**TIC-click path (`pyopenms_viewer/panels/tic_panel.py:200-214`):**
 
-`state.select_nearest_im_frame(rt)` (state.py:428) is kept (now a thin helper that returns the nearest MS1 frame index) and used by the TIC-click handler to compute `best_idx`.
+Today TIC click picks the nearest spectrum of any MS level via a linear scan and also calls `state.select_nearest_im_frame(rt)`. Replace both:
+
+1. If `state.has_ion_mobility` is True: compute `best_idx = state.find_nearest_ms1_im_frame_idx(rt)` (see below) and call `state.select_spectrum(best_idx)`. The IM panel's new `on_selection_changed` handler then updates the IM frame automatically — no separate `select_nearest_im_frame` call.
+2. If `state.has_ion_mobility` is False (no IM data in the file): keep today's "nearest spectrum of any level" behavior unchanged.
+
+**Helper refactor:** `state.select_nearest_im_frame(rt)` (state.py:428) is the only existing function whose signature changes. Today it mutates `selected_im_frame_idx`. Refactor to a non-mutating helper `state.find_nearest_ms1_im_frame_idx(rt) -> int | None` that returns the spectrum index of the nearest MS1 IM frame using `ms1_im_frame_indices` / `ms1_im_frame_rts` and binary search (matching today's logic). Returns `None` if no MS1 IM frames are loaded. The TIC handler uses the returned index. Grep before deleting the old name to confirm it has only the one caller in `tic_panel.py:214`; remove it.
+
+**IM panel helpers (`ViewerState`):**
+
+- `state.get_im_frame_ms_level(spec_idx: int) -> int | None` — returns `int(im_frame_ms_levels[im_frame_position_by_index[spec_idx]])` if `spec_idx` is an IM frame, else `None`.
+- `state.get_im_frame_precursor_lower(spec_idx: int) -> float | None` — same pattern, returns `None` if NaN or not present.
+- `state.get_im_frame_precursor_upper(spec_idx: int) -> float | None` — same.
+
+All three take a *spectrum index* (the value of `selected_im_frame_idx`), not an array position; internal lookup goes through `im_frame_position_by_index`.
 
 ## IM Panel Display
 
 `pyopenms_viewer/panels/im_peak_map_panel.py`:
 
 - When `state.selected_im_frame_idx is None`, render a placeholder: clear the image element to a blank canvas, set `info_label` to "No ion mobility data for this spectrum".
-- When `state.selected_im_frame_idx is not None`, render via the existing `rasterizeIMFrame` path. Update `info_label` to include MS level and (for MS2+) precursor window:
+- When `state.selected_im_frame_idx is not None`, render via the existing `rasterizeIMFrame` path. Use the `ViewerState` helpers defined in the Selection Integration section to populate `info_label`:
   - MS1: `"MS1 frame #{idx} | RT={rt:.2f}s"`
-  - MS2+: `"MS{level} frame #{idx} | RT={rt:.2f}s | precursor {lo:.2f}–{hi:.2f} m/z"`
-- Helper methods on `ViewerState` (`get_im_frame_ms_level(idx)`, `get_im_frame_precursor_lower(idx)`, `get_im_frame_precursor_upper(idx)`) encapsulate the parallel-array layout so the panel doesn't index arrays directly.
+  - MS2+: `"MS{level} frame #{idx} | RT={rt:.2f}s | precursor {lo:.2f}–{hi:.2f} m/z"` when both precursor bounds are non-`None`; fall back to the MS1-shaped label when precursor metadata is missing.
 - Panel title ("Ion Mobility Frame") stays as-is. The MS level lives in the info label.
 
-`pyopenms_viewer/rendering/peak_map_renderer.py`: the existing early-return in `IMPeakMapRenderer.render` when `selected_im_frame_idx is None` (line 783) is reviewed to ensure it produces a clean empty canvas rather than stale pixels.
+`pyopenms_viewer/rendering/peak_map_renderer.py`: the existing early-return in `IMPeakMapRenderer.render` when `selected_im_frame_idx is None` (line 783) is reviewed to ensure it produces a clean empty canvas rather than stale pixels. If it currently returns an empty string / no-op (which would leave a stale image in the NiceGUI `interactive_image`), update the panel's `_refresh_image` to explicitly set the element source to a 1×1 transparent PNG (or equivalent) when the renderer signals empty.
 
 ## Error Handling
 
@@ -105,33 +129,46 @@ This makes the IM panel always reflect the spectrum-panel selection.
 
 ## Testing
 
-**Fixture:** synthetic mzML built in a `conftest.py` fixture using `pyopenms.MSExperiment` + `MzMLFile().store()`. Contents: 2 MS1 frames with IM arrays, 4 MS2 frames with IM arrays and precursor isolation-window offsets, 1 MS2 frame *without* an IM array (for the placeholder path).
+**Fixture status:** `tests/data/ims_example.mzML` is MS1-only IM (4 spectra) — useful for the existing MS1 IM tests but does not exercise MS2. `tests/data/DIA_HeLa_50ng_5_6min.mzML` is 2.6 GB diaPASEF — too large for the test suite. We add a synthetic mzML fixture.
 
-**Loader tests** (`tests/test_mzml_loader.py` or new file):
-1. After load, `state.im_frame_indices` has length 6 (MS2-without-IM is excluded).
+**Fixture:** built in a `conftest.py` session-scoped fixture using `pyopenms.MSExperiment` + `MzMLFile().store()`, written to a `tmp_path_factory` directory and reused across tests. API verified end-to-end during design (synthetic file roundtrips MS level, RT, `Precursor.getMZ`/`getIsolationWindowLowerOffset`/`getIsolationWindowUpperOffset`, and FloatDataArray named `"ion mobility"`).
+
+Contents:
+- 2 MS1 frames with IM arrays at distinct RTs.
+- 4 MS2 frames with IM arrays and `Precursor` set up with non-zero isolation-window offsets, interleaved by RT so that some MS2 frames are temporally closer to certain RTs than the MS1 frames (needed for the TIC-sync test).
+- 1 MS2 frame *without* an IM array (for the placeholder path).
+- 1 MS1 frame *without* an IM array (covers MS1 placeholder edge case; cheap to include).
+
+Total: 8 spectra, ~10 KB on disk.
+
+**Loader tests** (extend `tests/test_im_rasterization.py` or create `tests/test_mzml_loader_ms2_im.py`):
+1. After load, `state.im_frame_indices` has length 6 (2 MS1 with IM + 4 MS2 with IM; MS1-without-IM and MS2-without-IM are excluded).
 2. `state.im_frame_ms_levels` matches expected per-frame MS levels.
-3. `state.im_frame_precursor_lower` / `_upper` are `nan` for MS1, match synthesized offsets for MS2.
+3. `state.im_frame_precursor_lower` / `_upper` are `nan` for MS1 frames, match synthesized offsets for MS2 frames (e.g., precursor 500.0 with `lo_offset=5.0` → `lower == 495.0`).
 4. `im_frame_indices` and `im_frame_rts` are sorted by RT and parallel to the new arrays.
 5. `set(state.im_frame_position_by_index.keys()) == set(state.im_frame_indices)` and each `position_by_index[spec_idx]` correctly indexes back to `spec_idx` in `im_frame_indices`.
 
 **State tests:**
-6. `select_nearest_im_frame(rt)` only picks MS1 frames even when MS2 frames are closer in RT.
-7. `get_im_frame_ms_level`, `get_im_frame_precursor_lower`, `get_im_frame_precursor_upper` return correct values for both MS1 and MS2 frames.
+6. `find_nearest_ms1_im_frame_idx(rt)` returns only MS1 frame indices even when MS2 frames are closer in RT. Returns `None` when no MS1 IM frames are loaded.
+7. `get_im_frame_ms_level`, `get_im_frame_precursor_lower`, `get_im_frame_precursor_upper` return correct values for both MS1 and MS2 frames; return `None` for spectrum indices that aren't IM frames.
+7a. After a fresh `state.reset()`, all new attributes are empty/cleared and `state.has_ion_mobility is False`.
 
-**Spectrum-panel integration tests:**
-8. `show_spectrum(ms2_with_im_idx)` sets `state.selected_im_frame_idx == ms2_with_im_idx`.
-9. `show_spectrum(ms2_no_im_idx)` sets `state.selected_im_frame_idx is None`.
-10. `show_spectrum(ms1_im_idx)` sets `state.selected_im_frame_idx == ms1_im_idx`.
+**Selection integration tests** (the IM panel reacts to `selection_changed` events):
+8. Calling `state.select_spectrum(ms2_with_im_idx)` causes the IM panel's listener to set `state.selected_im_frame_idx == ms2_with_im_idx`.
+9. Calling `state.select_spectrum(ms2_no_im_idx)` causes the listener to set `state.selected_im_frame_idx is None`.
+10. Calling `state.select_spectrum(ms1_im_idx)` causes the listener to set `state.selected_im_frame_idx == ms1_im_idx`.
+10a. When `state.has_ion_mobility is False`, the listener is a no-op (does not touch `selected_im_frame_idx`).
 
 **TIC-click sync test:**
-10a. Simulating a TIC click at an RT where an MS2 frame is *closer* than any MS1 IM frame ends with both `state.selected_spectrum_idx` and `state.selected_im_frame_idx` pointing at the nearest MS1 IM frame, not the MS2 frame.
+11. Simulating a TIC click handler at an RT where an MS2 frame is *closer* than any MS1 IM frame ends with both `state.selected_spectrum_idx` and `state.selected_im_frame_idx` pointing at the nearest MS1 IM frame.
+11a. With no IM data loaded, the TIC handler falls back to today's nearest-spectrum-of-any-level behavior (sanity coverage).
 
 **Rendering smoke tests:**
-11. After selecting an MS2 frame, `state.get_im_frame_spectrum().getMSLevel() == 2` and a render call returns non-empty image bytes. (Asserts on inputs/outputs rather than mocking `rasterizeIMFrame`.)
-12. With `selected_im_frame_idx = None`, the renderer produces a placeholder canvas and the info label contains "No ion mobility data".
+12. After selecting an MS2 frame, `state.get_im_frame_spectrum().getMSLevel() == 2` and an `IMPeakMapRenderer.render(state)` call returns a non-empty image source string. Asserts inputs/outputs, no mocking of `rasterizeIMFrame`.
+13. With `selected_im_frame_idx = None`, `IMPeakMapRenderer.render(state)` returns the placeholder source (or empty marker) and the panel's info label contains "No ion mobility data".
 
 **Regression coverage:**
-13. Existing MS1-only IM tests in `tests/test_rendering.py` / `tests/test_ion_mobility.py` (if present) continue to pass unchanged.
+14. Existing IM tests in `tests/test_im_rasterization.py` continue to pass unchanged.
 
 ## Out of Scope
 
