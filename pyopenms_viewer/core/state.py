@@ -432,22 +432,40 @@ class ViewerState:
             return None
         return self.exp[self.selected_im_frame_idx]
 
-    def select_nearest_im_frame(self, rt: float) -> None:
-        """Select the IM frame nearest to the given RT value using binary search.
-
-        Args:
-            rt: Retention time in seconds to find nearest frame for
-        """
-        if len(self.im_frame_rts) == 0:
-            return
-        idx = int(np.searchsorted(self.im_frame_rts, rt))
-        # Check neighbors for closest
-        if idx >= len(self.im_frame_rts):
-            idx = len(self.im_frame_rts) - 1
+    def find_nearest_ms1_im_frame_idx(self, rt: float) -> int | None:
+        """Return spectrum index of nearest MS1 IM frame to rt, or None if none loaded."""
+        if len(self.ms1_im_frame_rts) == 0:
+            return None
+        idx = int(np.searchsorted(self.ms1_im_frame_rts, rt))
+        if idx >= len(self.ms1_im_frame_rts):
+            idx = len(self.ms1_im_frame_rts) - 1
         elif idx > 0:
-            if abs(self.im_frame_rts[idx - 1] - rt) < abs(self.im_frame_rts[idx] - rt):
+            if abs(self.ms1_im_frame_rts[idx - 1] - rt) < abs(self.ms1_im_frame_rts[idx] - rt):
                 idx -= 1
-        self.selected_im_frame_idx = self.im_frame_indices[idx]
+        return self.ms1_im_frame_indices[idx]
+
+    def get_im_frame_ms_level(self, spec_idx: int) -> int | None:
+        """MS level of the IM frame at spectrum index spec_idx, or None if not an IM frame."""
+        pos = self.im_frame_position_by_index.get(spec_idx)
+        if pos is None:
+            return None
+        return int(self.im_frame_ms_levels[pos])
+
+    def get_im_frame_precursor_lower(self, spec_idx: int) -> float | None:
+        """Precursor isolation-window lower bound, or None if MS1 / not an IM frame."""
+        pos = self.im_frame_position_by_index.get(spec_idx)
+        if pos is None:
+            return None
+        value = float(self.im_frame_precursor_lower[pos])
+        return None if np.isnan(value) else value
+
+    def get_im_frame_precursor_upper(self, spec_idx: int) -> float | None:
+        """Precursor isolation-window upper bound, or None if MS1 / not an IM frame."""
+        pos = self.im_frame_position_by_index.get(spec_idx)
+        if pos is None:
+            return None
+        value = float(self.im_frame_precursor_upper[pos])
+        return None if np.isnan(value) else value
 
     def get_faims_peaks_for_cv(
         self, cv: float, rt_min: float, rt_max: float, mz_min: float, mz_max: float

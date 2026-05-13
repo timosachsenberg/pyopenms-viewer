@@ -70,52 +70,46 @@ class TestIMFrameSelectionState:
         state.selected_im_frame_idx = -1
         assert state.get_im_frame_spectrum() is None
 
-    def test_select_nearest_im_frame_exact(self):
-        """Test select_nearest_im_frame with exact RT match."""
+    def test_find_nearest_ms1_im_frame_idx_exact(self):
+        """Test find_nearest_ms1_im_frame_idx with exact RT match."""
         state = ViewerState()
-        state.im_frame_rts = np.array([100.0, 200.0, 300.0, 400.0, 500.0])
-        state.im_frame_indices = [0, 2, 4, 6, 8]
-        state.select_nearest_im_frame(300.0)
-        assert state.selected_im_frame_idx == 4
+        state.ms1_im_frame_rts = np.array([100.0, 200.0, 300.0, 400.0, 500.0])
+        state.ms1_im_frame_indices = [0, 2, 4, 6, 8]
+        assert state.find_nearest_ms1_im_frame_idx(300.0) == 4
 
-    def test_select_nearest_im_frame_between(self):
-        """Test select_nearest_im_frame with RT between frames."""
+    def test_find_nearest_ms1_im_frame_idx_between(self):
+        """Test find_nearest_ms1_im_frame_idx with RT between frames."""
         state = ViewerState()
-        state.im_frame_rts = np.array([100.0, 200.0, 300.0, 400.0, 500.0])
-        state.im_frame_indices = [0, 2, 4, 6, 8]
-        state.select_nearest_im_frame(250.0)
-        # Should pick the closer one (200.0 at idx=2 or 300.0 at idx=4)
-        assert state.selected_im_frame_idx in [2, 4]
+        state.ms1_im_frame_rts = np.array([100.0, 200.0, 300.0, 400.0, 500.0])
+        state.ms1_im_frame_indices = [0, 2, 4, 6, 8]
+        # 250.0 is equidistant from 200.0 (idx=2) and 300.0 (idx=4)
+        assert state.find_nearest_ms1_im_frame_idx(250.0) in [2, 4]
 
-    def test_select_nearest_im_frame_before_first(self):
-        """Test select_nearest_im_frame with RT before all frames."""
+    def test_find_nearest_ms1_im_frame_idx_before_first(self):
+        """Test find_nearest_ms1_im_frame_idx with RT before all frames."""
         state = ViewerState()
-        state.im_frame_rts = np.array([100.0, 200.0, 300.0])
-        state.im_frame_indices = [0, 2, 4]
-        state.select_nearest_im_frame(50.0)
-        assert state.selected_im_frame_idx == 0
+        state.ms1_im_frame_rts = np.array([100.0, 200.0, 300.0])
+        state.ms1_im_frame_indices = [0, 2, 4]
+        assert state.find_nearest_ms1_im_frame_idx(50.0) == 0
 
-    def test_select_nearest_im_frame_after_last(self):
-        """Test select_nearest_im_frame with RT after all frames."""
+    def test_find_nearest_ms1_im_frame_idx_after_last(self):
+        """Test find_nearest_ms1_im_frame_idx with RT after all frames."""
         state = ViewerState()
-        state.im_frame_rts = np.array([100.0, 200.0, 300.0])
-        state.im_frame_indices = [0, 2, 4]
-        state.select_nearest_im_frame(500.0)
-        assert state.selected_im_frame_idx == 4
+        state.ms1_im_frame_rts = np.array([100.0, 200.0, 300.0])
+        state.ms1_im_frame_indices = [0, 2, 4]
+        assert state.find_nearest_ms1_im_frame_idx(500.0) == 4
 
-    def test_select_nearest_im_frame_empty(self):
-        """Test select_nearest_im_frame with no frames."""
+    def test_find_nearest_ms1_im_frame_idx_empty(self):
+        """Test find_nearest_ms1_im_frame_idx with no MS1 frames."""
         state = ViewerState()
-        state.im_frame_rts = np.array([])
-        state.im_frame_indices = []
-        state.select_nearest_im_frame(100.0)
-        assert state.selected_im_frame_idx is None
+        state.ms1_im_frame_rts = np.array([])
+        state.ms1_im_frame_indices = []
+        assert state.find_nearest_ms1_im_frame_idx(100.0) is None
 
-    def test_select_nearest_im_frame_none_rts(self):
-        """Test select_nearest_im_frame when im_frame_rts is empty."""
+    def test_find_nearest_ms1_im_frame_idx_default_empty(self):
+        """Test find_nearest_ms1_im_frame_idx when ms1_im_frame_rts is default empty."""
         state = ViewerState()
-        state.select_nearest_im_frame(100.0)
-        assert state.selected_im_frame_idx is None
+        assert state.find_nearest_ms1_im_frame_idx(100.0) is None
 
     def test_clear_mzml_data_clears_im_frame_state(self):
         """Test that clear_mzml_data clears all IM frame state."""
