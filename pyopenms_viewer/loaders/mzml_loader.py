@@ -305,47 +305,51 @@ class MzMLLoader:
                             cv_tic_data[cv]["int"].append(tic_value)
 
                 # Ion mobility detection and extraction (all MS levels)
-                if detected_im_name is None and n > 0:
+                if n > 0:
                     float_arrays = spec.getFloatDataArrays()
-                    for fda in float_arrays:
-                        name = fda.getName().lower() if fda.getName() else ""
-                        for im_name in im_array_names:
-                            if im_name in name:
-                                detected_im_name = fda.getName()
-                                break
-                        if detected_im_name:
-                            break
 
-                if detected_im_name is not None and n > 0:
-                    float_arrays = spec.getFloatDataArrays()
-                    for fda in float_arrays:
-                        if fda.getName() == detected_im_name:
-                            im_array = np.array(fda.get_data(), dtype=np.float32)
-                            if len(im_array) == n:
-                                im_mz_list.append(mz_array)
-                                im_im_list.append(im_array)
-                                im_int_list.append(int_array)
-                                im_frame_indices_list.append(spec_idx)
-                                im_frame_ms_levels_list.append(ms_level)
-                                if ms_level >= 2:
-                                    precs = spec.getPrecursors()
-                                    if precs:
-                                        prec = precs[0]
-                                        pmz = float(prec.getMZ())
-                                        lo_off = float(prec.getIsolationWindowLowerOffset())
-                                        hi_off = float(prec.getIsolationWindowUpperOffset())
-                                        im_frame_precursor_mz_list.append(pmz)
-                                        im_frame_precursor_lower_list.append(pmz - lo_off)
-                                        im_frame_precursor_upper_list.append(pmz + hi_off)
+                    # Ion mobility detection (all MS levels)
+                    if detected_im_name is None:
+                        for fda in float_arrays:
+                            name = fda.getName().lower() if fda.getName() else ""
+                            for im_name in im_array_names:
+                                if im_name in name:
+                                    detected_im_name = fda.getName()
+                                    break
+                            if detected_im_name:
+                                break
+
+                    # Extract IM data if available (all MS levels)
+                    if detected_im_name is not None:
+                        for fda in float_arrays:
+                            if fda.getName() == detected_im_name:
+                                im_array = np.array(fda.get_data(), dtype=np.float32)
+                                if len(im_array) == n:
+                                    im_mz_list.append(mz_array)
+                                    im_im_list.append(im_array)
+                                    im_int_list.append(int_array)
+                                    im_frame_indices_list.append(spec_idx)
+                                    im_frame_ms_levels_list.append(ms_level)
+                                    if ms_level >= 2:
+                                        # For MS3+ we record precs[0] (first-stage isolation); MS3 IM is rare and out of scope.
+                                        precs = spec.getPrecursors()
+                                        if precs:
+                                            prec = precs[0]
+                                            pmz = float(prec.getMZ())
+                                            lo_off = float(prec.getIsolationWindowLowerOffset())
+                                            hi_off = float(prec.getIsolationWindowUpperOffset())
+                                            im_frame_precursor_mz_list.append(pmz)
+                                            im_frame_precursor_lower_list.append(pmz - lo_off)
+                                            im_frame_precursor_upper_list.append(pmz + hi_off)
+                                        else:
+                                            im_frame_precursor_mz_list.append(np.nan)
+                                            im_frame_precursor_lower_list.append(np.nan)
+                                            im_frame_precursor_upper_list.append(np.nan)
                                     else:
                                         im_frame_precursor_mz_list.append(np.nan)
                                         im_frame_precursor_lower_list.append(np.nan)
                                         im_frame_precursor_upper_list.append(np.nan)
-                                else:
-                                    im_frame_precursor_mz_list.append(np.nan)
-                                    im_frame_precursor_lower_list.append(np.nan)
-                                    im_frame_precursor_upper_list.append(np.nan)
-                            break
+                                break
 
             # =========================================================
             # Post-processing
