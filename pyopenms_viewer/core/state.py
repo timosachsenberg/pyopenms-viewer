@@ -444,6 +444,29 @@ class ViewerState:
                 idx -= 1
         return self.ms1_im_frame_indices[idx]
 
+    def find_click_target_spectrum_idx(self, rt: float) -> int | None:
+        """Find the spectrum index a TIC/peak-map click at `rt` should select.
+
+        Prefers the nearest MS1 IM frame so the spectrum and IM panels stay in sync.
+        Falls back to the nearest spectrum of any MS level when no IM data is loaded.
+        Returns None only when no experiment is loaded.
+        """
+        if self.exp is None:
+            return None
+        if self.has_ion_mobility and self.ms1_im_frame_indices:
+            idx = self.find_nearest_ms1_im_frame_idx(rt)
+            if idx is not None:
+                return idx
+            # Defensive fallback if MS1 indices/rts somehow desynced.
+        best_idx = 0
+        best_diff = float("inf")
+        for i in range(len(self.exp)):
+            diff = abs(self.exp[i].getRT() - rt)
+            if diff < best_diff:
+                best_diff = diff
+                best_idx = i
+        return best_idx
+
     def get_im_frame_ms_level(self, spec_idx: int) -> int | None:
         """MS level of the IM frame at spectrum index spec_idx, or None if not an IM frame."""
         pos = self.im_frame_position_by_index.get(spec_idx)

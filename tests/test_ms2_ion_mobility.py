@@ -285,22 +285,9 @@ class TestTICClickSync:
         """Replicate the post-Task-6 TIC click logic for unit testing."""
 
         def handle_tic_click(clicked_rt):
-            if state.exp is None:
-                return
-            if state.has_ion_mobility and state.ms1_im_frame_indices:
-                best_idx = state.find_nearest_ms1_im_frame_idx(clicked_rt)
-                if best_idx is None:
-                    return
-            else:
-                # Fallback: nearest spectrum of any level (today's behavior).
-                best_idx = 0
-                best_diff = float("inf")
-                for i in range(len(state.exp)):
-                    diff = abs(state.exp[i].getRT() - clicked_rt)
-                    if diff < best_diff:
-                        best_diff = diff
-                        best_idx = i
-            state.select_spectrum(best_idx)
+            best_idx = state.find_click_target_spectrum_idx(clicked_rt)
+            if best_idx is not None:
+                state.select_spectrum(best_idx)
 
         return handle_tic_click
 
@@ -349,3 +336,36 @@ class TestTICClickSync:
 
         self._build_handler(state)(2.4)
         assert state.selected_spectrum_idx == 1
+
+
+class TestFindClickTargetSpectrumIdx:
+    def test_returns_none_when_no_exp(self):
+        state = ViewerState()
+        assert state.find_click_target_spectrum_idx(1.0) is None
+
+    def test_prefers_ms1_im_frame_when_loaded(self, ms2_im_mzml_path):
+        from pyopenms_viewer.loaders.mzml_loader import MzMLLoader
+
+        state = ViewerState()
+        MzMLLoader(state).load_sync(str(ms2_im_mzml_path))
+        # RT 1.15 is closer to MS2 frames (idx 1, 2) than to MS1 (idx 0).
+        # Helper must still return the MS1 frame.
+        assert state.find_click_target_spectrum_idx(1.15) == 0
+        assert state.find_click_target_spectrum_idx(1.95) == 4
+
+    def test_falls_back_to_any_level_when_no_im(self):
+        from unittest.mock import MagicMock
+
+        state = ViewerState()
+        spec_a = MagicMock()
+        spec_a.getRT.return_value = 1.0
+        spec_b = MagicMock()
+        spec_b.getRT.return_value = 3.0
+        exp = MagicMock()
+        exp.__len__ = MagicMock(return_value=2)
+        exp.__getitem__ = MagicMock(side_effect=lambda i: [spec_a, spec_b][i])
+        state.exp = exp
+        state.has_ion_mobility = False  # no IM
+
+        assert state.find_click_target_spectrum_idx(0.5) == 0
+        assert state.find_click_target_spectrum_idx(2.5) == 1

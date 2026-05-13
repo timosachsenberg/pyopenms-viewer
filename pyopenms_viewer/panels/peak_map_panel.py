@@ -987,18 +987,9 @@ class PeakMapPanel(BasePanel):
                 )
 
         # Select nearest spectrum at the clicked RT (prefer MS1 IM frame to keep panels in sync)
-        if self.state.exp is not None:
-            clicked_rt, _ = self._pixel_to_data(e.image_x, e.image_y)
-            if self.state.has_ion_mobility and self.state.ms1_im_frame_indices:
-                best_idx = self.state.find_nearest_ms1_im_frame_idx(clicked_rt)
-            else:
-                best_idx = 0
-                best_diff = float("inf")
-                for i in range(len(self.state.exp)):
-                    diff = abs(self.state.exp[i].getRT() - clicked_rt)
-                    if diff < best_diff:
-                        best_diff = diff
-                        best_idx = i
+        clicked_rt, _ = self._pixel_to_data(e.image_x, e.image_y)
+        best_idx = self.state.find_click_target_spectrum_idx(clicked_rt)
+        if best_idx is not None:
             self.state.select_spectrum(best_idx)
 
         self.update()
