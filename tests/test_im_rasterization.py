@@ -26,7 +26,7 @@ class TestIMFrameSelectionState:
         state = ViewerState()
         assert state.selected_im_frame_idx is None
         assert state.im_frame_indices == []
-        assert state.im_frame_rts is None
+        assert len(state.im_frame_rts) == 0
 
     def test_get_im_frame_spectrum_no_selection(self):
         """Test get_im_frame_spectrum returns None when no frame selected."""
@@ -129,7 +129,7 @@ class TestIMFrameSelectionState:
 
         assert state.selected_im_frame_idx is None
         assert state.im_frame_indices == []
-        assert state.im_frame_rts is None
+        assert len(state.im_frame_rts) == 0
         assert state.has_ion_mobility is False
 
 
@@ -147,7 +147,7 @@ class TestIMLoaderFrameIndices:
         if state.has_ion_mobility:
             # Frame indices should always be populated when IM data exists
             assert len(state.im_frame_indices) > 0
-            assert state.im_frame_rts is not None
+            assert len(state.im_frame_rts) > 0
             assert len(state.im_frame_rts) == len(state.im_frame_indices)
 
     def test_load_ims_mzml_frame_rts_sorted(self):
@@ -158,7 +158,7 @@ class TestIMLoaderFrameIndices:
         loader = MzMLLoader(state)
         loader.load_sync(str(IMS_MZML))
 
-        if state.has_ion_mobility and state.im_frame_rts is not None:
+        if state.has_ion_mobility and len(state.im_frame_rts) > 0:
             # Check that RTs are in sorted order
             for i in range(len(state.im_frame_rts) - 1):
                 assert state.im_frame_rts[i] <= state.im_frame_rts[i + 1]
