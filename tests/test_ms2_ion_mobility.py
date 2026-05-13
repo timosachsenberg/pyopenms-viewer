@@ -276,3 +276,76 @@ class TestSelectSpectrumDrivesIMFrame:
 
         state.select_spectrum(0)
         assert state.selected_im_frame_idx == 0
+
+
+class TestTICClickSync:
+    """Verify TIC-click selects nearest MS1 IM frame as the spectrum when IM data is present."""
+
+    def _build_handler(self, state):
+        """Replicate the post-Task-6 TIC click logic for unit testing."""
+
+        def handle_tic_click(clicked_rt):
+            if state.exp is None:
+                return
+            if state.has_ion_mobility and state.ms1_im_frame_indices:
+                best_idx = state.find_nearest_ms1_im_frame_idx(clicked_rt)
+                if best_idx is None:
+                    return
+            else:
+                # Fallback: nearest spectrum of any level (today's behavior).
+                best_idx = 0
+                best_diff = float("inf")
+                for i in range(len(state.exp)):
+                    diff = abs(state.exp[i].getRT() - clicked_rt)
+                    if diff < best_diff:
+                        best_diff = diff
+                        best_idx = i
+            state.select_spectrum(best_idx)
+
+        return handle_tic_click
+
+    def test_tic_click_at_ms2_rt_lands_on_ms1(self, ms2_im_mzml_path):
+        from pyopenms_viewer.loaders.mzml_loader import MzMLLoader
+
+        state = ViewerState()
+        MzMLLoader(state).load_sync(str(ms2_im_mzml_path))
+
+        # Subscribe a panel-like listener so selecting a spectrum updates selected_im_frame_idx.
+        def panel_handler(selection_type, index):
+            if selection_type != "spectrum" or not state.has_ion_mobility:
+                return
+            if index is not None and index in state.im_frame_position_by_index:
+                state.selected_im_frame_idx = index
+            else:
+                state.selected_im_frame_idx = None
+
+        state.on_selection_changed(panel_handler)
+
+        # Click at RT 1.15 (between MS2 frames 1 and 2; nearest MS1 is idx 0 at RT 1.0).
+        self._build_handler(state)(1.15)
+        assert state.selected_spectrum_idx == 0
+        assert state.selected_im_frame_idx == 0
+
+        # Click at RT 1.95 (nearest MS1 is idx 4 at RT 2.0).
+        self._build_handler(state)(1.95)
+        assert state.selected_spectrum_idx == 4
+        assert state.selected_im_frame_idx == 4
+
+    def test_tic_click_no_im_falls_back_to_nearest_spectrum(self):
+        # Use a state with no IM data; ensure fallback hits the loop branch.
+        state = ViewerState()
+        # Fake an experiment with two MS1 spectra at RTs 1.0 and 3.0.
+        from unittest.mock import MagicMock
+
+        spec_a = MagicMock()
+        spec_a.getRT.return_value = 1.0
+        spec_b = MagicMock()
+        spec_b.getRT.return_value = 3.0
+        exp = MagicMock()
+        exp.__len__ = MagicMock(return_value=2)
+        exp.__getitem__ = MagicMock(side_effect=lambda i: [spec_a, spec_b][i])
+        state.exp = exp
+        state.has_ion_mobility = False
+
+        self._build_handler(state)(2.4)
+        assert state.selected_spectrum_idx == 1

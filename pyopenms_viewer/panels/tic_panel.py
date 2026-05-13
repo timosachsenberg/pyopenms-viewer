@@ -196,17 +196,20 @@ class TICPanel(BasePanel):
         if self.state.rt_in_minutes:
             clicked_rt *= 60.0
 
-        # Find closest spectrum
+        # Find closest spectrum (prefer MS1 IM frame so spectrum + IM panels stay in sync)
         if self.state.exp is not None:
-            best_idx = 0
-            best_diff = float("inf")
-            for i in range(len(self.state.exp)):
-                diff = abs(self.state.exp[i].getRT() - clicked_rt)
-                if diff < best_diff:
-                    best_diff = diff
-                    best_idx = i
+            if self.state.has_ion_mobility and self.state.ms1_im_frame_indices:
+                best_idx = self.state.find_nearest_ms1_im_frame_idx(clicked_rt)
+            else:
+                best_idx = 0
+                best_diff = float("inf")
+                for i in range(len(self.state.exp)):
+                    diff = abs(self.state.exp[i].getRT() - clicked_rt)
+                    if diff < best_diff:
+                        best_diff = diff
+                        best_idx = i
 
-            # Select spectrum (triggers spectrum panel update)
+            # Select spectrum (triggers spectrum panel + IM panel updates via listeners)
             self.state.select_spectrum(best_idx)
 
             # Also center the peak map on this RT (matching original behavior)
