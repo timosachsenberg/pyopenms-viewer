@@ -164,3 +164,98 @@ class TestLoaderMS2IM:
         assert 7 not in state.im_frame_indices
         assert 3 not in state.im_frame_position_by_index
         assert 7 not in state.im_frame_position_by_index
+
+
+class TestApplySpectrumSelectionToIM:
+    """Pure-function tests for the selection -> IM frame mapping."""
+
+    def _state(self):
+        state = ViewerState()
+        state.has_ion_mobility = True
+        state.im_frame_indices = [0, 1, 2, 4, 5, 6]
+        state.im_frame_position_by_index = {0: 0, 1: 1, 2: 2, 4: 3, 5: 4, 6: 5}
+        return state
+
+    def test_sets_for_ms2_im_frame(self):
+        from pyopenms_viewer.panels.im_peak_map_panel import (
+            apply_spectrum_selection_to_im,
+        )
+
+        state = self._state()
+        apply_spectrum_selection_to_im(state, "spectrum", 1)
+        assert state.selected_im_frame_idx == 1
+
+    def test_clears_for_spectrum_without_im(self):
+        from pyopenms_viewer.panels.im_peak_map_panel import (
+            apply_spectrum_selection_to_im,
+        )
+
+        state = self._state()
+        state.selected_im_frame_idx = 0
+        apply_spectrum_selection_to_im(state, "spectrum", 3)
+        assert state.selected_im_frame_idx is None
+
+    def test_sets_for_ms1_im_frame(self):
+        from pyopenms_viewer.panels.im_peak_map_panel import (
+            apply_spectrum_selection_to_im,
+        )
+
+        state = self._state()
+        apply_spectrum_selection_to_im(state, "spectrum", 4)
+        assert state.selected_im_frame_idx == 4
+
+    def test_clears_for_none_index(self):
+        from pyopenms_viewer.panels.im_peak_map_panel import (
+            apply_spectrum_selection_to_im,
+        )
+
+        state = self._state()
+        state.selected_im_frame_idx = 0
+        apply_spectrum_selection_to_im(state, "spectrum", None)
+        assert state.selected_im_frame_idx is None
+
+    def test_noop_when_no_ion_mobility(self):
+        from pyopenms_viewer.panels.im_peak_map_panel import (
+            apply_spectrum_selection_to_im,
+        )
+
+        state = self._state()
+        state.has_ion_mobility = False
+        state.selected_im_frame_idx = 5
+        apply_spectrum_selection_to_im(state, "spectrum", 1)
+        assert state.selected_im_frame_idx == 5
+
+    def test_ignores_non_spectrum_selection(self):
+        from pyopenms_viewer.panels.im_peak_map_panel import (
+            apply_spectrum_selection_to_im,
+        )
+
+        state = self._state()
+        state.selected_im_frame_idx = 0
+        apply_spectrum_selection_to_im(state, "feature", 1)
+        assert state.selected_im_frame_idx == 0
+
+
+class TestSelectSpectrumDrivesIMFrame:
+    """Verify state.select_spectrum -> apply_spectrum_selection_to_im end-to-end."""
+
+    def test_select_spectrum_updates_im_via_subscribed_handler(self, ms2_im_mzml_path):
+        from pyopenms_viewer.loaders.mzml_loader import MzMLLoader
+        from pyopenms_viewer.panels.im_peak_map_panel import (
+            apply_spectrum_selection_to_im,
+        )
+
+        state = ViewerState()
+        MzMLLoader(state).load_sync(str(ms2_im_mzml_path))
+        state.on_selection_changed(
+            lambda selection_type, index: apply_spectrum_selection_to_im(state, selection_type, index)
+        )
+
+        state.select_spectrum(1)
+        assert state.selected_im_frame_idx == 1
+
+        state.select_spectrum(3)
+        assert state.selected_im_frame_idx is None
+
+        state.select_spectrum(0)
+        assert state.selected_im_frame_idx == 0

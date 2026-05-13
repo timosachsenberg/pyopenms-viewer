@@ -13,6 +13,23 @@ from pyopenms_viewer.panels.base_panel import BasePanel
 from pyopenms_viewer.rendering import IMPeakMapRenderer
 
 
+def apply_spectrum_selection_to_im(state, selection_type: str, index: int | None) -> bool:
+    """Update state.selected_im_frame_idx in response to a spectrum selection.
+
+    Returns True if state.selected_im_frame_idx changed and a re-render is needed.
+    """
+    if selection_type != "spectrum":
+        return False
+    if not state.has_ion_mobility:
+        return False
+    old = state.selected_im_frame_idx
+    if index is not None and index in state.im_frame_position_by_index:
+        state.selected_im_frame_idx = index
+    else:
+        state.selected_im_frame_idx = None
+    return state.selected_im_frame_idx != old
+
+
 class IMPeakMapPanel(BasePanel):
     """Ion Mobility peak map panel.
 
@@ -77,6 +94,7 @@ class IMPeakMapPanel(BasePanel):
         # Subscribe to events
         self.state.on_data_loaded(self._on_data_loaded)
         self.state.on_view_changed(self._on_view_changed)
+        self.state.on_selection_changed(self._on_selection_changed)
 
         self._is_built = True
         return self.expansion
@@ -230,6 +248,12 @@ class IMPeakMapPanel(BasePanel):
     def _on_view_changed(self):
         """Handle view changed event."""
         if self.state.has_ion_mobility:
+            self.update()
+
+    def _on_selection_changed(self, selection_type: str, index: int | None) -> None:
+        """Sync the displayed IM frame to the selected spectrum."""
+        changed = apply_spectrum_selection_to_im(self.state, selection_type, index)
+        if changed:
             self.update()
 
     def _on_link_change(self, e):
