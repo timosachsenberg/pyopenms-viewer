@@ -385,6 +385,29 @@ class TestIMInfoLabel:
         assert label == "No ion mobility data for this spectrum"
 
 
+class TestRenderingSmoke:
+    def test_renders_ms2_frame(self, ms2_im_mzml_path):
+        from pyopenms_viewer.loaders.mzml_loader import MzMLLoader
+        from pyopenms_viewer.rendering.peak_map_renderer import IMPeakMapRenderer
+
+        state = ViewerState()
+        MzMLLoader(state).load_sync(str(ms2_im_mzml_path))
+        state.selected_im_frame_idx = 1  # MS2 with IM
+
+        assert state.get_im_frame_spectrum().getMSLevel() == 2
+
+        renderer = IMPeakMapRenderer(
+            plot_width=state.plot_width,
+            plot_height=state.plot_height,
+            margin_left=state.margin_left,
+            margin_right=state.margin_right,
+            margin_top=state.margin_top,
+            margin_bottom=state.margin_bottom,
+        )
+        out = renderer.render(state)
+        assert out, "expected non-empty base64 image for an MS2 IM frame"
+
+
 class TestFindClickTargetSpectrumIdx:
     def test_returns_none_when_no_exp(self):
         state = ViewerState()

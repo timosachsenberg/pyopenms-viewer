@@ -28,7 +28,7 @@ def ms2_im_mzml_path(tmp_path_factory):
                         np.asarray(intens, dtype=np.float32)))
         if im_values is not None:
             fda = FloatDataArray()
-            fda.setName("ion mobility")
+            fda.setName("Ion Mobility Drift Time")
             fda.set_data(np.asarray(im_values, dtype=np.float32))
             spec.setFloatDataArrays([fda])
         if precursor is not None:
