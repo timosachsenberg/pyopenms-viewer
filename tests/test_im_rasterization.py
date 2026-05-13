@@ -112,7 +112,7 @@ class TestIMFrameSelectionState:
         assert state.selected_im_frame_idx is None
 
     def test_select_nearest_im_frame_none_rts(self):
-        """Test select_nearest_im_frame when im_frame_rts is None."""
+        """Test select_nearest_im_frame when im_frame_rts is empty."""
         state = ViewerState()
         state.select_nearest_im_frame(100.0)
         assert state.selected_im_frame_idx is None

@@ -25,17 +25,12 @@ def test_fixture_roundtrips(ms2_im_mzml_path):
 class TestNewIMStateAttributes:
     def test_defaults(self):
         state = ViewerState()
-        assert state.im_frame_ms_levels is not None
         assert len(state.im_frame_ms_levels) == 0
-        assert state.im_frame_precursor_mz is not None
         assert len(state.im_frame_precursor_mz) == 0
-        assert state.im_frame_precursor_lower is not None
         assert len(state.im_frame_precursor_lower) == 0
-        assert state.im_frame_precursor_upper is not None
         assert len(state.im_frame_precursor_upper) == 0
         assert state.im_frame_position_by_index == {}
         assert state.ms1_im_frame_indices == []
-        assert state.ms1_im_frame_rts is not None
         assert len(state.ms1_im_frame_rts) == 0
 
     def test_clear_mzml_data_resets_new_attrs(self):
