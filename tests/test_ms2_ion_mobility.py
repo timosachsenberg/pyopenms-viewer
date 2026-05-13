@@ -99,3 +99,68 @@ class TestIMStateHelpers:
         assert state.get_im_frame_precursor_lower(1) == 495.0
         assert state.get_im_frame_precursor_upper(1) == 505.0
         assert state.get_im_frame_precursor_lower(99) is None
+
+
+class TestLoaderMS2IM:
+    def _load(self, ms2_im_mzml_path):
+        from pyopenms_viewer.loaders.mzml_loader import MzMLLoader
+
+        state = ViewerState()
+        loader = MzMLLoader(state)
+        assert loader.load_sync(str(ms2_im_mzml_path)) is True
+        return state
+
+    def test_im_frame_indices_includes_all_im_levels(self, ms2_im_mzml_path):
+        state = self._load(ms2_im_mzml_path)
+        # Synthetic file has 2 MS1+IM, 4 MS2+IM, plus 1 MS2 no-IM and 1 MS1 no-IM.
+        # Frame indices are the spectrum indices of IM-bearing frames.
+        assert state.has_ion_mobility is True
+        assert sorted(state.im_frame_indices) == [0, 1, 2, 4, 5, 6]
+
+    def test_im_frame_arrays_parallel_and_sorted(self, ms2_im_mzml_path):
+        state = self._load(ms2_im_mzml_path)
+        # Sorted by RT (and spec_idx for tie-breaking). RTs are 1.0..2.2 for these 6.
+        rts = state.im_frame_rts.tolist()
+        assert rts == sorted(rts)
+        assert len(state.im_frame_indices) == len(state.im_frame_rts)
+        assert len(state.im_frame_indices) == len(state.im_frame_ms_levels)
+        assert len(state.im_frame_indices) == len(state.im_frame_precursor_mz)
+        assert len(state.im_frame_indices) == len(state.im_frame_precursor_lower)
+        assert len(state.im_frame_indices) == len(state.im_frame_precursor_upper)
+
+    def test_im_frame_ms_levels(self, ms2_im_mzml_path):
+        state = self._load(ms2_im_mzml_path)
+        # idx -> ms_level pairs derived from fixture layout.
+        expected = {0: 1, 1: 2, 2: 2, 4: 1, 5: 2, 6: 2}
+        for spec_idx, expected_level in expected.items():
+            assert state.get_im_frame_ms_level(spec_idx) == expected_level
+
+    def test_im_frame_precursor_bounds(self, ms2_im_mzml_path):
+        state = self._load(ms2_im_mzml_path)
+        # MS1 frames: nan -> None via helper.
+        assert state.get_im_frame_precursor_lower(0) is None
+        assert state.get_im_frame_precursor_upper(0) is None
+        # MS2 idx 1: precursor 500.0 with offsets 5.0 -> [495.0, 505.0]
+        assert state.get_im_frame_precursor_lower(1) == 495.0
+        assert state.get_im_frame_precursor_upper(1) == 505.0
+        # MS2 idx 2: precursor 510.0 -> [505.0, 515.0]
+        assert state.get_im_frame_precursor_lower(2) == 505.0
+        assert state.get_im_frame_precursor_upper(2) == 515.0
+
+    def test_position_by_index_mapping(self, ms2_im_mzml_path):
+        state = self._load(ms2_im_mzml_path)
+        for pos, spec_idx in enumerate(state.im_frame_indices):
+            assert state.im_frame_position_by_index[spec_idx] == pos
+
+    def test_ms1_im_frame_subset(self, ms2_im_mzml_path):
+        state = self._load(ms2_im_mzml_path)
+        assert state.ms1_im_frame_indices == [0, 4]
+        assert state.ms1_im_frame_rts.tolist() == [1.0, 2.0]
+
+    def test_no_im_spectrum_excluded(self, ms2_im_mzml_path):
+        state = self._load(ms2_im_mzml_path)
+        # idx 3 (MS2 no-IM) and idx 7 (MS1 no-IM) must not appear anywhere.
+        assert 3 not in state.im_frame_indices
+        assert 7 not in state.im_frame_indices
+        assert 3 not in state.im_frame_position_by_index
+        assert 7 not in state.im_frame_position_by_index
