@@ -1,6 +1,5 @@
 """Tests for MS2 ion mobility frame support."""
 
-import numpy as np
 from pyopenms import MSExperiment, MzMLFile
 
 
