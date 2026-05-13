@@ -13,13 +13,13 @@ from pyopenms_viewer.panels.base_panel import BasePanel
 from pyopenms_viewer.rendering import IMPeakMapRenderer
 
 
-def build_im_info_label(state) -> str:
+def build_im_info_label(state: ViewerState) -> str:
     """Format the IM panel info label for the currently selected frame.
 
     Returns the placeholder string when no IM frame is selected.
     """
     idx = state.selected_im_frame_idx
-    if idx is None or state.exp is None:
+    if idx is None or state.exp is None or idx < 0 or idx >= len(state.exp):
         return "No ion mobility data for this spectrum"
 
     spec = state.exp[idx]
@@ -201,8 +201,7 @@ class IMPeakMapPanel(BasePanel):
             return
 
         if self.state.selected_im_frame_idx is None:
-            if self.im_image_element is not None:
-                self.im_image_element.set_source("")
+            self.im_image_element.set_source("")
         else:
             base64_img = self.im_renderer.render(self.state)
             if base64_img:

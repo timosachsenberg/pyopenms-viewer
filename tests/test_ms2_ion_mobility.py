@@ -376,6 +376,14 @@ class TestIMInfoLabel:
         label = build_im_info_label(state)
         assert label == "No ion mobility data for this spectrum"
 
+    def test_info_label_for_out_of_bounds_idx(self, ms2_im_mzml_path):
+        from pyopenms_viewer.panels.im_peak_map_panel import build_im_info_label
+
+        state = self._state(ms2_im_mzml_path)
+        state.selected_im_frame_idx = 999  # out of range
+        label = build_im_info_label(state)
+        assert label == "No ion mobility data for this spectrum"
+
 
 class TestFindClickTargetSpectrumIdx:
     def test_returns_none_when_no_exp(self):
