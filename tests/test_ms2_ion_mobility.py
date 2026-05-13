@@ -338,6 +338,45 @@ class TestTICClickSync:
         assert state.selected_spectrum_idx == 1
 
 
+class TestIMInfoLabel:
+    """Test the helper that builds the info-label string from state."""
+
+    def _state(self, ms2_im_mzml_path):
+        from pyopenms_viewer.loaders.mzml_loader import MzMLLoader
+
+        state = ViewerState()
+        MzMLLoader(state).load_sync(str(ms2_im_mzml_path))
+        return state
+
+    def test_info_label_for_ms1(self, ms2_im_mzml_path):
+        from pyopenms_viewer.panels.im_peak_map_panel import build_im_info_label
+
+        state = self._state(ms2_im_mzml_path)
+        state.selected_im_frame_idx = 0
+        label = build_im_info_label(state)
+        assert label.startswith("MS1 frame #0 |")
+        assert "RT=1.00s" in label
+        assert "precursor" not in label
+
+    def test_info_label_for_ms2(self, ms2_im_mzml_path):
+        from pyopenms_viewer.panels.im_peak_map_panel import build_im_info_label
+
+        state = self._state(ms2_im_mzml_path)
+        state.selected_im_frame_idx = 1
+        label = build_im_info_label(state)
+        assert label.startswith("MS2 frame #1 |")
+        assert "RT=1.10s" in label
+        assert "precursor 495.00–505.00 m/z" in label
+
+    def test_info_label_when_no_selection(self, ms2_im_mzml_path):
+        from pyopenms_viewer.panels.im_peak_map_panel import build_im_info_label
+
+        state = self._state(ms2_im_mzml_path)
+        state.selected_im_frame_idx = None
+        label = build_im_info_label(state)
+        assert label == "No ion mobility data for this spectrum"
+
+
 class TestFindClickTargetSpectrumIdx:
     def test_returns_none_when_no_exp(self):
         state = ViewerState()

@@ -13,6 +13,30 @@ from pyopenms_viewer.panels.base_panel import BasePanel
 from pyopenms_viewer.rendering import IMPeakMapRenderer
 
 
+def build_im_info_label(state) -> str:
+    """Format the IM panel info label for the currently selected frame.
+
+    Returns the placeholder string when no IM frame is selected.
+    """
+    idx = state.selected_im_frame_idx
+    if idx is None or state.exp is None:
+        return "No ion mobility data for this spectrum"
+
+    spec = state.exp[idx]
+    rt = spec.getRT()
+    ms_level = state.get_im_frame_ms_level(idx)
+    if ms_level is None:
+        ms_level = spec.getMSLevel()
+
+    base = f"MS{ms_level} frame #{idx} | RT={rt:.2f}s"
+    if ms_level >= 2:
+        lo = state.get_im_frame_precursor_lower(idx)
+        hi = state.get_im_frame_precursor_upper(idx)
+        if lo is not None and hi is not None:
+            base += f" | precursor {lo:.2f}–{hi:.2f} m/z"
+    return base
+
+
 def apply_spectrum_selection_to_im(
     state: ViewerState, selection_type: str, index: int | None
 ) -> bool:
@@ -176,30 +200,20 @@ class IMPeakMapPanel(BasePanel):
         if not self.state.has_ion_mobility or self.im_image_element is None:
             return
 
-        base64_img = self.im_renderer.render(self.state)
-        if base64_img:
-            self.im_image_element.set_source(f"data:image/png;base64,{base64_img}")
+        if self.state.selected_im_frame_idx is None:
+            if self.im_image_element is not None:
+                self.im_image_element.set_source("")
+        else:
+            base64_img = self.im_renderer.render(self.state)
+            if base64_img:
+                self.im_image_element.set_source(f"data:image/png;base64,{base64_img}")
 
         # Update range label
         self._update_range_label()
 
         # Update info label
         if self.info_label is not None and self.state.has_ion_mobility:
-            if self.state.selected_im_frame_idx is not None and self.state.exp is not None:
-                idx = self.state.selected_im_frame_idx
-                if 0 <= idx < len(self.state.exp):
-                    spec = self.state.exp[idx]
-                    ms_level = spec.getMSLevel()
-                    rt = spec.getRT()
-                    n_peaks = spec.size()
-                    self.info_label.set_text(
-                        f"Spectrum #{idx} | MS{ms_level} | RT={rt:.2f}s | {n_peaks:,} peaks"
-                        f" | {self.state.im_type or 'Unknown type'}"
-                    )
-                else:
-                    self.info_label.set_text(f"Ion mobility data | {self.state.im_type or 'Unknown type'}")
-            else:
-                self.info_label.set_text(f"Ion mobility data | {self.state.im_type or 'Unknown type'}")
+            self.info_label.set_text(build_im_info_label(self.state))
 
     def _has_data(self) -> bool:
         """Check if panel has data to display."""
