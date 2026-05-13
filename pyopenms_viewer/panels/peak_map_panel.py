@@ -998,11 +998,6 @@ class PeakMapPanel(BasePanel):
                     best_idx = i
             self.state.select_spectrum(best_idx)
 
-            # Also select nearest IM frame if ion mobility data is present
-            if self.state.has_ion_mobility and self.state.im_frame_indices:
-                self.state.select_nearest_im_frame(clicked_rt)
-                self.state.emit_view_changed()
-
         self.update()
 
     def _update_coord_display(self, image_x: float, image_y: float):
