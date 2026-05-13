@@ -13,7 +13,9 @@ from pyopenms_viewer.panels.base_panel import BasePanel
 from pyopenms_viewer.rendering import IMPeakMapRenderer
 
 
-def apply_spectrum_selection_to_im(state, selection_type: str, index: int | None) -> bool:
+def apply_spectrum_selection_to_im(
+    state: ViewerState, selection_type: str, index: int | None
+) -> bool:
     """Update state.selected_im_frame_idx in response to a spectrum selection.
 
     Returns True if state.selected_im_frame_idx changed and a re-render is needed.
