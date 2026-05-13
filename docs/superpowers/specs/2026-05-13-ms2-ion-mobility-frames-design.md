@@ -42,7 +42,7 @@ New and modified attributes on `ViewerState`:
 - `im_frame_precursor_mz: np.ndarray[float]` **(new)** — parallel; precursor target m/z for MS2, `np.nan` for MS1.
 - `im_frame_precursor_lower: np.ndarray[float]` **(new)** — parallel; isolation-window lower bound (`mz - getIsolationWindowLowerOffset()`), `np.nan` for MS1.
 - `im_frame_precursor_upper: np.ndarray[float]` **(new)** — parallel; isolation-window upper bound (`mz + getIsolationWindowUpperOffset()`), `np.nan` for MS1.
-- `im_frame_index_set: set[int]` **(new)** — derived from `im_frame_indices` at load time for O(1) membership lookup from the spectrum panel.
+- `im_frame_position_by_index: dict[int, int]` **(new)** — maps spectrum index → position into the parallel arrays. Built once at load time. Used for O(1) membership testing (via `in`) from the spectrum panel and for O(1) lookup of per-frame metadata from helper methods.
 - `ms1_im_frame_indices: list[int]` **(new, derived)** — `im_frame_indices` filtered to MS1, used exclusively by `select_nearest_im_frame` so TIC click never lands on MS2.
 - `ms1_im_frame_rts: np.ndarray` **(new, derived)** — parallel to `ms1_im_frame_indices`.
 
@@ -58,7 +58,8 @@ Rationale for parallel numpy arrays: a few thousand floats fit easily in memory,
   - the frame index to `im_frame_indices_list`,
   - `ms_level` to a new `im_frame_ms_levels_list`,
   - precursor metadata to new `im_frame_precursor_mz_list`, `im_frame_precursor_lower_list`, `im_frame_precursor_upper_list`. For MS1, append `np.nan`. For MS2+, read from `spec.getPrecursors()[0]` if present; if absent (malformed mzML), append `np.nan` defensively.
-- In `_process_ion_mobility_data` (line 469), accept the new lists, sort them with the existing `sort_order` argsort applied to RTs, and assign to the new state arrays. Also build `im_frame_index_set`, `ms1_im_frame_indices`, and `ms1_im_frame_rts`.
+- In `_process_ion_mobility_data` (line 469), accept the new lists, sort them with the existing `sort_order` argsort applied to RTs (stable sort; ties on identical RT are broken by spectrum index — set the sort key to `(rt, spec_idx)` to make tie-breaking explicit), and assign to the new state arrays. Also build `im_frame_position_by_index`, `ms1_im_frame_indices`, and `ms1_im_frame_rts`.
+- During implementation, sanity-check the isolation-window math against a known input (e.g., precursor 500.0 m/z with `getIsolationWindowLowerOffset() == 5.0` should produce `lower = 495.0`). The OpenMS offset convention is positive offsets subtracted/added from the target m/z, but verify before relying on it.
 
 `pyopenms_viewer/loaders/ion_mobility_loader.py`: **no changes**. This standalone loader is exported but not called on the live load path (confirmed by grep). Leaving it untouched keeps scope tight; a separate cleanup task can remove it later.
 
@@ -70,7 +71,7 @@ In `pyopenms_viewer/panels/spectrum_panel.py:show_spectrum` (~line 280), after `
 
 ```python
 if state.has_ion_mobility:
-    if spectrum_idx in state.im_frame_index_set:
+    if spectrum_idx in state.im_frame_position_by_index:
         state.selected_im_frame_idx = spectrum_idx
     else:
         state.selected_im_frame_idx = None
@@ -79,7 +80,9 @@ if state.has_ion_mobility:
 
 This makes the IM panel always reflect the spectrum-panel selection.
 
-**TIC-click path:** `state.select_nearest_im_frame(rt)` (state.py:428) is modified to use `ms1_im_frame_indices` / `ms1_im_frame_rts` instead of the full lists. TIC clicks continue to land only on MS1 IM frames, preserving current UX.
+**TIC-click path:** Currently `tic_panel.py:200-214` selects the nearest spectrum of *any* MS level and *separately* selects the nearest MS1 IM frame — under the new design this would diverge the two panels. Change TIC click so the selected spectrum is the nearest MS1 IM frame (use `ms1_im_frame_indices` / `ms1_im_frame_rts` to find it), then call `state.select_spectrum(best_idx)`. The downstream `show_spectrum` hook sets `selected_im_frame_idx` automatically, so the separate `select_nearest_im_frame` call becomes redundant and is removed. Both panels end up synced on the same MS1 IM frame.
+
+`state.select_nearest_im_frame(rt)` (state.py:428) is kept (now a thin helper that returns the nearest MS1 frame index) and used by the TIC-click handler to compute `best_idx`.
 
 ## IM Panel Display
 
@@ -109,7 +112,7 @@ This makes the IM panel always reflect the spectrum-panel selection.
 2. `state.im_frame_ms_levels` matches expected per-frame MS levels.
 3. `state.im_frame_precursor_lower` / `_upper` are `nan` for MS1, match synthesized offsets for MS2.
 4. `im_frame_indices` and `im_frame_rts` are sorted by RT and parallel to the new arrays.
-5. `state.im_frame_index_set == set(state.im_frame_indices)`.
+5. `set(state.im_frame_position_by_index.keys()) == set(state.im_frame_indices)` and each `position_by_index[spec_idx]` correctly indexes back to `spec_idx` in `im_frame_indices`.
 
 **State tests:**
 6. `select_nearest_im_frame(rt)` only picks MS1 frames even when MS2 frames are closer in RT.
@@ -120,8 +123,11 @@ This makes the IM panel always reflect the spectrum-panel selection.
 9. `show_spectrum(ms2_no_im_idx)` sets `state.selected_im_frame_idx is None`.
 10. `show_spectrum(ms1_im_idx)` sets `state.selected_im_frame_idx == ms1_im_idx`.
 
+**TIC-click sync test:**
+10a. Simulating a TIC click at an RT where an MS2 frame is *closer* than any MS1 IM frame ends with both `state.selected_spectrum_idx` and `state.selected_im_frame_idx` pointing at the nearest MS1 IM frame, not the MS2 frame.
+
 **Rendering smoke tests:**
-11. After selecting an MS2 frame, the renderer is called with the MS2 `MSSpectrum`; non-empty image bytes returned.
+11. After selecting an MS2 frame, `state.get_im_frame_spectrum().getMSLevel() == 2` and a render call returns non-empty image bytes. (Asserts on inputs/outputs rather than mocking `rasterizeIMFrame`.)
 12. With `selected_im_frame_idx = None`, the renderer produces a placeholder canvas and the info label contains "No ion mobility data".
 
 **Regression coverage:**
