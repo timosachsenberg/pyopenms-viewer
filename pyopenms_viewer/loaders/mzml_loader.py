@@ -191,7 +191,11 @@ class MzMLLoader:
             im_mz_list = []
             im_im_list = []
             im_int_list = []
-            im_frame_indices_list = []  # Track MS1 frame indices that have IM data
+            im_frame_indices_list = []  # All IM-bearing frame indices (any MS level)
+            im_frame_ms_levels_list = []  # Parallel MS levels
+            im_frame_precursor_mz_list = []  # Parallel precursor target m/z (nan for MS1)
+            im_frame_precursor_lower_list = []  # Parallel precursor window lower (nan for MS1)
+            im_frame_precursor_upper_list = []  # Parallel precursor window upper (nan for MS1)
             detected_im_name = None
             im_array_names = [
                 "ion mobility",
@@ -300,10 +304,12 @@ class MzMLLoader:
                             cv_tic_data[cv]["rt"].append(rt)
                             cv_tic_data[cv]["int"].append(tic_value)
 
-                    # Ion mobility detection and extraction (MS1 only)
+                # Ion mobility detection and extraction (all MS levels)
+                if n > 0:
+                    float_arrays = spec.getFloatDataArrays()
+
+                    # Ion mobility detection (all MS levels)
                     if detected_im_name is None:
-                        # Try to detect IM array name
-                        float_arrays = spec.getFloatDataArrays()
                         for fda in float_arrays:
                             name = fda.getName().lower() if fda.getName() else ""
                             for im_name in im_array_names:
@@ -313,18 +319,36 @@ class MzMLLoader:
                             if detected_im_name:
                                 break
 
-                    # Extract IM data if available
-                    if detected_im_name is not None and n > 0:
-                        float_arrays = spec.getFloatDataArrays()
+                    # Extract IM data if available (all MS levels)
+                    if detected_im_name is not None:
                         for fda in float_arrays:
                             if fda.getName() == detected_im_name:
                                 im_array = np.array(fda.get_data(), dtype=np.float32)
                                 if len(im_array) == n:
-                                    # No .copy() needed - get_peaks() returns fresh arrays
                                     im_mz_list.append(mz_array)
                                     im_im_list.append(im_array)
                                     im_int_list.append(int_array)
                                     im_frame_indices_list.append(spec_idx)
+                                    im_frame_ms_levels_list.append(ms_level)
+                                    if ms_level >= 2:
+                                        # For MS3+ we record precs[0] (first-stage isolation); MS3 IM is rare and out of scope.
+                                        precs = spec.getPrecursors()
+                                        if precs:
+                                            prec = precs[0]
+                                            pmz = float(prec.getMZ())
+                                            lo_off = float(prec.getIsolationWindowLowerOffset())
+                                            hi_off = float(prec.getIsolationWindowUpperOffset())
+                                            im_frame_precursor_mz_list.append(pmz)
+                                            im_frame_precursor_lower_list.append(pmz - lo_off)
+                                            im_frame_precursor_upper_list.append(pmz + hi_off)
+                                        else:
+                                            im_frame_precursor_mz_list.append(np.nan)
+                                            im_frame_precursor_lower_list.append(np.nan)
+                                            im_frame_precursor_upper_list.append(np.nan)
+                                    else:
+                                        im_frame_precursor_mz_list.append(np.nan)
+                                        im_frame_precursor_lower_list.append(np.nan)
+                                        im_frame_precursor_upper_list.append(np.nan)
                                 break
 
             # =========================================================
@@ -391,7 +415,16 @@ class MzMLLoader:
 
             # Process ion mobility data (already extracted in main loop)
             self._process_ion_mobility_data(
-                im_mz_list, im_im_list, im_int_list, detected_im_name, filepath, im_frame_indices_list
+                im_mz_list,
+                im_im_list,
+                im_int_list,
+                detected_im_name,
+                filepath,
+                im_frame_indices_list,
+                im_frame_ms_levels_list,
+                im_frame_precursor_mz_list,
+                im_frame_precursor_lower_list,
+                im_frame_precursor_upper_list,
             )
 
             if progress_callback:
@@ -474,26 +507,17 @@ class MzMLLoader:
         detected_im_name: str | None,
         filepath: str,
         im_frame_indices: list | None = None,
+        im_frame_ms_levels: list | None = None,
+        im_frame_precursor_mz: list | None = None,
+        im_frame_precursor_lower: list | None = None,
+        im_frame_precursor_upper: list | None = None,
     ) -> None:
-        """Process pre-extracted ion mobility data.
-
-        Branches between rasterization path (single-frame rendering with rasterizeIMFrame)
-        and fallback path (DataFrame with all IM peaks).
-
-        Args:
-            im_mz_list: List of m/z arrays from IM spectra
-            im_im_list: List of IM value arrays
-            im_int_list: List of intensity arrays
-            detected_im_name: Name of the detected IM array, or None
-            filepath: Path to the mzML file (for data manager registration)
-            im_frame_indices: List of spectrum indices for IM frames
-        """
+        """Process pre-extracted ion mobility data and populate state."""
         if not im_mz_list or detected_im_name is None:
             self.state.has_ion_mobility = False
             self.state.im_df = None
             return
 
-        # Determine IM type and unit
         name_lower = detected_im_name.lower()
         if "inverse" in name_lower or "1/k0" in name_lower:
             self.state.im_type = "inverse_k0"
@@ -505,7 +529,6 @@ class MzMLLoader:
             self.state.im_type = "ion_mobility"
             self.state.im_unit = ""
 
-        # Compute IM and m/z bounds from collected arrays
         mz_concat = np.concatenate(im_mz_list)
         im_concat = np.concatenate(im_im_list)
 
@@ -515,23 +538,64 @@ class MzMLLoader:
         im_max_val = float(im_concat.max())
 
         if im_frame_indices:
-            # Build sorted frame indices and parallel RT arrays
+            n_frames = len(im_frame_indices)
+            # Backward-compat defaults when caller omits new lists (e.g., tests).
+            if im_frame_ms_levels is None:
+                im_frame_ms_levels = [1] * n_frames
+            if im_frame_precursor_mz is None:
+                im_frame_precursor_mz = [float("nan")] * n_frames
+            if im_frame_precursor_lower is None:
+                im_frame_precursor_lower = [float("nan")] * n_frames
+            if im_frame_precursor_upper is None:
+                im_frame_precursor_upper = [float("nan")] * n_frames
+
             frame_rts = np.array(
                 [self.state.exp[idx].getRT() for idx in im_frame_indices], dtype=np.float64
             )
-            sort_order = np.argsort(frame_rts)
-            self.state.im_frame_indices = [im_frame_indices[i] for i in sort_order]
-            self.state.im_frame_rts = frame_rts[sort_order]
+            # Sort by (rt, spec_idx) for stable, deterministic tie-breaking.
+            order = sorted(range(len(im_frame_indices)),
+                           key=lambda i: (frame_rts[i], im_frame_indices[i]))
 
-            # Set bounds from collected data
+            sorted_indices = [im_frame_indices[i] for i in order]
+            sorted_rts = frame_rts[order]
+            sorted_levels = np.array(
+                [im_frame_ms_levels[i] for i in order], dtype=np.int32
+            )
+            sorted_pmz = np.array(
+                [im_frame_precursor_mz[i] for i in order], dtype=np.float64
+            )
+            sorted_plo = np.array(
+                [im_frame_precursor_lower[i] for i in order], dtype=np.float64
+            )
+            sorted_phi = np.array(
+                [im_frame_precursor_upper[i] for i in order], dtype=np.float64
+            )
+
+            self.state.im_frame_indices = sorted_indices
+            self.state.im_frame_rts = sorted_rts
+            self.state.im_frame_ms_levels = sorted_levels
+            self.state.im_frame_precursor_mz = sorted_pmz
+            self.state.im_frame_precursor_lower = sorted_plo
+            self.state.im_frame_precursor_upper = sorted_phi
+            self.state.im_frame_position_by_index = {
+                spec_idx: pos for pos, spec_idx in enumerate(sorted_indices)
+            }
+
+            ms1_mask = sorted_levels == 1
+            self.state.ms1_im_frame_indices = [
+                sorted_indices[i] for i in range(len(sorted_indices)) if ms1_mask[i]
+            ]
+            self.state.ms1_im_frame_rts = sorted_rts[ms1_mask]
+
             self.state.im_min = im_min_val
             self.state.im_max = im_max_val
-
-            # No DataFrame needed — rasterizeIMFrame renders directly
             self.state.im_df = None
 
-            # Select first frame as default
-            self.state.selected_im_frame_idx = self.state.im_frame_indices[0]
+            # Default selection: prefer the first MS1 IM frame; fall back to first IM frame.
+            if self.state.ms1_im_frame_indices:
+                self.state.selected_im_frame_idx = self.state.ms1_im_frame_indices[0]
+            else:
+                self.state.selected_im_frame_idx = sorted_indices[0]
 
         # Ensure valid IM range
         if self.state.im_max <= self.state.im_min:
@@ -539,7 +603,7 @@ class MzMLLoader:
         self.state.view_im_min = self.state.im_min
         self.state.view_im_max = self.state.im_max
 
-        # Update mz bounds from IM data if needed
+        # Update mz bounds
         if self.state.mz_min == 0 or im_mz_min < self.state.mz_min:
             self.state.mz_min = im_mz_min
         if self.state.mz_max == 0 or im_mz_max > self.state.mz_max:

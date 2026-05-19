@@ -140,9 +140,16 @@ class ViewerState:
         self.faims_cvs: list[float] = []
         self.im_type: str | None = None  # "ion mobility", "inverse reduced ion mobility", etc.
         self.im_unit: str = ""
-        self.selected_im_frame_idx: int | None = None  # Index into exp for selected IM frame
-        self.im_frame_indices: list[int] = []  # MS1 IM frame indices in exp
-        self.im_frame_rts: np.ndarray | None = None  # Parallel RT values (sorted)
+        self.selected_im_frame_idx: int | None = None  # Spectrum index for the displayed IM frame
+        self.im_frame_indices: list[int] = []  # Spectrum indices of IM-bearing frames (sorted by RT)
+        self.im_frame_rts: np.ndarray = np.array([], dtype=np.float64)  # Parallel RTs
+        self.im_frame_ms_levels: np.ndarray = np.array([], dtype=np.int32)  # Parallel MS levels
+        self.im_frame_precursor_mz: np.ndarray = np.array([], dtype=np.float64)  # Precursor m/z (nan for MS1)
+        self.im_frame_precursor_lower: np.ndarray = np.array([], dtype=np.float64)  # Precursor window lower (nan for MS1)
+        self.im_frame_precursor_upper: np.ndarray = np.array([], dtype=np.float64)  # Precursor window upper (nan for MS1)
+        self.im_frame_position_by_index: dict[int, int] = {}  # spec_idx -> position into parallel arrays
+        self.ms1_im_frame_indices: list[int] = []  # MS1-only subset of im_frame_indices
+        self.ms1_im_frame_rts: np.ndarray = np.array([], dtype=np.float64)  # Parallel to ms1_im_frame_indices
         self.show_faims_view: bool = False
         self.selected_faims_cv: float | None = None  # Currently selected CV for filtering peak map
         self.faims_experiments: dict = {}  # CV -> MSExperiment (MS1 only, for rasterization)
@@ -425,22 +432,63 @@ class ViewerState:
             return None
         return self.exp[self.selected_im_frame_idx]
 
-    def select_nearest_im_frame(self, rt: float) -> None:
-        """Select the IM frame nearest to the given RT value using binary search.
-
-        Args:
-            rt: Retention time in seconds to find nearest frame for
-        """
-        if self.im_frame_rts is None or len(self.im_frame_rts) == 0:
-            return
-        idx = int(np.searchsorted(self.im_frame_rts, rt))
-        # Check neighbors for closest
-        if idx >= len(self.im_frame_rts):
-            idx = len(self.im_frame_rts) - 1
+    def find_nearest_ms1_im_frame_idx(self, rt: float) -> int | None:
+        """Return spectrum index of nearest MS1 IM frame to rt, or None if none loaded."""
+        if len(self.ms1_im_frame_rts) == 0:
+            return None
+        idx = int(np.searchsorted(self.ms1_im_frame_rts, rt))
+        if idx >= len(self.ms1_im_frame_rts):
+            idx = len(self.ms1_im_frame_rts) - 1
         elif idx > 0:
-            if abs(self.im_frame_rts[idx - 1] - rt) < abs(self.im_frame_rts[idx] - rt):
+            if abs(self.ms1_im_frame_rts[idx - 1] - rt) < abs(self.ms1_im_frame_rts[idx] - rt):
                 idx -= 1
-        self.selected_im_frame_idx = self.im_frame_indices[idx]
+        return self.ms1_im_frame_indices[idx]
+
+    def find_click_target_spectrum_idx(self, rt: float) -> int | None:
+        """Find the spectrum index a TIC/peak-map click at `rt` should select.
+
+        Prefers the nearest MS1 IM frame so the spectrum and IM panels stay in sync.
+        Falls back to the nearest spectrum of any MS level when no IM data is loaded.
+        Returns None only when no experiment is loaded.
+        """
+        if self.exp is None:
+            return None
+        if self.has_ion_mobility and self.ms1_im_frame_indices:
+            idx = self.find_nearest_ms1_im_frame_idx(rt)
+            if idx is not None:
+                return idx
+            # Defensive fallback if MS1 indices/rts somehow desynced.
+        best_idx = 0
+        best_diff = float("inf")
+        for i in range(len(self.exp)):
+            diff = abs(self.exp[i].getRT() - rt)
+            if diff < best_diff:
+                best_diff = diff
+                best_idx = i
+        return best_idx
+
+    def get_im_frame_ms_level(self, spec_idx: int) -> int | None:
+        """MS level of the IM frame at spectrum index spec_idx, or None if not an IM frame."""
+        pos = self.im_frame_position_by_index.get(spec_idx)
+        if pos is None:
+            return None
+        return int(self.im_frame_ms_levels[pos])
+
+    def get_im_frame_precursor_lower(self, spec_idx: int) -> float | None:
+        """Precursor isolation-window lower bound, or None if MS1 / not an IM frame."""
+        pos = self.im_frame_position_by_index.get(spec_idx)
+        if pos is None:
+            return None
+        value = float(self.im_frame_precursor_lower[pos])
+        return None if np.isnan(value) else value
+
+    def get_im_frame_precursor_upper(self, spec_idx: int) -> float | None:
+        """Precursor isolation-window upper bound, or None if MS1 / not an IM frame."""
+        pos = self.im_frame_position_by_index.get(spec_idx)
+        if pos is None:
+            return None
+        value = float(self.im_frame_precursor_upper[pos])
+        return None if np.isnan(value) else value
 
     def get_faims_peaks_for_cv(
         self, cv: float, rt_min: float, rt_max: float, mz_min: float, mz_max: float
@@ -838,7 +886,14 @@ class ViewerState:
         self.im_unit = ""
         self.selected_im_frame_idx = None
         self.im_frame_indices = []
-        self.im_frame_rts = None
+        self.im_frame_rts = np.array([], dtype=np.float64)
+        self.im_frame_ms_levels = np.array([], dtype=np.int32)
+        self.im_frame_precursor_mz = np.array([], dtype=np.float64)
+        self.im_frame_precursor_lower = np.array([], dtype=np.float64)
+        self.im_frame_precursor_upper = np.array([], dtype=np.float64)
+        self.im_frame_position_by_index = {}
+        self.ms1_im_frame_indices = []
+        self.ms1_im_frame_rts = np.array([], dtype=np.float64)
         self.faims_cvs = []
         self.faims_data = {}
         self.faims_experiments = {}
