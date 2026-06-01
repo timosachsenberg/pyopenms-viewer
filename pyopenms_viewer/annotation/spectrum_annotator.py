@@ -494,35 +494,13 @@ def _format_charge_only(ion_name: str) -> str:
     Returns:
         Ion name with charge formatted as superscript HTML
     """
-    # Pattern 1: Repeated + or - at the end (e.g., "precursor++")
-    match_repeated_plus = re.search(r"\++$", ion_name)
-    if match_repeated_plus:
-        charge_count = len(match_repeated_plus.group())
-        base_name = ion_name[: match_repeated_plus.start()]
-        charge_str = "+" if charge_count == 1 else f"{charge_count}+"
-        return f"{base_name}<sup>{charge_str}</sup>"
-
-    match_repeated_minus = re.search(r"-+$", ion_name)
-    if match_repeated_minus:
-        charge_count = len(match_repeated_minus.group())
-        base_name = ion_name[: match_repeated_minus.start()]
-        charge_str = "-" if charge_count == 1 else f"{charge_count}-"
-        return f"{base_name}<sup>{charge_str}</sup>"
-
-    # Pattern 2: Number after + or - (e.g., "precursor+2")
-    match_plus_num = re.search(r"\+(\d+)$", ion_name)
-    if match_plus_num:
-        charge_num = int(match_plus_num.group(1))
-        base_name = ion_name[: match_plus_num.start()]
-        charge_str = "+" if charge_num == 1 else f"{charge_num}+"
-        return f"{base_name}<sup>{charge_str}</sup>"
-
-    match_minus_num = re.search(r"-(\d+)$", ion_name)
-    if match_minus_num:
-        charge_num = int(match_minus_num.group(1))
-        base_name = ion_name[: match_minus_num.start()]
-        charge_str = "-" if charge_num == 1 else f"{charge_num}-"
-        return f"{base_name}<sup>{charge_str}</sup>"
+    # Extract a trailing charge token (+, ++, +2, -, --, -2, ...) using the same
+    # pattern as format_ion_name, then delegate formatting to _parse_charge_string
+    # (the single source of truth for charge-count rendering).
+    charge_match = re.search(r"(\++|\-+|\+\d+|\-\d+)$", ion_name)
+    if charge_match:
+        base_name = ion_name[: charge_match.start()]
+        return f"{base_name}<sup>{_parse_charge_string(charge_match.group(1))}</sup>"
 
     # No charge modifier found, return as-is
     return ion_name
