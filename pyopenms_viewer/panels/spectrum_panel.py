@@ -1214,6 +1214,13 @@ class SpectrumPanel(BasePanel):
         annotations = self.state.peak_annotations[spectrum_idx]
         self.state.peak_annotations[spectrum_idx] = [ann for ann in annotations if abs(ann["mz"] - mz) >= 0.01]
 
+    def _rerender_if_view_dependent(self):
+        """Re-render the selected spectrum if its appearance depends on the visible range."""
+        if (
+            self.state.spectrum_auto_scale or self.state.peakmap_downsampling or self.state.show_mz_labels
+        ) and self.state.selected_spectrum_idx is not None:
+            self.show_spectrum(self.state.selected_spectrum_idx)
+
     def _on_plot_relayout(self, e):
         """Handle zoom/pan changes on spectrum plot."""
         try:
@@ -1224,10 +1231,7 @@ class SpectrumPanel(BasePanel):
             if xmin is not None and xmax is not None:
                 self.state.spectrum_zoom_range = (xmin, xmax)
                 # Re-render to apply auto-scale, re-downsample, or update m/z labels for visible range
-                if (
-                    self.state.spectrum_auto_scale or self.state.peakmap_downsampling or self.state.show_mz_labels
-                ) and self.state.selected_spectrum_idx is not None:
-                    self.show_spectrum(self.state.selected_spectrum_idx)
+                self._rerender_if_view_dependent()
                 # Sync m/z range to IM peakmap if linking is enabled
                 if self.state.link_spectrum_mz_to_im and self.state.has_ion_mobility:
                     self.state.view_mz_min = max(self.state.mz_min, xmin)
@@ -1236,10 +1240,7 @@ class SpectrumPanel(BasePanel):
             elif e.args.get("xaxis.autorange"):
                 self.state.spectrum_zoom_range = None
                 # Re-render to reset y-axis, re-downsample full spectrum, or update m/z labels
-                if (
-                    self.state.spectrum_auto_scale or self.state.peakmap_downsampling or self.state.show_mz_labels
-                ) and self.state.selected_spectrum_idx is not None:
-                    self.show_spectrum(self.state.selected_spectrum_idx)
+                self._rerender_if_view_dependent()
                 # Reset IM m/z range if linking is enabled
                 if self.state.link_spectrum_mz_to_im and self.state.has_ion_mobility:
                     self.state.view_mz_min = self.state.mz_min

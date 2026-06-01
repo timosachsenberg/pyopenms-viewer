@@ -321,11 +321,7 @@ class IMPeakMapPanel(BasePanel):
         if not self.state.show_mobilogram:
             return False
 
-        mob_left = self.state.margin_left + self.state.plot_width + 10
-        mob_right = mob_left + self.state.mobilogram_plot_width
-        mob_top = self.state.margin_top
-        mob_bottom = self.state.margin_top + self.state.plot_height
-
+        mob_left, mob_right, mob_top, mob_bottom = self._get_mobilogram_bounds()
         return mob_left <= x <= mob_right and mob_top <= y <= mob_bottom
 
     def _get_mobilogram_bounds(self) -> tuple:
