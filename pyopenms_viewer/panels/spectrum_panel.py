@@ -124,7 +124,7 @@ class SpectrumPanel(BasePanel):
             The expansion element created
         """
         with container:
-            self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
+            self._make_expansion()
 
             with self.expansion:
                 with ui.column().classes("w-full items-center"):

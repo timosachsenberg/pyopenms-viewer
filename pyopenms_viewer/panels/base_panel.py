@@ -125,6 +125,10 @@ class BasePanel(ABC):
         fig_dict["config"] = self._plotly_config
         return fig_dict
 
+    def _make_expansion(self) -> None:
+        """Create this panel's top-level expansion (call inside a ``with container:`` block)."""
+        self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
+
 
 class PanelManager:
     """Manages panel ordering, visibility, and updates.

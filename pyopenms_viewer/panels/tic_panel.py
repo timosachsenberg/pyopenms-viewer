@@ -38,7 +38,7 @@ class TICPanel(BasePanel):
 
     def build(self, container: ui.element) -> ui.expansion:
         with container:
-            self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
+            self._make_expansion()
 
             with self.expansion:
                 ui.label("Click to view spectrum, drag to zoom RT range").classes("text-xs text-gray-500 mb-1")
