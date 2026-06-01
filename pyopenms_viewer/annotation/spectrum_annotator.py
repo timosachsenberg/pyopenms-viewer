@@ -16,7 +16,7 @@ from pyopenms import (
 from pyopenms_viewer.annotation.theoretical_spectrum import (
     generate_theoretical_spectrum,
 )
-from pyopenms_viewer.core.config import ION_COLORS
+from pyopenms_viewer.core.config import ION_COLORS, NEUTRAL_GRAY_HEX
 
 
 @dataclass
@@ -662,7 +662,7 @@ def create_annotated_spectrum_plot(
 
     # Update layout
     fig.update_layout(
-        title={"text": f"MS2 Spectrum: {sequence_str} (z={charge}+)", "font": {"size": 14, "color": "#888"}},
+        title={"text": f"MS2 Spectrum: {sequence_str} (z={charge}+)", "font": {"size": 14, "color": NEUTRAL_GRAY_HEX}},
         xaxis_title="m/z",
         yaxis_title="Relative Intensity (%)",
         paper_bgcolor="rgba(0,0,0,0)",
@@ -672,14 +672,14 @@ def create_annotated_spectrum_plot(
         showlegend=True,
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1, "font": {"size": 10}},
         modebar={"remove": ["lasso2d", "select2d"]},
-        font={"color": "#888"},
+        font={"color": NEUTRAL_GRAY_HEX},
     )
 
     fig.update_xaxes(
         range=[0, max(exp_mz) * 1.05] if len(exp_mz) > 0 else [0, 2000],
         showgrid=False,
-        linecolor="#888",
-        tickcolor="#888",
+        linecolor=NEUTRAL_GRAY_HEX,
+        tickcolor=NEUTRAL_GRAY_HEX,
     )
 
     if mirror_mode:
@@ -688,10 +688,10 @@ def create_annotated_spectrum_plot(
             range=[-110, 110],
             showgrid=False,
             fixedrange=True,
-            linecolor="#888",
-            tickcolor="#888",
+            linecolor=NEUTRAL_GRAY_HEX,
+            tickcolor=NEUTRAL_GRAY_HEX,
             zeroline=True,
-            zerolinecolor="#888",
+            zerolinecolor=NEUTRAL_GRAY_HEX,
             zerolinewidth=1,
             tickvals=[-100, -50, 0, 50, 100],
             ticktext=["100", "50", "0", "50", "100"],
@@ -701,8 +701,8 @@ def create_annotated_spectrum_plot(
             range=[0, 110],
             showgrid=False,
             fixedrange=True,
-            linecolor="#888",
-            tickcolor="#888",
+            linecolor=NEUTRAL_GRAY_HEX,
+            tickcolor=NEUTRAL_GRAY_HEX,
         )
 
     return fig

@@ -12,7 +12,7 @@ import pandas as pd
 from nicegui import ui
 from nicegui.events import MouseEventArguments
 
-from pyopenms_viewer.core.config import COLORMAPS
+from pyopenms_viewer.core.config import COLORMAPS, NEUTRAL_GRAY_HEX
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.panels.base_panel import BasePanel
 from pyopenms_viewer.panels.export_helpers import save_image_element_as_png
@@ -407,7 +407,7 @@ class PeakMapPanel(BasePanel):
             empty_fig.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
-                font={"color": "#888"},
+                font={"color": NEUTRAL_GRAY_HEX},
                 width=self.state.canvas_width,
                 height=500,
                 autosize=False,
@@ -429,7 +429,7 @@ class PeakMapPanel(BasePanel):
 
             self.minimap_image = ui.image().style(
                 f"width: {self.state.minimap_width}px; height: {self.state.minimap_height}px; "
-                f"background: transparent; cursor: pointer; border: 1px solid #888;"
+                f"background: transparent; cursor: pointer; border: 1px solid {NEUTRAL_GRAY_HEX};"
             )
             self.minimap_image.on("click", self._on_minimap_click)
 
@@ -1422,11 +1422,11 @@ class PeakMapPanel(BasePanel):
             fig.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
-                font={"color": "#888"},
+                font={"color": NEUTRAL_GRAY_HEX},
                 scene={
-                    "xaxis": {"title": "RT (s)", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": "#888"},
-                    "yaxis": {"title": "m/z", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": "#888"},
-                    "zaxis": {"title": "Intensity", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": "#888"},
+                    "xaxis": {"title": "RT (s)", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": NEUTRAL_GRAY_HEX},
+                    "yaxis": {"title": "m/z", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": NEUTRAL_GRAY_HEX},
+                    "zaxis": {"title": "Intensity", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": NEUTRAL_GRAY_HEX},
                     "bgcolor": "rgba(0,0,0,0)",
                     "aspectmode": "manual",
                     "aspectratio": {"x": aspect_x, "y": aspect_y, "z": 0.6},

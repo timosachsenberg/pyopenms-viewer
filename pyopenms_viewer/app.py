@@ -16,6 +16,7 @@ from pyopenms_viewer.components.file_picker_storage import (
     save_window_size,
 )
 from pyopenms_viewer.components.local_file_picker import LocalFilePicker
+from pyopenms_viewer.core.config import ION_COLORS
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.loaders import FeatureLoader, IDLoader, ImzMLLoader, MzMLLoader
 from pyopenms_viewer.panels import (
@@ -1007,27 +1008,32 @@ async def create_ui():
                         with ui.column().classes("gap-1"):
                             with ui.row().classes("items-center gap-2"):
                                 ui.html(
-                                    '<div style="width:14px;height:14px;background:#1f77b4;"></div>', sanitize=False
+                                    f'<div style="width:14px;height:14px;background:{ION_COLORS["b"]};"></div>',
+                                    sanitize=False,
                                 )
                                 ui.label("b-ions").classes("text-sm")
                             with ui.row().classes("items-center gap-2"):
                                 ui.html(
-                                    '<div style="width:14px;height:14px;background:#d62728;"></div>', sanitize=False
+                                    f'<div style="width:14px;height:14px;background:{ION_COLORS["y"]};"></div>',
+                                    sanitize=False,
                                 )
                                 ui.label("y-ions").classes("text-sm")
                             with ui.row().classes("items-center gap-2"):
                                 ui.html(
-                                    '<div style="width:14px;height:14px;background:#2ca02c;"></div>', sanitize=False
+                                    f'<div style="width:14px;height:14px;background:{ION_COLORS["a"]};"></div>',
+                                    sanitize=False,
                                 )
                                 ui.label("a-ions").classes("text-sm")
                             with ui.row().classes("items-center gap-2"):
                                 ui.html(
-                                    '<div style="width:14px;height:14px;background:#ff7f0e;"></div>', sanitize=False
+                                    f'<div style="width:14px;height:14px;background:{ION_COLORS["precursor"]};"></div>',
+                                    sanitize=False,
                                 )
                                 ui.label("Precursor").classes("text-sm")
                             with ui.row().classes("items-center gap-2"):
                                 ui.html(
-                                    '<div style="width:14px;height:14px;background:#7f7f7f;"></div>', sanitize=False
+                                    f'<div style="width:14px;height:14px;background:{ION_COLORS["unknown"]};"></div>',
+                                    sanitize=False,
                                 )
                                 ui.label("Unmatched").classes("text-sm")
 

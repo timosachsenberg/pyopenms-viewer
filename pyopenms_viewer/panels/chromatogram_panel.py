@@ -8,6 +8,7 @@ chromatogram data from mzML files.
 import plotly.graph_objects as go
 from nicegui import ui
 
+from pyopenms_viewer.core.config import NEUTRAL_GRAY_HEX
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.panels.base_panel import BasePanel
 from pyopenms_viewer.panels.export_helpers import export_rows_as_tsv
@@ -174,10 +175,10 @@ class ChromatogramPanel(BasePanel):
 
         if not self.state.has_chromatograms or not self.state.selected_chromatogram_indices:
             fig.update_layout(
-                title={"text": "Chromatograms - Select from table below", "font": {"color": "#888"}},
+                title={"text": "Chromatograms - Select from table below", "font": {"color": NEUTRAL_GRAY_HEX}},
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
-                font={"color": "#888"},
+                font={"color": NEUTRAL_GRAY_HEX},
                 height=250,
             )
             # Hide axes completely when nothing selected
@@ -233,12 +234,12 @@ class ChromatogramPanel(BasePanel):
         title_text = f"Chromatograms ({n_selected} selected)"
 
         fig.update_layout(
-            title={"text": title_text, "font": {"size": 14, "color": "#888"}},
+            title={"text": title_text, "font": {"size": 14, "color": NEUTRAL_GRAY_HEX}},
             xaxis_title=f"RT ({rt_unit})",
             yaxis_title="Intensity",
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            font={"color": "#888"},
+            font={"color": NEUTRAL_GRAY_HEX},
             height=250,
             margin={"l": 60, "r": 20, "t": 40, "b": 40},
             showlegend=True,
@@ -254,8 +255,8 @@ class ChromatogramPanel(BasePanel):
         )
 
         # Style axes
-        fig.update_xaxes(showgrid=False, linecolor="#888", tickcolor="#888")
-        fig.update_yaxes(showgrid=False, linecolor="#888", tickcolor="#888")
+        fig.update_xaxes(showgrid=False, linecolor=NEUTRAL_GRAY_HEX, tickcolor=NEUTRAL_GRAY_HEX)
+        fig.update_yaxes(showgrid=False, linecolor=NEUTRAL_GRAY_HEX, tickcolor=NEUTRAL_GRAY_HEX)
 
         return fig
 

@@ -4,6 +4,7 @@
 import plotly.graph_objects as go
 from nicegui import ui
 
+from pyopenms_viewer.core.config import NEUTRAL_GRAY_HEX
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.panels.base_panel import BasePanel
 
@@ -66,7 +67,7 @@ class TICPanel(BasePanel):
 
         if self.state.tic_rt is None or len(self.state.tic_rt) == 0:
             fig.update_layout(
-                title={"text": "TIC - No data loaded", "font": {"color": "#888"}},
+                title={"text": "TIC - No data loaded", "font": {"color": NEUTRAL_GRAY_HEX}},
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 height=200,
@@ -120,23 +121,23 @@ class TICPanel(BasePanel):
         # Layout
         rt_unit = "min" if self.state.rt_in_minutes else "s"
         fig.update_layout(
-            title={"text": self.state.tic_source, "font": {"color": "#888", "size": 14}},
+            title={"text": self.state.tic_source, "font": {"color": NEUTRAL_GRAY_HEX, "size": 14}},
             xaxis_title=f"RT ({rt_unit})",
             yaxis_title="Intensity",
             height=200,
             margin={"l": 60, "r": 20, "t": 40, "b": 40},
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            font={"color": "#888"},
+            font={"color": NEUTRAL_GRAY_HEX},
             xaxis={
                 "gridcolor": "rgba(128,128,128,0.2)",
-                "linecolor": "#888",
-                "tickcolor": "#888",
+                "linecolor": NEUTRAL_GRAY_HEX,
+                "tickcolor": NEUTRAL_GRAY_HEX,
             },
             yaxis={
                 "gridcolor": "rgba(128,128,128,0.2)",
-                "linecolor": "#888",
-                "tickcolor": "#888",
+                "linecolor": NEUTRAL_GRAY_HEX,
+                "tickcolor": NEUTRAL_GRAY_HEX,
                 "exponentformat": "e",
             },
             dragmode="zoom",  # Use zoom instead of select to avoid large websocket messages

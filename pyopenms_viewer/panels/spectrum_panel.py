@@ -16,6 +16,7 @@ from pyopenms_viewer.annotation.spectrum_annotator import (
     create_annotated_spectrum_plot,
     get_external_peak_annotations_from_hit,
 )
+from pyopenms_viewer.core.config import NEUTRAL_GRAY_HEX
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.loaders.mzml_loader import get_cv_from_spectrum
 from pyopenms_viewer.panels.base_panel import BasePanel
@@ -36,6 +37,7 @@ class SpectrumPanel(BasePanel):
 
     # Maximum peaks to display before downsampling kicks in
     MAX_DISPLAY_PEAKS = 5000
+    MEASUREMENT_COLOR = "#ff8800"  # Orange used for the measure-mode line/marker/label
 
     def __init__(self, state: ViewerState):
         """Initialize spectrum panel.
@@ -435,7 +437,7 @@ class SpectrumPanel(BasePanel):
 
         # Layout
         fig.update_layout(
-            title={"text": title, "font": {"size": 14, "color": "#888"}},
+            title={"text": title, "font": {"size": 14, "color": NEUTRAL_GRAY_HEX}},
             xaxis_title="m/z",
             yaxis_title=y_title,
             paper_bgcolor="rgba(0,0,0,0)",
@@ -444,7 +446,7 @@ class SpectrumPanel(BasePanel):
             margin={"l": 60, "r": 20, "t": 50, "b": 50},
             showlegend=False,
             modebar={"remove": ["lasso2d", "select2d"]},
-            font={"color": "#888"},
+            font={"color": NEUTRAL_GRAY_HEX},
             uirevision="spectrum_stable",
         )
 
@@ -453,8 +455,8 @@ class SpectrumPanel(BasePanel):
             fig.update_xaxes(
                 range=list(self.state.spectrum_zoom_range),
                 showgrid=False,
-                linecolor="#888",
-                tickcolor="#888",
+                linecolor=NEUTRAL_GRAY_HEX,
+                tickcolor=NEUTRAL_GRAY_HEX,
                 ticks="outside",
                 ticklen=5,
             )
@@ -470,14 +472,14 @@ class SpectrumPanel(BasePanel):
                         visible_max = float(int_array[visible_mask].max())
                     y_range = [0, visible_max / 0.95]
         else:
-            fig.update_xaxes(showgrid=False, linecolor="#888", tickcolor="#888", ticks="outside", ticklen=5)
+            fig.update_xaxes(showgrid=False, linecolor=NEUTRAL_GRAY_HEX, tickcolor=NEUTRAL_GRAY_HEX, ticks="outside", ticklen=5)
 
         fig.update_yaxes(
             range=y_range,
             showgrid=False,
             fixedrange=True,
-            linecolor="#888",
-            tickcolor="#888",
+            linecolor=NEUTRAL_GRAY_HEX,
+            tickcolor=NEUTRAL_GRAY_HEX,
             ticks="outside",
             ticklen=5,
         )
@@ -624,7 +626,7 @@ class SpectrumPanel(BasePanel):
                 y0=bracket_y,
                 x1=mz2,
                 y1=bracket_y,
-                line={"color": "#ff8800", "width": 2},
+                line={"color": self.MEASUREMENT_COLOR, "width": 2},
             )
 
             # Vertical lines down to each peak
@@ -634,7 +636,7 @@ class SpectrumPanel(BasePanel):
                 y0=y1,
                 x1=mz1,
                 y1=bracket_y,
-                line={"color": "#ff8800", "width": 1, "dash": "dot"},
+                line={"color": self.MEASUREMENT_COLOR, "width": 1, "dash": "dot"},
             )
             fig.add_shape(
                 type="line",
@@ -642,7 +644,7 @@ class SpectrumPanel(BasePanel):
                 y0=y2,
                 x1=mz2,
                 y1=bracket_y,
-                line={"color": "#ff8800", "width": 1, "dash": "dot"},
+                line={"color": self.MEASUREMENT_COLOR, "width": 1, "dash": "dot"},
             )
 
             # Calculate delta m/z
@@ -656,7 +658,7 @@ class SpectrumPanel(BasePanel):
                 text=f"Δ{delta_mz:.4f}",
                 showarrow=False,
                 yshift=12,
-                font={"color": "#ff8800", "size": 11},
+                font={"color": self.MEASUREMENT_COLOR, "size": 11},
                 borderpad=2,
             )
 
@@ -782,7 +784,7 @@ class SpectrumPanel(BasePanel):
                 text=f"{mz:.2f}",
                 showarrow=False,
                 yshift=10,
-                font={"color": "#888", "size": 9},
+                font={"color": NEUTRAL_GRAY_HEX, "size": 9},
             )
 
     def _add_highlight_to_figure(self, fig: go.Figure, mz_array: np.ndarray, int_array: np.ndarray):
@@ -814,7 +816,7 @@ class SpectrumPanel(BasePanel):
                     x=[start_mz],
                     y=[start_y],
                     mode="markers",
-                    marker={"color": "#ff8800", "size": 10, "symbol": "circle", "line": {"width": 1, "color": "#333"}},
+                    marker={"color": self.MEASUREMENT_COLOR, "size": 10, "symbol": "circle", "line": {"width": 1, "color": "#333"}},
                     hoverinfo="skip",
                     showlegend=False,
                 )
@@ -829,7 +831,7 @@ class SpectrumPanel(BasePanel):
                 hover_y = hover_int
 
             # Highlighted ring around the hovered peak
-            highlight_color = "#ff8800" if self.state.spectrum_measure_mode else "#0077cc"
+            highlight_color = self.MEASUREMENT_COLOR if self.state.spectrum_measure_mode else "#0077cc"
             fig.add_trace(
                 go.Scatter(
                     x=[hover_mz],
