@@ -43,7 +43,6 @@ class LogPanel(BasePanel):
         # Start hidden (auto-visibility)
         self.update_visibility()
 
-        self._is_built = True
         return self.expansion
 
     def update(self) -> None:

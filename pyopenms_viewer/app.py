@@ -1042,8 +1042,6 @@ async def create_ui():
 | Extension | Content |
 |-----------|---------|
 | `.mzML` | MS peak data |
-| `.mzML` | MS peak data |
-| `.featureXML` | Detected features |
 | `.featureXML` | Detected features |
 | `.idXML` | Peptide IDs |
 """).classes("text-sm")

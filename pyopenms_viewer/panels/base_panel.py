@@ -57,7 +57,6 @@ class BasePanel(ABC):
         self.name = name
         self.icon = icon
         self.expansion: ui.expansion | None = None
-        self._is_built = False
 
     @abstractmethod
     def build(self, container: ui.element) -> ui.expansion:

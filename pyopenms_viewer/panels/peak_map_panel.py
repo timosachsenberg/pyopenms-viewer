@@ -147,7 +147,6 @@ class PeakMapPanel(BasePanel):
         self.state.on_view_changed(self._on_view_changed)
         self.state.on_selection_changed(self._on_selection_changed)
 
-        self._is_built = True
         return self.expansion
 
     def _build_options_row(self):
@@ -1336,7 +1335,6 @@ class PeakMapPanel(BasePanel):
 
         # Check if region is small enough
         if not self._is_small_region():
-            # Show message that region is too large
             # Show message that region is too large
             if self.view_3d_status:
                 rt_range = self.state.view_rt_max - self.state.view_rt_min

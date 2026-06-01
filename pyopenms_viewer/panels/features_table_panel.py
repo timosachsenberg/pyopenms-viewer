@@ -4,8 +4,6 @@ This panel displays a table of detected features from featureXML files
 with filtering and zoom-to-feature functionality.
 """
 
-from collections.abc import Callable
-
 from nicegui import ui
 
 from pyopenms_viewer.core.state import ViewerState
@@ -36,9 +34,6 @@ class FeaturesTablePanel(BasePanel):
         self.min_quality_input = None
         self.charge_select = None
 
-        # Callback for feature selection
-        self._on_feature_selected: Callable | None = None
-
     def build(self, container: ui.element) -> ui.expansion:
         """Build the features table panel UI.
 
@@ -60,7 +55,6 @@ class FeaturesTablePanel(BasePanel):
         self.state.on_data_loaded(self._on_data_loaded)
         self.state.on_selection_changed(self._on_selection_changed)
 
-        self._is_built = True
         return self.expansion
 
     def _build_help_text(self):
@@ -367,11 +361,3 @@ class FeaturesTablePanel(BasePanel):
             URL.revokeObjectURL(url);
         """)
         ui.notify(f"Exported {len(data)} rows", type="positive")
-
-    def set_on_feature_selected(self, callback: Callable):
-        """Set callback for when a feature is selected.
-
-        Args:
-            callback: Function to call with feature index
-        """
-        self._on_feature_selected = callback

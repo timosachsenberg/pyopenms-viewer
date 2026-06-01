@@ -191,20 +191,6 @@ def to_gpu_dataframe(df: pd.DataFrame) -> "pd.DataFrame | cudf.DataFrame":
         return df
 
 
-def to_cpu_dataframe(df: "pd.DataFrame | cudf.DataFrame") -> pd.DataFrame:
-    """Convert a cuDF DataFrame back to pandas if needed.
-
-    Args:
-        df: DataFrame that may be cuDF or pandas.
-
-    Returns:
-        Pandas DataFrame.
-    """
-    if hasattr(df, "to_pandas"):
-        return df.to_pandas()
-    return df
-
-
 def is_gpu_dataframe(df) -> bool:
     """Check if a DataFrame is a cuDF GPU DataFrame.
 
@@ -248,36 +234,3 @@ def get_dataframe_type(df) -> str:
         return "dask"
     else:
         return "pandas"
-
-
-def get_gpu_memory_info() -> dict | None:
-    """Get GPU memory information if available.
-
-    Returns:
-        Dictionary with 'total', 'used', 'free' memory in bytes, or None.
-    """
-    if not is_cudf_available():
-        return None
-
-    try:
-        import rmm
-
-        # Use cudf's underlying RMM memory pool info
-        pool = rmm.mr.get_current_device_resource()
-        if hasattr(pool, "pool_size"):
-            return {"total": pool.pool_size(), "used": 0, "free": pool.pool_size()}
-
-        # Fallback to nvidia-smi style query via pynvml
-        try:
-            import pynvml
-
-            pynvml.nvmlInit()
-            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-            info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            return {"total": info.total, "used": info.used, "free": info.free}
-        except Exception:
-            pass
-
-        return None
-    except Exception:
-        return None

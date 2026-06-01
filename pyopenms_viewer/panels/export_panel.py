@@ -149,7 +149,6 @@ class ExportPanel(BasePanel):
         # Subscribe to events
         self.state.on_data_loaded(self._on_data_loaded)
 
-        self._is_built = True
         return self.expansion
 
     def update(self) -> None:

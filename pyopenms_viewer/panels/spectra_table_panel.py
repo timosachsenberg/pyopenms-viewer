@@ -4,8 +4,6 @@ This panel displays a table of all spectra with their metadata,
 including identification information when available.
 """
 
-from collections.abc import Callable
-
 from nicegui import ui
 
 from pyopenms_viewer.core.state import ViewerState
@@ -45,9 +43,6 @@ class SpectraTablePanel(BasePanel):
         self.tolerance_input = None
         self.mirror_view_cb = None
 
-        # Callback for spectrum selection
-        self._on_spectrum_selected: Callable | None = None
-
     def build(self, container: ui.element) -> ui.expansion:
         """Build the spectra table panel UI.
 
@@ -69,7 +64,6 @@ class SpectraTablePanel(BasePanel):
         # Subscribe to events
         self.state.on_data_loaded(self._on_data_loaded)
 
-        self._is_built = True
         return self.expansion
 
     def _build_help_text(self):
@@ -393,11 +387,3 @@ class SpectraTablePanel(BasePanel):
             URL.revokeObjectURL(url);
         """)
         ui.notify(f"Exported {len(data)} rows", type="positive")
-
-    def set_on_spectrum_selected(self, callback: Callable):
-        """Set callback for when a spectrum is selected.
-
-        Args:
-            callback: Function to call with spectrum index
-        """
-        self._on_spectrum_selected = callback

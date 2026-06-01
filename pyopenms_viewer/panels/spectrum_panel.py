@@ -141,7 +141,6 @@ class SpectrumPanel(BasePanel):
         self.state.on_data_loaded(self._on_data_loaded)
         self.state.on_selection_changed(self._on_selection_changed)
 
-        self._is_built = True
         return self.expansion
 
     def _build_navigation_row(self):
@@ -290,9 +289,6 @@ class SpectrumPanel(BasePanel):
 
         # Check if there's a matching peptide ID for annotation
         matching_id_idx = self.state.find_matching_id_for_spectrum(spectrum_idx)
-        print(
-            f"DEBUG show_spectrum: spectrum_idx={spectrum_idx}, ms_level={ms_level}, matching_id_idx={matching_id_idx}"
-        )
 
         if matching_id_idx is not None:
             # Use annotated spectrum display (shows sequence in title even if peak coloring is off)

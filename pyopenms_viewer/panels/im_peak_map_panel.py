@@ -122,7 +122,6 @@ class IMPeakMapPanel(BasePanel):
         self.state.on_view_changed(self._on_view_changed)
         self.state.on_selection_changed(self._on_selection_changed)
 
-        self._is_built = True
         return self.expansion
 
     def _build_controls_row(self):

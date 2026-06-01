@@ -80,7 +80,6 @@ class ScriptingPanel(BasePanel):
 
         self.state.on_data_loaded(self._on_data_loaded)
         self.update_visibility()
-        self._is_built = True
         return self.expansion
 
     def update(self) -> None:
