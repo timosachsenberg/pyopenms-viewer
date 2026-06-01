@@ -103,6 +103,14 @@ def _global_exception_handler(exc: Exception) -> None:
 app.on_exception(_global_exception_handler)
 
 
+def _resolve_or_str(path) -> str:
+    """Return the resolved absolute path as a string, or str(path) if resolution fails."""
+    try:
+        return str(Path(path).resolve())
+    except Exception:
+        return str(path)
+
+
 async def create_ui():
     """Create the main NiceGUI interface.
 
@@ -227,6 +235,17 @@ async def create_ui():
                 safe_set_label(info_label, info_text)
                 return peak_count
 
+            async def _finalize_successful_load(name: str) -> None:
+                """Shared post-load success path for mzML and imzML loads."""
+                _relink_ids_and_update_label()
+                progress_label.set_text("Rendering...")
+                await asyncio.sleep(0)  # Let UI update before heavy renders
+                state.emit_data_loaded("mzml")
+                state.update_panel_visibility()
+                progress_label.set_text("")
+                peak_count = _update_info_label(name)
+                safe_notify(f"Loaded {peak_count:,} peaks from {name}", type="positive")
+
             async def load_mzml(filepath: str, original_name: str = None):
                 """Load mzML file in background.
 
@@ -240,17 +259,11 @@ async def create_ui():
                 name = original_name or Path(filepath).name
 
                 # Normalize paths for comparison
-                try:
-                    new_fp = str(Path(filepath).resolve())
-                except Exception:
-                    new_fp = str(filepath)
+                new_fp = _resolve_or_str(filepath)
 
                 cur_fp = None
                 if state.current_file:
-                    try:
-                        cur_fp = str(Path(state.current_file).resolve())
-                    except Exception:
-                        cur_fp = str(state.current_file)
+                    cur_fp = _resolve_or_str(state.current_file)
 
                 # If same file already loaded and data present, skip reload
                 if cur_fp is not None and cur_fp == new_fp and (state.df is not None or state.data_manager is not None):
@@ -278,10 +291,7 @@ async def create_ui():
                     await event.wait()
                     # Recompute cur_fp — state.current_file was updated by the loader
                     if state.current_file:
-                        try:
-                            cur_fp = str(Path(state.current_file).resolve())
-                        except Exception:
-                            cur_fp = str(state.current_file)
+                        cur_fp = _resolve_or_str(state.current_file)
                     # After wait, data should be available (or failed). Reuse if available.
                     if state.current_file and cur_fp == new_fp and (state.df is not None or state.data_manager is not None):
                         _relink_ids_and_update_label()
@@ -321,14 +331,7 @@ async def create_ui():
                     except Exception:
                         pass
                 if success:
-                    _relink_ids_and_update_label()
-                    progress_label.set_text("Rendering...")
-                    await asyncio.sleep(0)  # Let UI update before heavy renders
-                    state.emit_data_loaded("mzml")
-                    state.update_panel_visibility()
-                    progress_label.set_text("")
-                    peak_count = _update_info_label(name)
-                    safe_notify(f"Loaded {peak_count:,} peaks from {name}", type="positive")
+                    await _finalize_successful_load(name)
                 else:
                     err = state.last_load_error or "unknown error"
                     safe_notify(f"Failed to load {name}: {err}", type="negative")
@@ -361,14 +364,7 @@ async def create_ui():
                         pass
 
                 if success:
-                    _relink_ids_and_update_label()
-                    progress_label.set_text("Rendering...")
-                    await asyncio.sleep(0)
-                    state.emit_data_loaded("mzml")
-                    state.update_panel_visibility()
-                    progress_label.set_text("")
-                    peak_count = _update_info_label(name)
-                    safe_notify(f"Loaded {peak_count:,} peaks from {name}", type="positive")
+                    await _finalize_successful_load(name)
                 else:
                     err = getattr(state, "_last_load_error", "") or ""
                     safe_notify(
