@@ -520,9 +520,9 @@ class PeakMapRenderer:
         font = get_font(11)
         title_font = get_font(12)
 
-        axis_color = (136, 136, 136, 255)
-        tick_color = (136, 136, 136, 255)
-        label_color = (136, 136, 136, 255)
+        axis_color = state.axis_color
+        tick_color = state.tick_color
+        label_color = state.label_color
 
         plot_left = self.margin_left
         plot_right = self.margin_left + self.plot_width
@@ -899,9 +899,9 @@ class IMPeakMapRenderer:
         font = get_font(11)
         title_font = get_font(12)
 
-        axis_color = (136, 136, 136, 255)
-        tick_color = (136, 136, 136, 255)
-        label_color = (136, 136, 136, 255)
+        axis_color = state.axis_color
+        tick_color = state.tick_color
+        label_color = state.label_color
 
         plot_left = self.margin_left
         plot_right = self.margin_left + self.plot_width
@@ -1015,8 +1015,8 @@ class IMPeakMapRenderer:
         mob_bottom = self.margin_top + self.plot_height
 
         # Draw border for mobilogram area
-        axis_color = (136, 136, 136, 255)
-        label_color = (136, 136, 136, 255)
+        axis_color = state.axis_color
+        label_color = state.label_color
         draw.rectangle([mob_left, mob_top, mob_right, mob_bottom], outline=axis_color, width=1)
 
         # Normalize intensities to plot width
