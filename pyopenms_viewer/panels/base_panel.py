@@ -116,6 +116,15 @@ class BasePanel(ABC):
         """Update visibility based on current state."""
         self.set_visibility(self.should_be_visible())
 
+    def _figure_with_config(self, fig) -> dict:
+        """Convert a Plotly figure to a dict and attach this panel's modebar config.
+
+        Subclasses that use this must set ``self._plotly_config`` in their __init__.
+        """
+        fig_dict = fig.to_plotly_json()
+        fig_dict["config"] = self._plotly_config
+        return fig_dict
+
 
 class PanelManager:
     """Manages panel ordering, visibility, and updates.

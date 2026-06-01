@@ -36,12 +36,6 @@ class TICPanel(BasePanel):
             },
         }
 
-    def _figure_with_config(self, fig: go.Figure) -> dict:
-        """Convert go.Figure to dict and add config for modebar customization."""
-        fig_dict = fig.to_plotly_json()
-        fig_dict["config"] = self._plotly_config
-        return fig_dict
-
     def build(self, container: ui.element) -> ui.expansion:
         with container:
             self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")

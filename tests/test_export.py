@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 from pyopenms import MSExperiment, MSSpectrum, MzMLFile
 
+from pyopenms_viewer.panels.export_helpers import build_tsv
 from pyopenms_viewer.panels.export_panel import _export_filtered_mzml
 
 
@@ -184,3 +185,27 @@ class TestExportFilteredMzml:
         # Original should be unchanged
         check_mzs, _ = exp.getSpectrum(0).get_peaks()
         assert len(check_mzs) == orig_count
+
+
+def test_build_tsv_formatting():
+    """build_tsv: header, None->"", small float ->.4f, large float ->.2e, str/int passthrough."""
+    columns = [
+        {"field": "a", "label": "A"},
+        {"field": "b", "label": "B"},
+        {"field": "c", "label": "C"},
+    ]
+    rows = [
+        {"a": None, "b": 12.34567, "c": "x"},
+        {"a": 1500.0, "b": 0.5, "c": 42},
+    ]
+    lines = build_tsv(rows, columns).split("\n")
+    assert lines[0] == "A\tB\tC"
+    assert lines[1] == "\t".join(["", "12.3457", "x"])
+    assert lines[2] == "\t".join(["1.50e+03", "0.5000", "42"])
+
+
+def test_build_tsv_empty_and_missing_field():
+    """build_tsv: empty rows -> header only; missing field -> empty cell."""
+    columns = [{"field": "x", "label": "X"}]
+    assert build_tsv([], columns) == "X"
+    assert build_tsv([{}], columns) == "X\n"

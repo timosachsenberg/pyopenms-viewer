@@ -15,6 +15,7 @@ from nicegui.events import MouseEventArguments
 from pyopenms_viewer.core.config import COLORMAPS
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.panels.base_panel import BasePanel
+from pyopenms_viewer.panels.export_helpers import save_image_element_as_png
 from pyopenms_viewer.rendering import MinimapRenderer, PeakMapRenderer
 
 
@@ -117,12 +118,6 @@ class PeakMapPanel(BasePanel):
                 "scale": 1,
             },
         }
-
-    def _figure_with_config(self, fig) -> dict:
-        """Convert go.Figure to dict and add config for modebar customization."""
-        fig_dict = fig.to_plotly_json()
-        fig_dict["config"] = self._plotly_config
-        return fig_dict
 
     def build(self, container: ui.element) -> ui.expansion:
         """Build the peak map panel UI.
@@ -647,24 +642,7 @@ class PeakMapPanel(BasePanel):
 
     def _save_png(self):
         """Save peak map as PNG file."""
-        if self.image_element is None:
-            ui.notify("No image to save", type="warning")
-            return
-
-        # Get current image source (base64 data URL)
-        src = self.image_element._props.get("src", "")
-        if not src or not src.startswith("data:image/png;base64,"):
-            ui.notify("No image data available", type="warning")
-            return
-
-        # Trigger download via JavaScript
-        ui.run_javascript(f'''
-            const link = document.createElement("a");
-            link.href = "{src}";
-            link.download = "peak_map.png";
-            link.click();
-        ''')
-        ui.notify("Downloading peak_map.png", type="positive")
+        save_image_element_as_png(self.image_element, "peak_map.png")
 
     # === FAIMS handlers ===
 

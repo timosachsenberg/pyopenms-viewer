@@ -68,12 +68,6 @@ class SpectrumPanel(BasePanel):
             },
         }
 
-    def _figure_with_config(self, fig: go.Figure) -> dict:
-        """Convert go.Figure to dict and add config for modebar customization."""
-        fig_dict = fig.to_plotly_json()
-        fig_dict["config"] = self._plotly_config
-        return fig_dict
-
     def _downsample_spectrum(
         self,
         mz_array: np.ndarray,

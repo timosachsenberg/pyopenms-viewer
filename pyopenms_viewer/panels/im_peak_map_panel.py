@@ -10,6 +10,7 @@ from nicegui import ui
 from pyopenms_viewer.core.config import COLORMAPS
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.panels.base_panel import BasePanel
+from pyopenms_viewer.panels.export_helpers import save_image_element_as_png
 from pyopenms_viewer.rendering import IMPeakMapRenderer
 
 
@@ -311,24 +312,7 @@ class IMPeakMapPanel(BasePanel):
 
     def _save_png(self):
         """Save ion mobility map as PNG file."""
-        if self.im_image_element is None:
-            ui.notify("No image to save", type="warning")
-            return
-
-        # Get current image source (base64 data URL)
-        src = self.im_image_element._props.get("src", "")
-        if not src or not src.startswith("data:image/png;base64,"):
-            ui.notify("No image data available", type="warning")
-            return
-
-        # Trigger download via JavaScript
-        ui.run_javascript(f'''
-            const link = document.createElement("a");
-            link.href = "{src}";
-            link.download = "ion_mobility_map.png";
-            link.click();
-        ''')
-        ui.notify("Downloading ion_mobility_map.png", type="positive")
+        save_image_element_as_png(self.im_image_element, "ion_mobility_map.png")
 
     # === Mouse handlers ===
 
