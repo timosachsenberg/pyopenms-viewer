@@ -564,6 +564,10 @@ class ViewerState:
             im_max=self.im_max,
         )
 
+    def _has_loaded_data(self) -> bool:
+        """True if any data source is loaded (in-memory df, out-of-core manager, or rasterization exp)."""
+        return not (self.df is None and self.data_manager is None and self.exp is None)
+
     def should_use_rasterization(self, rt_range: float, mz_range: float) -> bool:
         """Determine if rasterization rendering should be used based on view range.
 
@@ -677,12 +681,8 @@ class ViewerState:
         to track the view bounds used for 3D rendering, enabling detection
         of out-of-sync states when the 2D view changes.
         """
-        self.last_3d_view_bounds = (
-            self.view_rt_min if self.view_rt_min is not None else self.rt_min,
-            self.view_rt_max if self.view_rt_max is not None else self.rt_max,
-            self.view_mz_min if self.view_mz_min is not None else self.mz_min,
-            self.view_mz_max if self.view_mz_max is not None else self.mz_max,
-        )
+        b = self.get_view_bounds()
+        self.last_3d_view_bounds = (b.rt_min, b.rt_max, b.mz_min, b.mz_max)
         self.is_3d_in_sync = True
 
     def check_3d_sync(self) -> bool:
@@ -702,10 +702,8 @@ class ViewerState:
         last_rt_min, last_rt_max, last_mz_min, last_mz_max = self.last_3d_view_bounds
 
         # Get current bounds (use view bounds if set, else data bounds)
-        current_rt_min = self.view_rt_min if self.view_rt_min is not None else self.rt_min
-        current_rt_max = self.view_rt_max if self.view_rt_max is not None else self.rt_max
-        current_mz_min = self.view_mz_min if self.view_mz_min is not None else self.mz_min
-        current_mz_max = self.view_mz_max if self.view_mz_max is not None else self.mz_max
+        b = self.get_view_bounds()
+        current_rt_min, current_rt_max, current_mz_min, current_mz_max = b.rt_min, b.rt_max, b.mz_min, b.mz_max
 
         # Allow small tolerance for floating point comparison
         tolerance = 1e-6
@@ -1034,8 +1032,7 @@ class ViewerState:
             zoom_in: True to zoom in, False to zoom out
             emit_event: If True, emit view_changed event
         """
-        # Check if we have data (in-memory, out-of-core, or rasterization mode)
-        if self.df is None and self.data_manager is None and self.exp is None:
+        if not self._has_loaded_data():
             return
 
         # Save current state to zoom history
@@ -1090,8 +1087,7 @@ class ViewerState:
             y_frac: Vertical fraction (0-1) of minimap click
             emit_event: If True, emit view_changed event
         """
-        # Check if we have data (in-memory, out-of-core, or rasterization mode)
-        if self.df is None and self.data_manager is None and self.exp is None:
+        if not self._has_loaded_data():
             return
 
         # Convert minimap fractions to data coordinates (depends on axis orientation)
@@ -1165,8 +1161,7 @@ class ViewerState:
 
     def zoom_in(self, emit_event: bool = True) -> None:
         """Zoom in by 10% on all axes."""
-        # Check if we have data (in-memory, out-of-core, or rasterization mode)
-        if self.df is None and self.data_manager is None and self.exp is None:
+        if not self._has_loaded_data():
             return
 
         rt_range = (self.view_rt_max - self.view_rt_min) * 0.1
@@ -1182,8 +1177,7 @@ class ViewerState:
 
     def zoom_out(self, emit_event: bool = True) -> None:
         """Zoom out by 10% on all axes."""
-        # Check if we have data (in-memory, out-of-core, or rasterization mode)
-        if self.df is None and self.data_manager is None and self.exp is None:
+        if not self._has_loaded_data():
             return
 
         rt_range = (self.view_rt_max - self.view_rt_min) * 0.1
@@ -1205,8 +1199,7 @@ class ViewerState:
             mz_frac: Fraction of m/z range to pan (positive = up)
             emit_event: If True, emit view_changed event
         """
-        # Check if we have data (in-memory, out-of-core, or rasterization mode)
-        if self.df is None and self.data_manager is None and self.exp is None:
+        if not self._has_loaded_data():
             return
 
         rt_range = self.view_rt_max - self.view_rt_min
