@@ -85,7 +85,7 @@ class ExportPanel(BasePanel):
 
     def build(self, container: ui.element) -> ui.expansion:
         with container:
-            self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
+            self._make_expansion()
 
             with self.expansion:
                 # RT range row
@@ -149,7 +149,6 @@ class ExportPanel(BasePanel):
         # Subscribe to events
         self.state.on_data_loaded(self._on_data_loaded)
 
-        self._is_built = True
         return self.expansion
 
     def update(self) -> None:

@@ -16,7 +16,7 @@ from pyopenms import (
 from pyopenms_viewer.annotation.theoretical_spectrum import (
     generate_theoretical_spectrum,
 )
-from pyopenms_viewer.core.config import ION_COLORS
+from pyopenms_viewer.core.config import ION_COLORS, NEUTRAL_GRAY_HEX
 
 
 @dataclass
@@ -494,35 +494,13 @@ def _format_charge_only(ion_name: str) -> str:
     Returns:
         Ion name with charge formatted as superscript HTML
     """
-    # Pattern 1: Repeated + or - at the end (e.g., "precursor++")
-    match_repeated_plus = re.search(r"\++$", ion_name)
-    if match_repeated_plus:
-        charge_count = len(match_repeated_plus.group())
-        base_name = ion_name[: match_repeated_plus.start()]
-        charge_str = "+" if charge_count == 1 else f"{charge_count}+"
-        return f"{base_name}<sup>{charge_str}</sup>"
-
-    match_repeated_minus = re.search(r"-+$", ion_name)
-    if match_repeated_minus:
-        charge_count = len(match_repeated_minus.group())
-        base_name = ion_name[: match_repeated_minus.start()]
-        charge_str = "-" if charge_count == 1 else f"{charge_count}-"
-        return f"{base_name}<sup>{charge_str}</sup>"
-
-    # Pattern 2: Number after + or - (e.g., "precursor+2")
-    match_plus_num = re.search(r"\+(\d+)$", ion_name)
-    if match_plus_num:
-        charge_num = int(match_plus_num.group(1))
-        base_name = ion_name[: match_plus_num.start()]
-        charge_str = "+" if charge_num == 1 else f"{charge_num}+"
-        return f"{base_name}<sup>{charge_str}</sup>"
-
-    match_minus_num = re.search(r"-(\d+)$", ion_name)
-    if match_minus_num:
-        charge_num = int(match_minus_num.group(1))
-        base_name = ion_name[: match_minus_num.start()]
-        charge_str = "-" if charge_num == 1 else f"{charge_num}-"
-        return f"{base_name}<sup>{charge_str}</sup>"
+    # Extract a trailing charge token (+, ++, +2, -, --, -2, ...) using the same
+    # pattern as format_ion_name, then delegate formatting to _parse_charge_string
+    # (the single source of truth for charge-count rendering).
+    charge_match = re.search(r"(\++|\-+|\+\d+|\-\d+)$", ion_name)
+    if charge_match:
+        base_name = ion_name[: charge_match.start()]
+        return f"{base_name}<sup>{_parse_charge_string(charge_match.group(1))}</sup>"
 
     # No charge modifier found, return as-is
     return ion_name
@@ -684,7 +662,7 @@ def create_annotated_spectrum_plot(
 
     # Update layout
     fig.update_layout(
-        title={"text": f"MS2 Spectrum: {sequence_str} (z={charge}+)", "font": {"size": 14, "color": "#888"}},
+        title={"text": f"MS2 Spectrum: {sequence_str} (z={charge}+)", "font": {"size": 14, "color": NEUTRAL_GRAY_HEX}},
         xaxis_title="m/z",
         yaxis_title="Relative Intensity (%)",
         paper_bgcolor="rgba(0,0,0,0)",
@@ -694,14 +672,14 @@ def create_annotated_spectrum_plot(
         showlegend=True,
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1, "font": {"size": 10}},
         modebar={"remove": ["lasso2d", "select2d"]},
-        font={"color": "#888"},
+        font={"color": NEUTRAL_GRAY_HEX},
     )
 
     fig.update_xaxes(
         range=[0, max(exp_mz) * 1.05] if len(exp_mz) > 0 else [0, 2000],
         showgrid=False,
-        linecolor="#888",
-        tickcolor="#888",
+        linecolor=NEUTRAL_GRAY_HEX,
+        tickcolor=NEUTRAL_GRAY_HEX,
     )
 
     if mirror_mode:
@@ -710,10 +688,10 @@ def create_annotated_spectrum_plot(
             range=[-110, 110],
             showgrid=False,
             fixedrange=True,
-            linecolor="#888",
-            tickcolor="#888",
+            linecolor=NEUTRAL_GRAY_HEX,
+            tickcolor=NEUTRAL_GRAY_HEX,
             zeroline=True,
-            zerolinecolor="#888",
+            zerolinecolor=NEUTRAL_GRAY_HEX,
             zerolinewidth=1,
             tickvals=[-100, -50, 0, 50, 100],
             ticktext=["100", "50", "0", "50", "100"],
@@ -723,8 +701,8 @@ def create_annotated_spectrum_plot(
             range=[0, 110],
             showgrid=False,
             fixedrange=True,
-            linecolor="#888",
-            tickcolor="#888",
+            linecolor=NEUTRAL_GRAY_HEX,
+            tickcolor=NEUTRAL_GRAY_HEX,
         )
 
     return fig

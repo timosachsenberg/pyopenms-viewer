@@ -63,7 +63,6 @@ dev = [
 
 [project.scripts]
 pyopenms-viewer = "pyopenms_viewer.cli:main"
-pyopenms-viewer-tiles = "pyopenms_viewer.tile_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/OpenMS/OpenMS"

@@ -8,8 +8,10 @@ chromatogram data from mzML files.
 import plotly.graph_objects as go
 from nicegui import ui
 
+from pyopenms_viewer.core.config import NEUTRAL_GRAY_HEX
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.panels.base_panel import BasePanel
+from pyopenms_viewer.panels.export_helpers import export_rows_as_tsv
 
 
 class ChromatogramPanel(BasePanel):
@@ -62,12 +64,6 @@ class ChromatogramPanel(BasePanel):
             },
         }
 
-    def _figure_with_config(self, fig: go.Figure) -> dict:
-        """Convert go.Figure to dict and add config for modebar customization."""
-        fig_dict = fig.to_plotly_json()
-        fig_dict["config"] = self._plotly_config
-        return fig_dict
-
     def build(self, container: ui.element) -> ui.expansion:
         """Build the chromatogram panel UI.
 
@@ -78,7 +74,7 @@ class ChromatogramPanel(BasePanel):
             The expansion element created
         """
         with container:
-            self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
+            self._make_expansion()
 
             with self.expansion:
                 self._build_header_row()
@@ -90,7 +86,6 @@ class ChromatogramPanel(BasePanel):
         self.state.on_view_changed(self._on_view_changed)
         self.state.on_display_options_changed(self._on_display_options_changed)
 
-        self._is_built = True
         return self.expansion
 
     def _build_header_row(self):
@@ -180,10 +175,10 @@ class ChromatogramPanel(BasePanel):
 
         if not self.state.has_chromatograms or not self.state.selected_chromatogram_indices:
             fig.update_layout(
-                title={"text": "Chromatograms - Select from table below", "font": {"color": "#888"}},
+                title={"text": "Chromatograms - Select from table below", "font": {"color": NEUTRAL_GRAY_HEX}},
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
-                font={"color": "#888"},
+                font={"color": NEUTRAL_GRAY_HEX},
                 height=250,
             )
             # Hide axes completely when nothing selected
@@ -239,12 +234,12 @@ class ChromatogramPanel(BasePanel):
         title_text = f"Chromatograms ({n_selected} selected)"
 
         fig.update_layout(
-            title={"text": title_text, "font": {"size": 14, "color": "#888"}},
+            title={"text": title_text, "font": {"size": 14, "color": NEUTRAL_GRAY_HEX}},
             xaxis_title=f"RT ({rt_unit})",
             yaxis_title="Intensity",
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            font={"color": "#888"},
+            font={"color": NEUTRAL_GRAY_HEX},
             height=250,
             margin={"l": 60, "r": 20, "t": 40, "b": 40},
             showlegend=True,
@@ -260,8 +255,8 @@ class ChromatogramPanel(BasePanel):
         )
 
         # Style axes
-        fig.update_xaxes(showgrid=False, linecolor="#888", tickcolor="#888")
-        fig.update_yaxes(showgrid=False, linecolor="#888", tickcolor="#888")
+        fig.update_xaxes(showgrid=False, linecolor=NEUTRAL_GRAY_HEX, tickcolor=NEUTRAL_GRAY_HEX)
+        fig.update_yaxes(showgrid=False, linecolor=NEUTRAL_GRAY_HEX, tickcolor=NEUTRAL_GRAY_HEX)
 
         return fig
 
@@ -303,12 +298,6 @@ class ChromatogramPanel(BasePanel):
 
     def _export_tsv(self):
         """Export chromatogram table data as TSV file."""
-        data = self.state.chromatograms
-        if not data:
-            ui.notify("No data to export", type="warning")
-            return
-
-        # Column definitions matching the table
         columns = [
             {"field": "idx", "label": "#"},
             {"field": "type", "label": "Type"},
@@ -320,38 +309,4 @@ class ChromatogramPanel(BasePanel):
             {"field": "n_points", "label": "Points"},
             {"field": "max_int", "label": "Max Int"},
         ]
-        column_fields = [col["field"] for col in columns]
-        column_labels = [col["label"] for col in columns]
-
-        # Build TSV content
-        lines = ["\t".join(column_labels)]  # Header row
-        for row in data:
-            values = []
-            for field in column_fields:
-                val = row.get(field, "")
-                # Convert None to empty string, format numbers
-                if val is None:
-                    val = ""
-                elif isinstance(val, float):
-                    val = f"{val:.4f}" if abs(val) < 1000 else f"{val:.2e}"
-                else:
-                    val = str(val)
-                values.append(val)
-            lines.append("\t".join(values))
-
-        tsv_content = "\n".join(lines)
-
-        # Escape backticks for JavaScript template literal
-        escaped_content = tsv_content.replace("`", "\\`")
-
-        # Trigger download using JavaScript
-        ui.run_javascript(f"""
-            const blob = new Blob([`{escaped_content}`], {{type: "text/tab-separated-values"}});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "chromatograms_table.tsv";
-            a.click();
-            URL.revokeObjectURL(url);
-        """)
-        ui.notify(f"Exported {len(data)} rows", type="positive")
+        export_rows_as_tsv(self.state.chromatograms, columns, "chromatograms_table.tsv")

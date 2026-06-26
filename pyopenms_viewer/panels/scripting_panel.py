@@ -54,7 +54,7 @@ class ScriptingPanel(BasePanel):
 
     def build(self, container: ui.element) -> ui.expansion:
         with container:
-            self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
+            self._make_expansion()
 
             with self.expansion:
                 if _SNIPPETS:
@@ -80,7 +80,6 @@ class ScriptingPanel(BasePanel):
 
         self.state.on_data_loaded(self._on_data_loaded)
         self.update_visibility()
-        self._is_built = True
         return self.expansion
 
     def update(self) -> None:

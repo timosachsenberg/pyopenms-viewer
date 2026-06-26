@@ -4,12 +4,11 @@ This panel displays a table of detected features from featureXML files
 with filtering and zoom-to-feature functionality.
 """
 
-from collections.abc import Callable
-
 from nicegui import ui
 
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.panels.base_panel import BasePanel
+from pyopenms_viewer.panels.export_helpers import export_rows_as_tsv
 
 
 class FeaturesTablePanel(BasePanel):
@@ -36,9 +35,6 @@ class FeaturesTablePanel(BasePanel):
         self.min_quality_input = None
         self.charge_select = None
 
-        # Callback for feature selection
-        self._on_feature_selected: Callable | None = None
-
     def build(self, container: ui.element) -> ui.expansion:
         """Build the features table panel UI.
 
@@ -49,7 +45,7 @@ class FeaturesTablePanel(BasePanel):
             The expansion element created
         """
         with container:
-            self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
+            self._make_expansion()
 
             with self.expansion:
                 self._build_help_text()
@@ -60,7 +56,6 @@ class FeaturesTablePanel(BasePanel):
         self.state.on_data_loaded(self._on_data_loaded)
         self.state.on_selection_changed(self._on_selection_changed)
 
-        self._is_built = True
         return self.expansion
 
     def _build_help_text(self):
@@ -318,12 +313,6 @@ class FeaturesTablePanel(BasePanel):
 
     def _export_tsv(self):
         """Export filtered table data as TSV file."""
-        data = self._get_filtered_data()
-        if not data:
-            ui.notify("No data to export", type="warning")
-            return
-
-        # Column definitions matching the table
         columns = [
             {"field": "idx", "label": "#"},
             {"field": "rt", "label": "RT (s)"},
@@ -332,46 +321,4 @@ class FeaturesTablePanel(BasePanel):
             {"field": "charge", "label": "Z"},
             {"field": "quality", "label": "Quality"},
         ]
-        column_fields = [col["field"] for col in columns]
-        column_labels = [col["label"] for col in columns]
-
-        # Build TSV content
-        lines = ["\t".join(column_labels)]  # Header row
-        for row in data:
-            values = []
-            for field in column_fields:
-                val = row.get(field, "")
-                # Convert None to empty string, format numbers
-                if val is None:
-                    val = ""
-                elif isinstance(val, float):
-                    val = f"{val:.4f}" if abs(val) < 1000 else f"{val:.2e}"
-                else:
-                    val = str(val)
-                values.append(val)
-            lines.append("\t".join(values))
-
-        tsv_content = "\n".join(lines)
-
-        # Escape backticks for JavaScript template literal
-        escaped_content = tsv_content.replace("`", "\\`")
-
-        # Trigger download using JavaScript
-        ui.run_javascript(f"""
-            const blob = new Blob([`{escaped_content}`], {{type: "text/tab-separated-values"}});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "features_table.tsv";
-            a.click();
-            URL.revokeObjectURL(url);
-        """)
-        ui.notify(f"Exported {len(data)} rows", type="positive")
-
-    def set_on_feature_selected(self, callback: Callable):
-        """Set callback for when a feature is selected.
-
-        Args:
-            callback: Function to call with feature index
-        """
-        self._on_feature_selected = callback
+        export_rows_as_tsv(self._get_filtered_data(), columns, "features_table.tsv")

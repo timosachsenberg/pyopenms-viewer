@@ -12,9 +12,10 @@ import pandas as pd
 from nicegui import ui
 from nicegui.events import MouseEventArguments
 
-from pyopenms_viewer.core.config import COLORMAPS
+from pyopenms_viewer.core.config import COLORMAPS, NEUTRAL_GRAY_HEX
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.panels.base_panel import BasePanel
+from pyopenms_viewer.panels.export_helpers import save_image_element_as_png
 from pyopenms_viewer.rendering import MinimapRenderer, PeakMapRenderer
 
 
@@ -118,12 +119,6 @@ class PeakMapPanel(BasePanel):
             },
         }
 
-    def _figure_with_config(self, fig) -> dict:
-        """Convert go.Figure to dict and add config for modebar customization."""
-        fig_dict = fig.to_plotly_json()
-        fig_dict["config"] = self._plotly_config
-        return fig_dict
-
     def build(self, container: ui.element) -> ui.expansion:
         """Build the peak map panel UI.
 
@@ -134,7 +129,7 @@ class PeakMapPanel(BasePanel):
             The expansion element created
         """
         with container:
-            self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
+            self._make_expansion()
 
             with self.expansion:
                 self._build_options_row()
@@ -147,7 +142,6 @@ class PeakMapPanel(BasePanel):
         self.state.on_view_changed(self._on_view_changed)
         self.state.on_selection_changed(self._on_selection_changed)
 
-        self._is_built = True
         return self.expansion
 
     def _build_options_row(self):
@@ -413,7 +407,7 @@ class PeakMapPanel(BasePanel):
             empty_fig.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
-                font={"color": "#888"},
+                font={"color": NEUTRAL_GRAY_HEX},
                 width=self.state.canvas_width,
                 height=500,
                 autosize=False,
@@ -435,7 +429,7 @@ class PeakMapPanel(BasePanel):
 
             self.minimap_image = ui.image().style(
                 f"width: {self.state.minimap_width}px; height: {self.state.minimap_height}px; "
-                f"background: transparent; cursor: pointer; border: 1px solid #888;"
+                f"background: transparent; cursor: pointer; border: 1px solid {NEUTRAL_GRAY_HEX};"
             )
             self.minimap_image.on("click", self._on_minimap_click)
 
@@ -648,24 +642,7 @@ class PeakMapPanel(BasePanel):
 
     def _save_png(self):
         """Save peak map as PNG file."""
-        if self.image_element is None:
-            ui.notify("No image to save", type="warning")
-            return
-
-        # Get current image source (base64 data URL)
-        src = self.image_element._props.get("src", "")
-        if not src or not src.startswith("data:image/png;base64,"):
-            ui.notify("No image data available", type="warning")
-            return
-
-        # Trigger download via JavaScript
-        ui.run_javascript(f'''
-            const link = document.createElement("a");
-            link.href = "{src}";
-            link.download = "peak_map.png";
-            link.click();
-        ''')
-        ui.notify("Downloading peak_map.png", type="positive")
+        save_image_element_as_png(self.image_element, "peak_map.png")
 
     # === FAIMS handlers ===
 
@@ -1337,7 +1314,6 @@ class PeakMapPanel(BasePanel):
         # Check if region is small enough
         if not self._is_small_region():
             # Show message that region is too large
-            # Show message that region is too large
             if self.view_3d_status:
                 rt_range = self.state.view_rt_max - self.state.view_rt_min
                 mz_range = self.state.view_mz_max - self.state.view_mz_min
@@ -1446,11 +1422,11 @@ class PeakMapPanel(BasePanel):
             fig.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
-                font={"color": "#888"},
+                font={"color": NEUTRAL_GRAY_HEX},
                 scene={
-                    "xaxis": {"title": "RT (s)", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": "#888"},
-                    "yaxis": {"title": "m/z", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": "#888"},
-                    "zaxis": {"title": "Intensity", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": "#888"},
+                    "xaxis": {"title": "RT (s)", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": NEUTRAL_GRAY_HEX},
+                    "yaxis": {"title": "m/z", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": NEUTRAL_GRAY_HEX},
+                    "zaxis": {"title": "Intensity", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": NEUTRAL_GRAY_HEX},
                     "bgcolor": "rgba(0,0,0,0)",
                     "aspectmode": "manual",
                     "aspectratio": {"x": aspect_x, "y": aspect_y, "z": 0.6},

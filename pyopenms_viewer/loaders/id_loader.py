@@ -52,6 +52,27 @@ def extract_id_data(state: ViewerState) -> list[dict[str, Any]]:
     return data
 
 
+def _collect_meta_values(meta_obj, prefix: str) -> dict:
+    """Collect and normalize meta values from a pyOpenMS object.
+
+    Works for both PeptideIdentification and PeptideHit. Byte keys/values are
+    decoded, floats are rounded to 4 decimals, and keys are namespaced with
+    ``{prefix}:``.
+    """
+    keys = []
+    meta_obj.getKeys(keys)
+    out = {}
+    for key in keys:
+        key_str = key.decode() if isinstance(key, bytes) else key
+        value = meta_obj.getMetaValue(key)
+        if isinstance(value, bytes):
+            value = value.decode()
+        elif isinstance(value, float):
+            value = round(value, 4)
+        out[f"{prefix}:{key_str}"] = value
+    return out
+
+
 def link_ids_to_spectra(state: ViewerState, rt_tolerance: float = 5.0, mz_tolerance: float = 0.5) -> None:
     """Link peptide IDs to spectra by matching RT and precursor m/z.
 
@@ -113,17 +134,7 @@ def link_ids_to_spectra(state: ViewerState, rt_tolerance: float = 5.0, mz_tolera
             continue
 
         # Collect PeptideIdentification meta values
-        pid_meta_values = {}
-        pid_keys = []
-        pep_id.getKeys(pid_keys)
-        for key in pid_keys:
-            key_str = key.decode() if isinstance(key, bytes) else key
-            value = pep_id.getMetaValue(key)
-            if isinstance(value, bytes):
-                value = value.decode()
-            elif isinstance(value, float):
-                value = round(value, 4)
-            pid_meta_values[f"pid:{key_str}"] = value
+        pid_meta_values = _collect_meta_values(pep_id, "pid")
 
         # Collect data for all hits
         all_hits_data = []
@@ -132,18 +143,9 @@ def link_ids_to_spectra(state: ViewerState, rt_tolerance: float = 5.0, mz_tolera
             score = hit.getScore()
             charge = hit.getCharge()
 
-            # Collect hit-specific meta values
+            # Collect hit-specific meta values (inheriting the PeptideIdentification ones)
             hit_meta_values = dict(pid_meta_values)
-            hit_keys = []
-            hit.getKeys(hit_keys)
-            for key in hit_keys:
-                key_str = key.decode() if isinstance(key, bytes) else key
-                value = hit.getMetaValue(key)
-                if isinstance(value, bytes):
-                    value = value.decode()
-                elif isinstance(value, float):
-                    value = round(value, 4)
-                hit_meta_values[f"hit:{key_str}"] = value
+            hit_meta_values.update(_collect_meta_values(hit, "hit"))
 
             all_hits_data.append(
                 {

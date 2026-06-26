@@ -16,6 +16,7 @@ from pyopenms_viewer.annotation.spectrum_annotator import (
     create_annotated_spectrum_plot,
     get_external_peak_annotations_from_hit,
 )
+from pyopenms_viewer.core.config import NEUTRAL_GRAY_HEX
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.loaders.mzml_loader import get_cv_from_spectrum
 from pyopenms_viewer.panels.base_panel import BasePanel
@@ -36,6 +37,7 @@ class SpectrumPanel(BasePanel):
 
     # Maximum peaks to display before downsampling kicks in
     MAX_DISPLAY_PEAKS = 5000
+    MEASUREMENT_COLOR = "#ff8800"  # Orange used for the measure-mode line/marker/label
 
     def __init__(self, state: ViewerState):
         """Initialize spectrum panel.
@@ -67,12 +69,6 @@ class SpectrumPanel(BasePanel):
                 "scale": 1,
             },
         }
-
-    def _figure_with_config(self, fig: go.Figure) -> dict:
-        """Convert go.Figure to dict and add config for modebar customization."""
-        fig_dict = fig.to_plotly_json()
-        fig_dict["config"] = self._plotly_config
-        return fig_dict
 
     def _downsample_spectrum(
         self,
@@ -130,7 +126,7 @@ class SpectrumPanel(BasePanel):
             The expansion element created
         """
         with container:
-            self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
+            self._make_expansion()
 
             with self.expansion:
                 with ui.column().classes("w-full items-center"):
@@ -141,7 +137,6 @@ class SpectrumPanel(BasePanel):
         self.state.on_data_loaded(self._on_data_loaded)
         self.state.on_selection_changed(self._on_selection_changed)
 
-        self._is_built = True
         return self.expansion
 
     def _build_navigation_row(self):
@@ -290,9 +285,6 @@ class SpectrumPanel(BasePanel):
 
         # Check if there's a matching peptide ID for annotation
         matching_id_idx = self.state.find_matching_id_for_spectrum(spectrum_idx)
-        print(
-            f"DEBUG show_spectrum: spectrum_idx={spectrum_idx}, ms_level={ms_level}, matching_id_idx={matching_id_idx}"
-        )
 
         if matching_id_idx is not None:
             # Use annotated spectrum display (shows sequence in title even if peak coloring is off)
@@ -445,7 +437,7 @@ class SpectrumPanel(BasePanel):
 
         # Layout
         fig.update_layout(
-            title={"text": title, "font": {"size": 14, "color": "#888"}},
+            title={"text": title, "font": {"size": 14, "color": NEUTRAL_GRAY_HEX}},
             xaxis_title="m/z",
             yaxis_title=y_title,
             paper_bgcolor="rgba(0,0,0,0)",
@@ -454,7 +446,7 @@ class SpectrumPanel(BasePanel):
             margin={"l": 60, "r": 20, "t": 50, "b": 50},
             showlegend=False,
             modebar={"remove": ["lasso2d", "select2d"]},
-            font={"color": "#888"},
+            font={"color": NEUTRAL_GRAY_HEX},
             uirevision="spectrum_stable",
         )
 
@@ -463,8 +455,8 @@ class SpectrumPanel(BasePanel):
             fig.update_xaxes(
                 range=list(self.state.spectrum_zoom_range),
                 showgrid=False,
-                linecolor="#888",
-                tickcolor="#888",
+                linecolor=NEUTRAL_GRAY_HEX,
+                tickcolor=NEUTRAL_GRAY_HEX,
                 ticks="outside",
                 ticklen=5,
             )
@@ -480,14 +472,14 @@ class SpectrumPanel(BasePanel):
                         visible_max = float(int_array[visible_mask].max())
                     y_range = [0, visible_max / 0.95]
         else:
-            fig.update_xaxes(showgrid=False, linecolor="#888", tickcolor="#888", ticks="outside", ticklen=5)
+            fig.update_xaxes(showgrid=False, linecolor=NEUTRAL_GRAY_HEX, tickcolor=NEUTRAL_GRAY_HEX, ticks="outside", ticklen=5)
 
         fig.update_yaxes(
             range=y_range,
             showgrid=False,
             fixedrange=True,
-            linecolor="#888",
-            tickcolor="#888",
+            linecolor=NEUTRAL_GRAY_HEX,
+            tickcolor=NEUTRAL_GRAY_HEX,
             ticks="outside",
             ticklen=5,
         )
@@ -634,7 +626,7 @@ class SpectrumPanel(BasePanel):
                 y0=bracket_y,
                 x1=mz2,
                 y1=bracket_y,
-                line={"color": "#ff8800", "width": 2},
+                line={"color": self.MEASUREMENT_COLOR, "width": 2},
             )
 
             # Vertical lines down to each peak
@@ -644,7 +636,7 @@ class SpectrumPanel(BasePanel):
                 y0=y1,
                 x1=mz1,
                 y1=bracket_y,
-                line={"color": "#ff8800", "width": 1, "dash": "dot"},
+                line={"color": self.MEASUREMENT_COLOR, "width": 1, "dash": "dot"},
             )
             fig.add_shape(
                 type="line",
@@ -652,7 +644,7 @@ class SpectrumPanel(BasePanel):
                 y0=y2,
                 x1=mz2,
                 y1=bracket_y,
-                line={"color": "#ff8800", "width": 1, "dash": "dot"},
+                line={"color": self.MEASUREMENT_COLOR, "width": 1, "dash": "dot"},
             )
 
             # Calculate delta m/z
@@ -666,7 +658,7 @@ class SpectrumPanel(BasePanel):
                 text=f"Δ{delta_mz:.4f}",
                 showarrow=False,
                 yshift=12,
-                font={"color": "#ff8800", "size": 11},
+                font={"color": self.MEASUREMENT_COLOR, "size": 11},
                 borderpad=2,
             )
 
@@ -792,7 +784,7 @@ class SpectrumPanel(BasePanel):
                 text=f"{mz:.2f}",
                 showarrow=False,
                 yshift=10,
-                font={"color": "#888", "size": 9},
+                font={"color": NEUTRAL_GRAY_HEX, "size": 9},
             )
 
     def _add_highlight_to_figure(self, fig: go.Figure, mz_array: np.ndarray, int_array: np.ndarray):
@@ -824,7 +816,7 @@ class SpectrumPanel(BasePanel):
                     x=[start_mz],
                     y=[start_y],
                     mode="markers",
-                    marker={"color": "#ff8800", "size": 10, "symbol": "circle", "line": {"width": 1, "color": "#333"}},
+                    marker={"color": self.MEASUREMENT_COLOR, "size": 10, "symbol": "circle", "line": {"width": 1, "color": "#333"}},
                     hoverinfo="skip",
                     showlegend=False,
                 )
@@ -839,7 +831,7 @@ class SpectrumPanel(BasePanel):
                 hover_y = hover_int
 
             # Highlighted ring around the hovered peak
-            highlight_color = "#ff8800" if self.state.spectrum_measure_mode else "#0077cc"
+            highlight_color = self.MEASUREMENT_COLOR if self.state.spectrum_measure_mode else "#0077cc"
             fig.add_trace(
                 go.Scatter(
                     x=[hover_mz],
@@ -1224,6 +1216,13 @@ class SpectrumPanel(BasePanel):
         annotations = self.state.peak_annotations[spectrum_idx]
         self.state.peak_annotations[spectrum_idx] = [ann for ann in annotations if abs(ann["mz"] - mz) >= 0.01]
 
+    def _rerender_if_view_dependent(self):
+        """Re-render the selected spectrum if its appearance depends on the visible range."""
+        if (
+            self.state.spectrum_auto_scale or self.state.peakmap_downsampling or self.state.show_mz_labels
+        ) and self.state.selected_spectrum_idx is not None:
+            self.show_spectrum(self.state.selected_spectrum_idx)
+
     def _on_plot_relayout(self, e):
         """Handle zoom/pan changes on spectrum plot."""
         try:
@@ -1234,10 +1233,7 @@ class SpectrumPanel(BasePanel):
             if xmin is not None and xmax is not None:
                 self.state.spectrum_zoom_range = (xmin, xmax)
                 # Re-render to apply auto-scale, re-downsample, or update m/z labels for visible range
-                if (
-                    self.state.spectrum_auto_scale or self.state.peakmap_downsampling or self.state.show_mz_labels
-                ) and self.state.selected_spectrum_idx is not None:
-                    self.show_spectrum(self.state.selected_spectrum_idx)
+                self._rerender_if_view_dependent()
                 # Sync m/z range to IM peakmap if linking is enabled
                 if self.state.link_spectrum_mz_to_im and self.state.has_ion_mobility:
                     self.state.view_mz_min = max(self.state.mz_min, xmin)
@@ -1246,10 +1242,7 @@ class SpectrumPanel(BasePanel):
             elif e.args.get("xaxis.autorange"):
                 self.state.spectrum_zoom_range = None
                 # Re-render to reset y-axis, re-downsample full spectrum, or update m/z labels
-                if (
-                    self.state.spectrum_auto_scale or self.state.peakmap_downsampling or self.state.show_mz_labels
-                ) and self.state.selected_spectrum_idx is not None:
-                    self.show_spectrum(self.state.selected_spectrum_idx)
+                self._rerender_if_view_dependent()
                 # Reset IM m/z range if linking is enabled
                 if self.state.link_spectrum_mz_to_im and self.state.has_ion_mobility:
                     self.state.view_mz_min = self.state.mz_min

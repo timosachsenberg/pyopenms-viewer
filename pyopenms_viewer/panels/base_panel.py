@@ -57,7 +57,6 @@ class BasePanel(ABC):
         self.name = name
         self.icon = icon
         self.expansion: ui.expansion | None = None
-        self._is_built = False
 
     @abstractmethod
     def build(self, container: ui.element) -> ui.expansion:
@@ -116,6 +115,19 @@ class BasePanel(ABC):
     def update_visibility(self) -> None:
         """Update visibility based on current state."""
         self.set_visibility(self.should_be_visible())
+
+    def _figure_with_config(self, fig) -> dict:
+        """Convert a Plotly figure to a dict and attach this panel's modebar config.
+
+        Subclasses that use this must set ``self._plotly_config`` in their __init__.
+        """
+        fig_dict = fig.to_plotly_json()
+        fig_dict["config"] = self._plotly_config
+        return fig_dict
+
+    def _make_expansion(self) -> None:
+        """Create this panel's top-level expansion (call inside a ``with container:`` block)."""
+        self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
 
 
 class PanelManager:

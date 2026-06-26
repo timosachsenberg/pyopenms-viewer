@@ -15,6 +15,10 @@ ION_COLORS = {
     "unknown": "#7f7f7f",  # Gray
 }
 
+# Neutral gray for muted plot/UI chrome (axes, gridlines, secondary text);
+# mirrors DEFAULTS.AXIS_COLOR (136, 136, 136) as a CSS hex.
+NEUTRAL_GRAY_HEX = "#888"
+
 # Available colormaps for peak map visualization
 COLORMAPS = {
     "jet": matplotlib.colormaps["jet"],

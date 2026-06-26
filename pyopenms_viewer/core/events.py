@@ -6,17 +6,6 @@ events and receive callbacks when those events are emitted.
 """
 
 from collections.abc import Callable
-from enum import Enum, auto
-
-
-class EventType(Enum):
-    """Enumeration of all event types for type safety."""
-
-    DATA_LOADED = auto()  # mzML, features, or IDs loaded
-    VIEW_CHANGED = auto()  # zoom/pan changed
-    SELECTION_CHANGED = auto()  # spectrum, feature, or ID selected
-    DISPLAY_OPTIONS_CHANGED = auto()  # colormap, axis swap, etc.
-    LOADING_STATE_CHANGED = auto()  # loading started/finished
 
 
 class EventBus:

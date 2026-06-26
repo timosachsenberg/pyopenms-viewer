@@ -4,12 +4,11 @@ This panel displays a table of all spectra with their metadata,
 including identification information when available.
 """
 
-from collections.abc import Callable
-
 from nicegui import ui
 
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.panels.base_panel import BasePanel
+from pyopenms_viewer.panels.export_helpers import export_rows_as_tsv
 
 
 class SpectraTablePanel(BasePanel):
@@ -45,9 +44,6 @@ class SpectraTablePanel(BasePanel):
         self.tolerance_input = None
         self.mirror_view_cb = None
 
-        # Callback for spectrum selection
-        self._on_spectrum_selected: Callable | None = None
-
     def build(self, container: ui.element) -> ui.expansion:
         """Build the spectra table panel UI.
 
@@ -58,7 +54,7 @@ class SpectraTablePanel(BasePanel):
             The expansion element created
         """
         with container:
-            self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
+            self._make_expansion()
 
             with self.expansion:
                 self._build_help_text()
@@ -69,7 +65,6 @@ class SpectraTablePanel(BasePanel):
         # Subscribe to events
         self.state.on_data_loaded(self._on_data_loaded)
 
-        self._is_built = True
         return self.expansion
 
     def _build_help_text(self):
@@ -351,53 +346,4 @@ class SpectraTablePanel(BasePanel):
 
     def _export_tsv(self):
         """Export filtered table data as TSV file."""
-        data = self._get_filtered_data()
-        if not data:
-            ui.notify("No data to export", type="warning")
-            return
-
-        # Get column definitions
-        columns = self._build_columns()
-        column_fields = [col["field"] for col in columns]
-        column_labels = [col["label"] for col in columns]
-
-        # Build TSV content
-        lines = ["\t".join(column_labels)]  # Header row
-        for row in data:
-            values = []
-            for field in column_fields:
-                val = row.get(field, "")
-                # Convert None to empty string, format numbers
-                if val is None:
-                    val = ""
-                elif isinstance(val, float):
-                    val = f"{val:.4f}" if abs(val) < 1000 else f"{val:.2e}"
-                else:
-                    val = str(val)
-                values.append(val)
-            lines.append("\t".join(values))
-
-        tsv_content = "\n".join(lines)
-
-        # Escape backticks for JavaScript template literal
-        escaped_content = tsv_content.replace("`", "\\`")
-
-        # Trigger download using JavaScript
-        ui.run_javascript(f"""
-            const blob = new Blob([`{escaped_content}`], {{type: "text/tab-separated-values"}});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "spectra_table.tsv";
-            a.click();
-            URL.revokeObjectURL(url);
-        """)
-        ui.notify(f"Exported {len(data)} rows", type="positive")
-
-    def set_on_spectrum_selected(self, callback: Callable):
-        """Set callback for when a spectrum is selected.
-
-        Args:
-            callback: Function to call with spectrum index
-        """
-        self._on_spectrum_selected = callback
+        export_rows_as_tsv(self._get_filtered_data(), self._build_columns(), "spectra_table.tsv")

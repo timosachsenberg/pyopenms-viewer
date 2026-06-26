@@ -10,6 +10,7 @@ from nicegui import ui
 from pyopenms_viewer.core.config import COLORMAPS
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.panels.base_panel import BasePanel
+from pyopenms_viewer.panels.export_helpers import save_image_element_as_png
 from pyopenms_viewer.rendering import IMPeakMapRenderer
 
 
@@ -110,7 +111,7 @@ class IMPeakMapPanel(BasePanel):
             The expansion element created
         """
         with container:
-            self.expansion = ui.expansion(self.name, icon=self.icon, value=False).classes("w-full max-w-[1700px]")
+            self._make_expansion()
 
             with self.expansion:
                 self._build_controls_row()
@@ -122,7 +123,6 @@ class IMPeakMapPanel(BasePanel):
         self.state.on_view_changed(self._on_view_changed)
         self.state.on_selection_changed(self._on_selection_changed)
 
-        self._is_built = True
         return self.expansion
 
     def _build_controls_row(self):
@@ -312,24 +312,7 @@ class IMPeakMapPanel(BasePanel):
 
     def _save_png(self):
         """Save ion mobility map as PNG file."""
-        if self.im_image_element is None:
-            ui.notify("No image to save", type="warning")
-            return
-
-        # Get current image source (base64 data URL)
-        src = self.im_image_element._props.get("src", "")
-        if not src or not src.startswith("data:image/png;base64,"):
-            ui.notify("No image data available", type="warning")
-            return
-
-        # Trigger download via JavaScript
-        ui.run_javascript(f'''
-            const link = document.createElement("a");
-            link.href = "{src}";
-            link.download = "ion_mobility_map.png";
-            link.click();
-        ''')
-        ui.notify("Downloading ion_mobility_map.png", type="positive")
+        save_image_element_as_png(self.im_image_element, "ion_mobility_map.png")
 
     # === Mouse handlers ===
 
@@ -338,11 +321,7 @@ class IMPeakMapPanel(BasePanel):
         if not self.state.show_mobilogram:
             return False
 
-        mob_left = self.state.margin_left + self.state.plot_width + 10
-        mob_right = mob_left + self.state.mobilogram_plot_width
-        mob_top = self.state.margin_top
-        mob_bottom = self.state.margin_top + self.state.plot_height
-
+        mob_left, mob_right, mob_top, mob_bottom = self._get_mobilogram_bounds()
         return mob_left <= x <= mob_right and mob_top <= y <= mob_bottom
 
     def _get_mobilogram_bounds(self) -> tuple:

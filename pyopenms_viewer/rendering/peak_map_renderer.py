@@ -520,9 +520,9 @@ class PeakMapRenderer:
         font = get_font(11)
         title_font = get_font(12)
 
-        axis_color = (136, 136, 136, 255)
-        tick_color = (136, 136, 136, 255)
-        label_color = (136, 136, 136, 255)
+        axis_color = state.axis_color
+        tick_color = state.tick_color
+        label_color = state.label_color
 
         plot_left = self.margin_left
         plot_right = self.margin_left + self.plot_width
@@ -899,9 +899,9 @@ class IMPeakMapRenderer:
         font = get_font(11)
         title_font = get_font(12)
 
-        axis_color = (136, 136, 136, 255)
-        tick_color = (136, 136, 136, 255)
-        label_color = (136, 136, 136, 255)
+        axis_color = state.axis_color
+        tick_color = state.tick_color
+        label_color = state.label_color
 
         plot_left = self.margin_left
         plot_right = self.margin_left + self.plot_width
@@ -965,97 +965,6 @@ class IMPeakMapRenderer:
 
         return canvas
 
-    def _draw_mobilogram(
-        self,
-        canvas: Image.Image,
-        state: ViewerState,
-        view_mz_min: float,
-        view_mz_max: float,
-        view_im_min: float,
-        view_im_max: float,
-    ) -> Image.Image:
-        """Draw mobilogram (summed intensity vs IM) on the right side of the IM peakmap."""
-        draw = ImageDraw.Draw(canvas)
-
-        # Get mobilogram data
-        im_values, intensities = self._extract_mobilogram(state, view_mz_min, view_mz_max, view_im_min, view_im_max)
-        if len(im_values) == 0 or len(intensities) == 0:
-            return canvas
-
-        # Sort by IM values for proper line drawing (prevents jumps)
-        sort_idx = np.argsort(im_values)
-        im_values = im_values[sort_idx]
-        intensities = intensities[sort_idx]
-
-        # Filter out zero-intensity bins so the line connects non-zero points directly
-        nonzero = intensities > 0
-        im_values = im_values[nonzero]
-        intensities = intensities[nonzero]
-
-        if len(im_values) == 0:
-            return canvas
-
-        # Mobilogram plot area (to the right of the main plot)
-        mob_left = self.margin_left + self.plot_width + 10
-        mob_right = mob_left + state.mobilogram_plot_width
-        mob_top = self.margin_top
-        mob_bottom = self.margin_top + self.plot_height
-
-        # Draw border for mobilogram area
-        axis_color = (136, 136, 136, 255)
-        label_color = (136, 136, 136, 255)
-        draw.rectangle([mob_left, mob_top, mob_right, mob_bottom], outline=axis_color, width=1)
-
-        # Normalize intensities to plot width
-        max_intensity = np.max(intensities) if len(intensities) > 0 else 1.0
-        if max_intensity == 0:
-            max_intensity = 1.0
-
-        im_range = view_im_max - view_im_min
-        if im_range == 0:
-            im_range = 1.0
-
-        # Draw as a filled area plot
-        points = []
-        for im_val, intensity in zip(im_values, intensities, strict=True):
-            # Y position (IM axis, inverted - low IM at bottom)
-            y_frac = 1.0 - (im_val - view_im_min) / im_range
-            y = mob_top + int(y_frac * self.plot_height)
-
-            # X position (intensity, starting from left edge)
-            x_frac = intensity / max_intensity
-            x = mob_left + int(x_frac * state.mobilogram_plot_width)
-
-            points.append((x, y))
-
-        # Draw line connecting all points
-        if len(points) > 1:
-            # Build polygon path: bottom-left -> data points (bottom to top) -> top-left -> close
-            fill_points = [(mob_left, mob_bottom)]  # Start at bottom-left
-            fill_points.extend(points)  # Go through data points (bottom to top)
-            fill_points.append((mob_left, mob_top))  # End at top-left
-
-            # Fill with semi-transparent cyan
-            draw.polygon(fill_points, fill=(0, 200, 255, 80))
-
-            # Draw the line on top
-            draw.line(points, fill=(0, 200, 255, 255), width=2)
-
-        # Draw axis label at top
-        font = get_font(10)
-
-        label = "Mobilogram"
-        bbox = draw.textbbox((0, 0), label, font=font)
-        label_width = bbox[2] - bbox[0]
-        draw.text(
-            (mob_left + (state.mobilogram_plot_width - label_width) // 2, mob_top - 15),
-            label,
-            fill=label_color,
-            font=font,
-        )
-
-        return canvas
-
     def _draw_mobilogram_from_raster(
         self,
         canvas: Image.Image,
@@ -1106,8 +1015,8 @@ class IMPeakMapRenderer:
         mob_bottom = self.margin_top + self.plot_height
 
         # Draw border for mobilogram area
-        axis_color = (136, 136, 136, 255)
-        label_color = (136, 136, 136, 255)
+        axis_color = state.axis_color
+        label_color = state.label_color
         draw.rectangle([mob_left, mob_top, mob_right, mob_bottom], outline=axis_color, width=1)
 
         # Normalize intensities to plot width
@@ -1149,50 +1058,3 @@ class IMPeakMapRenderer:
         )
 
         return canvas
-
-    def _extract_mobilogram(
-        self,
-        state: ViewerState,
-        mz_min: float,
-        mz_max: float,
-        im_min: float,
-        im_max: float,
-    ) -> tuple:
-        """Extract mobilogram (summed intensity vs ion mobility) from IM data.
-
-        Returns:
-            Tuple of (im_values, intensities) arrays for plotting
-        """
-        # Get IM peaks - use same dual-path approach as render():
-        # IN-MEMORY: direct pandas filtering, OUT-OF-CORE: DuckDB query
-        if state.im_df is not None:
-            # Fast path: direct pandas filtering (in-memory mode)
-            mask = (
-                (state.im_df["mz"] >= mz_min)
-                & (state.im_df["mz"] <= mz_max)
-                & (state.im_df["im"] >= im_min)
-                & (state.im_df["im"] <= im_max)
-            )
-            filtered_df = state.im_df[mask]
-        else:
-            # Out-of-core path: query via DuckDB
-            filtered_df = state.get_im_peaks_in_view()
-
-        if filtered_df is None or len(filtered_df) == 0:
-            return np.array([]), np.array([])
-
-        # Bin IM values and sum intensities
-        n_bins = min(200, max(50, int(len(filtered_df) / 100)))  # Adaptive bin count
-
-        bin_edges = np.linspace(im_min, im_max, n_bins + 1)
-        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-
-        # Digitize IM values into bins
-        bin_indices = np.digitize(filtered_df["im"].values, bin_edges) - 1
-        bin_indices = np.clip(bin_indices, 0, n_bins - 1)
-
-        # Sum intensities per bin
-        intensities = np.zeros(n_bins, dtype=np.float64)
-        np.add.at(intensities, bin_indices, filtered_df["intensity"].values)
-
-        return bin_centers, intensities
