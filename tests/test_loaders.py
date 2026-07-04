@@ -10,6 +10,7 @@ from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.loaders import (
     FeatureLoader,
     IDLoader,
+    ImzMLLoader,
     MzMLLoader,
     extract_chromatograms,
 )
@@ -20,6 +21,7 @@ BSA_MZML = TEST_DATA_DIR / "BSA1_F1.mzML"
 BSA_FEATUREXML = TEST_DATA_DIR / "BSA1_F1.featureXML"
 BSA_IDXML = TEST_DATA_DIR / "BSA1_F1.idXML"
 IMS_MZML = TEST_DATA_DIR / "ims_example.mzML"
+EXAMPLE_IMZML = TEST_DATA_DIR / "Example_Processed.imzML"
 
 
 class TestMzMLLoader:
@@ -121,6 +123,60 @@ class TestIMSLoading:
         assert state.has_ion_mobility
         assert state.im_min < state.im_max
         assert state.im_min >= 0
+
+
+class TestImzMLLoading:
+    """Tests for imzML/MSI loading."""
+
+    def test_load_imzml_success(self):
+        """imzML should load and populate both MSI and generic viewer state."""
+        assert EXAMPLE_IMZML.exists(), f"Test file not found: {EXAMPLE_IMZML}"
+        state = ViewerState()
+        loader = ImzMLLoader(state)
+
+        result = loader.load_sync(str(EXAMPLE_IMZML))
+
+        assert result is True
+        assert state.has_imzml is True
+        assert state.msi_experiment is not None
+        assert state.exp is not None
+        assert state.df is not None
+        assert len(state.df) > 0
+
+    def test_load_imzml_promotes_ms_level_to_one(self):
+        """MSI spectra must be MS1 so peak-map/TIC renderers do not return empty."""
+        assert EXAMPLE_IMZML.exists(), f"Test file not found: {EXAMPLE_IMZML}"
+        state = ViewerState()
+        loader = ImzMLLoader(state)
+
+        assert loader.load_sync(str(EXAMPLE_IMZML)) is True
+
+        ms_levels = [spec.getMSLevel() for spec in state.exp.getSpectra()]
+        assert len(ms_levels) > 0
+        assert min(ms_levels) >= 1
+
+        # Downstream renderers query MS1 peaks explicitly.
+        rt, mz, intensity = state.exp.get2DPeakDataLong(
+            state.rt_min, state.rt_max, state.mz_min, state.mz_max, ms_level=1
+        )
+        assert len(rt) > 0
+        assert len(rt) == len(mz) == len(intensity)
+
+    def test_load_imzml_extract_ion_image(self):
+        """Ion image extraction should return a non-empty image for a strong peak."""
+        assert EXAMPLE_IMZML.exists(), f"Test file not found: {EXAMPLE_IMZML}"
+        state = ViewerState()
+        loader = ImzMLLoader(state)
+
+        assert loader.load_sync(str(EXAMPLE_IMZML)) is True
+
+        top_row = state.df.sort_values("intensity", ascending=False).iloc[0]
+        mz = float(top_row["mz"])
+        img = state.msi_experiment.extractIonImage(mz, 20.0).get_data()
+
+        assert img.ndim == 2
+        assert img.shape[0] > 0 and img.shape[1] > 0
+        assert np.nansum(img) > 0
 
 
 class TestChromatogramExtraction:
