@@ -90,6 +90,7 @@ class ViewerState:
         # These are the large data structures that must be shared
         # In out-of-core mode, df and im_df may be None after registration
         self.exp = None  # MSExperiment - pyOpenMS C++ object (~500MB)
+        self.msi_experiment = None  # MSImagingExperiment — set when imzML is loaded
         self.df: pd.DataFrame | None = None  # All peaks: rt, mz, intensity, log_intensity (~2GB)
         self.im_df: pd.DataFrame | None = None  # Ion mobility peaks: mz, im, intensity, log_intensity
         self.faims_data: dict[float, pd.DataFrame] = {}  # CV -> DataFrame (views into self.df)
@@ -735,6 +736,8 @@ class ViewerState:
             # Auto-visibility based on data availability
             if panel_id == "im_peakmap":
                 return self.has_ion_mobility
+            elif panel_id == "imaging":
+                return self.has_imzml
             elif panel_id == "chromatograms":
                 return self.has_chromatograms
             elif panel_id == "features_table":
@@ -905,6 +908,7 @@ class ViewerState:
         self.spectrum_measurements = {}
         self.peak_annotations = {}
         self.has_imzml = False
+        self.msi_experiment = None
         self._last_load_error = ""
 
     def clear_feature_data(self) -> None:

@@ -129,7 +129,7 @@ class TestImzMLLoading:
     """Tests for imzML/MSI loading."""
 
     def test_load_imzml_success(self):
-        """imzML should load and populate the generic viewer state."""
+        """imzML should load and populate both MSI and generic viewer state."""
         assert EXAMPLE_IMZML.exists(), f"Test file not found: {EXAMPLE_IMZML}"
         state = ViewerState()
         loader = ImzMLLoader(state)
@@ -138,6 +138,7 @@ class TestImzMLLoading:
 
         assert result is True
         assert state.has_imzml is True
+        assert state.msi_experiment is not None
         assert state.exp is not None
         assert state.df is not None
         assert len(state.df) > 0
@@ -160,6 +161,22 @@ class TestImzMLLoading:
         )
         assert len(rt) > 0
         assert len(rt) == len(mz) == len(intensity)
+
+    def test_load_imzml_extract_ion_image(self):
+        """Ion image extraction should return a non-empty image for a strong peak."""
+        assert EXAMPLE_IMZML.exists(), f"Test file not found: {EXAMPLE_IMZML}"
+        state = ViewerState()
+        loader = ImzMLLoader(state)
+
+        assert loader.load_sync(str(EXAMPLE_IMZML)) is True
+
+        top_row = state.df.sort_values("intensity", ascending=False).iloc[0]
+        mz = float(top_row["mz"])
+        img = state.msi_experiment.extractIonImage(mz, 20.0).get_data()
+
+        assert img.ndim == 2
+        assert img.shape[0] > 0 and img.shape[1] > 0
+        assert np.nansum(img) > 0
 
 
 class TestChromatogramExtraction:

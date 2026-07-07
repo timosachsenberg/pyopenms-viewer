@@ -21,6 +21,7 @@ from pyopenms_viewer.panels.export_panel import ExportPanel
 from pyopenms_viewer.panels.faims_panel import FAIMSPanel
 from pyopenms_viewer.panels.features_table_panel import FeaturesTablePanel
 from pyopenms_viewer.panels.im_peak_map_panel import IMPeakMapPanel
+from pyopenms_viewer.panels.imaging_panel import ImagingPanel
 from pyopenms_viewer.panels.log_panel import LogPanel
 from pyopenms_viewer.panels.peak_map_panel import PeakMapPanel
 from pyopenms_viewer.panels.scripting_panel import ScriptingPanel
@@ -32,6 +33,7 @@ __all__ = [
     "BasePanel",
     "PanelManager",
     "TICPanel",
+    "ImagingPanel",
     "PeakMapPanel",
     "SpectrumPanel",
     "ChromatogramPanel",

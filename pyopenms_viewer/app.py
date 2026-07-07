@@ -25,6 +25,7 @@ from pyopenms_viewer.panels import (
     FAIMSPanel,
     FeaturesTablePanel,
     IMPeakMapPanel,
+    ImagingPanel,
     LogPanel,
     PanelManager,
     PeakMapPanel,
@@ -899,6 +900,7 @@ async def create_ui():
         peak_map_panel = PeakMapPanel(state)
         panels = [
             TICPanel(state),
+            ImagingPanel(state),
             ChromatogramPanel(state),
             peak_map_panel,
             IMPeakMapPanel(state),
