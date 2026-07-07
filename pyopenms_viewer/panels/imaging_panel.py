@@ -138,6 +138,15 @@ class ImagingPanel(BasePanel):
                 self._build_spectrum_plot()
                 self._build_overlay()
 
+        # Re-render all figures once the expansion finishes opening.
+        # Quasar fires ``after-show`` after the open animation completes,
+        # at which point the container has its final nonzero dimensions and
+        # Plotly's axis-scaling math succeeds.  This handles the case where
+        # update_figure fires while the panel is still mid-animation (the
+        # initial auto-open on data load), which would otherwise leave the
+        # aggregate spectrum stuck on its empty placeholder.
+        self.expansion.on('after-show', lambda _: self._after_show_render())
+
         self.state.on_data_loaded(self._on_data_loaded)
         return self.expansion
 
@@ -160,6 +169,39 @@ class ImagingPanel(BasePanel):
             else:
                 self._render_tic()
         self._render_aggregate_spectrum()
+
+    def _after_show_render(self) -> None:
+        """Re-render after the expansion open animation completes.
+
+        Called via the Quasar ``after-show`` event, which fires in a proper
+        NiceGUI WebSocket-event context (slot stack is valid, client is
+        connected).  We use ``ui.run_javascript`` to call ``Plotly.react``
+        directly, bypassing Vue prop-equality short-circuits that suppress a
+        second render when the figure data hasn't changed.
+        """
+        if not self._has_data():
+            return
+        self.update()   # refresh stored figure state
+        # Force re-render via JS for scatter-based plots (heatmaps are fine).
+        import json as _json
+        for plot in [self.spectrum_plot, self.overlay_plot]:
+            if plot is None:
+                continue
+            stored = plot._props.get("options")
+            if not stored or not stored.get("data"):
+                continue
+            eid = plot.id
+            try:
+                ui.run_javascript(
+                    f"(function(){{"
+                    f"var el=document.getElementById('c{eid}');"
+                    f"if(!el||!window.Plotly)return;"
+                    f"var f={_json.dumps(stored)};"
+                    f"Plotly.react(el,f.data,f.layout,f.config||{{}});"
+                    f"}})();"
+                )
+            except Exception as _e:
+                print(f"[ImagingPanel] after-show JS error c{eid}: {_e!r}", flush=True)
 
     def _has_data(self) -> bool:
         return self.state.has_imzml and self.state.msi_experiment is not None
@@ -314,11 +356,11 @@ class ImagingPanel(BasePanel):
             self._render_tic()
         except Exception as exc:
             print(f"[ImagingPanel] TIC render error: {exc}")
-        try:
-            self._render_aggregate_spectrum()
-        except Exception as exc:
-            print(f"[ImagingPanel] spectrum render error: {exc}")
-        self._render_overlay()
+        # Scatter-based plots (aggregate spectrum, overlay) are deferred to
+        # ``_after_show_render`` which runs from the Quasar ``after-show`` event
+        # — a proper NiceGUI WebSocket context — so Plotly.react fires after the
+        # expansion animation completes and the container has nonzero dimensions.
+
 
     def _on_mode_change(self, mode: str) -> None:
         self._mode = mode
@@ -561,12 +603,22 @@ class ImagingPanel(BasePanel):
     # Rendering
     # ------------------------------------------------------------------
 
+    def _push_figure(self, plot_el, fig: go.Figure) -> None:
+        """Deliver a Plotly figure to a ui.plotly element.
+
+        Wraps ``update_figure`` so all renders go through one path. The
+        expansion's ``after-show`` handler calls ``update()`` once the
+        container has its final dimensions, so figures that land here while
+        the panel is mid-animation will be re-applied correctly on open.
+        """
+        plot_el.update_figure(self._figure_with_config(fig))
+
     def _render_tic(self) -> None:
         if not self._has_data() or self.plot is None:
             return
         img = self._compute_tic_image()
         fig = self._create_heatmap_figure(img, "TIC Image", self._colorscale)
-        self.plot.update_figure(self._figure_with_config(fig))
+        self._push_figure(self.plot, fig)
         if self._status_label is not None:
             self._status_label.set_text(
                 "TIC — click a pixel for its spectrum, or a peak below for an ion image"
@@ -578,7 +630,7 @@ class ImagingPanel(BasePanel):
         img = self._compute_ion_image(mz, ppm)
         title = f"Ion Image  m/z {mz:.4f} \u00b1 {ppm:.1f} ppm"
         fig = self._create_heatmap_figure(img, title, self._colorscale)
-        self.plot.update_figure(self._figure_with_config(fig))
+        self._push_figure(self.plot, fig)
         if self._status_label is not None:
             self._status_label.set_text(
                 f"m/z {mz:.4f} \u00b1 {ppm:.1f} ppm  "
@@ -594,19 +646,33 @@ class ImagingPanel(BasePanel):
                 self._figure_with_config(self._empty_spectrum_figure())
             )
             return
-        # Draw each peak as a vertical stick, plus a tip marker to make
-        # clicks land accurately (Plotly bar hits are wide enough).
+        # Native-Python coordinates only: NiceGUI serialises figures with orjson,
+        # which rejects numpy scalars (np.float64). Passing raw numpy values in
+        # stick coordinates silently aborts the update, leaving the plot blank.
+        mz_list = [float(v) for v in mz]
+        int_list = [float(v) for v in intensity]
+
+        # Draw the sticks as ONE line trace with None gaps between peaks (far
+        # lighter than one shape per peak), plus a tip-marker trace so clicks
+        # land accurately and drive the ion-image browse loop.
+        stick_x: list[float | None] = []
+        stick_y: list[float | None] = []
+        for m, y in zip(mz_list, int_list):
+            stick_x += [m, m, None]
+            stick_y += [0.0, y, None]
+
         fig = go.Figure()
-        for m, y in zip(mz, intensity):
-            fig.add_shape(
-                type="line",
-                x0=m, x1=m, y0=0, y1=y,
-                line=dict(color="steelblue", width=1),
-                layer="below",
-            )
         fig.add_trace(go.Scatter(
-            x=mz,
-            y=intensity,
+            x=stick_x,
+            y=stick_y,
+            mode="lines",
+            line=dict(color="steelblue", width=1),
+            hoverinfo="skip",
+            showlegend=False,
+        ))
+        fig.add_trace(go.Scatter(
+            x=mz_list,
+            y=int_list,
             mode="markers",
             marker=dict(size=6, color="steelblue"),
             hovertemplate="m/z: %{x:.4f}<br>intensity: %{y:.3e}<extra></extra>",
@@ -615,7 +681,7 @@ class ImagingPanel(BasePanel):
         # Mark the currently-selected m/z with a red vertical line.
         if self._current_mz is not None:
             fig.add_vline(
-                x=self._current_mz,
+                x=float(self._current_mz),
                 line=dict(color="crimson", width=1.5, dash="dot"),
             )
         title = (
@@ -640,7 +706,7 @@ class ImagingPanel(BasePanel):
             margin=dict(l=60, r=20, t=40, b=45),
             dragmode="zoom",
         )
-        self.spectrum_plot.update_figure(self._figure_with_config(fig))
+        self._push_figure(self.spectrum_plot, fig)
 
     def _render_overlay(self) -> None:
         if self.overlay_plot is None:
@@ -664,9 +730,7 @@ class ImagingPanel(BasePanel):
                         ui.label(f"m/z {entry['mz']:.4f} \u00b1 {entry['ppm']:.1f} ppm")
 
         if not self._overlay_entries:
-            self.overlay_plot.update_figure(
-                self._figure_with_config(self._empty_overlay_figure())
-            )
+            self._push_figure(self.overlay_plot, self._empty_overlay_figure())
             return
 
         composite = self._compose_overlay_rgb()
@@ -682,11 +746,13 @@ class ImagingPanel(BasePanel):
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             height=380,
-            xaxis=dict(visible=False, range=[0, W - 1]),
-            yaxis=dict(visible=False, range=[H - 1, 0], scaleanchor="x"),
+            # Origin-lower to match the single-ion heatmaps above (the overlay
+            # is composed from the same [y, x]-indexed ion images).
+            xaxis=dict(visible=False, range=[-0.5, W - 0.5]),
+            yaxis=dict(visible=False, range=[-0.5, H - 0.5], scaleanchor="x"),
             margin=dict(l=20, r=20, t=40, b=20),
         )
-        self.overlay_plot.update_figure(self._figure_with_config(fig))
+        self._push_figure(self.overlay_plot, fig)
 
     def _compose_overlay_rgb(self) -> np.ndarray | None:
         """Combine every overlay entry into a single H×W×3 uint8 image.
@@ -756,10 +822,13 @@ class ImagingPanel(BasePanel):
                 plot_bgcolor="rgba(0,0,0,0)",
                 height=440,
                 xaxis=dict(title="pixel x", color=NEUTRAL_GRAY_HEX,
-                           showgrid=False, zeroline=False, range=[0, W - 1]),
+                           showgrid=False, zeroline=False, range=[-0.5, W - 0.5]),
+                # Non-reversed y-axis => array row 0 (geometry y=0) at the
+                # bottom (origin="lower"), matching the Heatmap path and the
+                # reference notebook's imshow(..., origin="lower").
                 yaxis=dict(title="pixel y", color=NEUTRAL_GRAY_HEX,
                            showgrid=False, zeroline=False,
-                           range=[H - 1, 0], scaleanchor="x"),
+                           range=[-0.5, H - 0.5], scaleanchor="x"),
                 margin=dict(l=60, r=20, t=50, b=50),
             )
             return fig
