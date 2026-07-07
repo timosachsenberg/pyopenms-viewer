@@ -132,9 +132,6 @@ class ImagingPanel(BasePanel):
     def build(self, container: ui.element) -> ui.expansion:
         with container:
             self._make_expansion()
-            # Keep Ion Image expanded by default to match the expected
-            # first-contact workflow for imzML datasets.
-            self.expansion.value = True
             with self.expansion:
                 self._build_controls()
                 self._build_image_plot()
@@ -290,8 +287,16 @@ class ImagingPanel(BasePanel):
 
     def _on_data_loaded(self, data_type: str) -> None:
         """Rebuild the aggregate cache and render TIC when a new imzML loads."""
-        if data_type != "mzml" or not self._has_data():
+        if data_type != "mzml":
             return
+        # Update visibility first so update_figure calls reach a visible element.
+        self.update_visibility()
+        if not self._has_data():
+            if self.expansion:
+                self.expansion.value = False
+            return
+        if self.expansion:
+            self.expansion.value = True
         self._mode = "tic"
         self._current_mz = None
         self._overlay_entries.clear()
@@ -301,9 +306,18 @@ class ImagingPanel(BasePanel):
         if self._mode_select is not None:
             self._mode_select.set_value("tic")
         # Rebuild the aggregate — a one-time O(N_spectra × N_peaks) pass.
-        self._recompute_aggregate()
-        self._render_tic()
-        self._render_aggregate_spectrum()
+        try:
+            self._recompute_aggregate()
+        except Exception as exc:
+            print(f"[ImagingPanel] aggregate error: {exc}")
+        try:
+            self._render_tic()
+        except Exception as exc:
+            print(f"[ImagingPanel] TIC render error: {exc}")
+        try:
+            self._render_aggregate_spectrum()
+        except Exception as exc:
+            print(f"[ImagingPanel] spectrum render error: {exc}")
         self._render_overlay()
 
     def _on_mode_change(self, mode: str) -> None:
