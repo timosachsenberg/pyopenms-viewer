@@ -346,9 +346,30 @@ async def create_ui():
                 """Load an imzML/ibd file pair in the background.
 
                 The .ibd binary must be alongside the .imzML file on disk.
+
+                Mirrors ``load_mzml``: if the same file is already in
+                ``_GLOBAL_VIEWER_STATE`` (page refresh / reconnect), skip the
+                expensive re-parse and re-emit ``data_loaded`` so new panels
+                rehydrate from preserved ``msi_experiment``.
                 """
                 loader = ImzMLLoader(state)
                 name = original_name or Path(filepath).name
+                new_fp = _resolve_or_str(filepath)
+                cur_fp = _resolve_or_str(state.current_file) if state.current_file else None
+
+                # Same file already loaded — re-emit without reparsing.
+                if (
+                    cur_fp is not None
+                    and cur_fp == new_fp
+                    and state.has_imzml
+                    and state.msi_experiment is not None
+                ):
+                    _relink_ids_and_update_label()
+                    state.emit_data_loaded("mzml")
+                    state.update_panel_visibility()
+                    _update_info_label(name)
+                    safe_notify(f"File already loaded: {name}", type="info")
+                    return
 
                 def _progress_cb(message: str, progress: float) -> None:
                     try:
@@ -922,6 +943,28 @@ async def create_ui():
         # FAIMS panel (not managed by PanelManager since it's a card, not expansion)
         faims_panel = FAIMSPanel(state)
         faims_panel.build(panels_container)
+
+        # Rehydrate panels after a page refresh/reconnect.
+        # Data (exp, df, msi_experiment, …) survives in `_GLOBAL_VIEWER_STATE`,
+        # but the event bus was cleared and these panels are brand-new, so they
+        # never saw the original data_loaded. Without this, Ion Image (and any
+        # picker-loaded file with no CLI re-entry) stays on empty placeholders.
+        # CLI load paths may emit again; a second render is harmless.
+        if state.df is not None or state.data_manager is not None or state.has_imzml:
+            if state.current_file:
+                _update_info_label(Path(state.current_file).name)
+            state.emit_data_loaded("mzml")
+            state.update_panel_visibility()
+        if state.feature_map is not None:
+            state.emit_data_loaded("features")
+            if state.feature_info_label is not None:
+                try:
+                    state.feature_info_label.set_text(f"Features: {state.feature_map.size():,}")
+                except Exception:
+                    pass
+        if state.peptide_ids:
+            state.emit_data_loaded("ids")
+            _relink_ids_and_update_label()
 
         # Help panel
         with panels_container:

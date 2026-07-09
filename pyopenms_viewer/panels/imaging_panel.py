@@ -181,6 +181,13 @@ class ImagingPanel(BasePanel):
         """
         if not self._has_data():
             return
+        # Ensure aggregate cache exists even if after-show raced ahead of
+        # ``_on_data_loaded`` (or the panel was opened manually before load).
+        if self._agg_centers is None:
+            try:
+                self._recompute_aggregate()
+            except Exception as exc:
+                print(f"[ImagingPanel] aggregate error (after-show): {exc}")
         self.update()   # refresh stored figure state
         # Force re-render via JS for scatter-based plots (heatmaps are fine).
         import json as _json
@@ -337,17 +344,20 @@ class ImagingPanel(BasePanel):
             if self.expansion:
                 self.expansion.value = False
             return
-        if self.expansion:
-            self.expansion.value = True
         self._mode = "tic"
         self._current_mz = None
         self._overlay_entries.clear()
         self._tic_cache = None
         self._ion_cache_key = None
         self._ion_cache_img = None
+        self._agg_centers = None
+        self._agg_mean = None
+        self._agg_skyline = None
         if self._mode_select is not None:
             self._mode_select.set_value("tic")
-        # Rebuild the aggregate — a one-time O(N_spectra × N_peaks) pass.
+        # Rebuild the aggregate BEFORE opening the expansion. Opening first
+        # races Quasar ``after-show`` against an empty cache, which leaves the
+        # aggregate spectrum stuck on its placeholder after a page refresh.
         try:
             self._recompute_aggregate()
         except Exception as exc:
@@ -356,10 +366,18 @@ class ImagingPanel(BasePanel):
             self._render_tic()
         except Exception as exc:
             print(f"[ImagingPanel] TIC render error: {exc}")
-        # Scatter-based plots (aggregate spectrum, overlay) are deferred to
-        # ``_after_show_render`` which runs from the Quasar ``after-show`` event
-        # — a proper NiceGUI WebSocket context — so Plotly.react fires after the
-        # expansion animation completes and the container has nonzero dimensions.
+        try:
+            self._render_aggregate_spectrum()
+        except Exception as exc:
+            print(f"[ImagingPanel] spectrum render error: {exc}")
+        try:
+            self._render_overlay()
+        except Exception as exc:
+            print(f"[ImagingPanel] overlay render error: {exc}")
+        # Open last so ``after-show`` re-pushes figures with the cache already
+        # populated (handles mid-animation / zero-size Plotly layout quirks).
+        if self.expansion:
+            self.expansion.value = True
 
 
     def _on_mode_change(self, mode: str) -> None:
