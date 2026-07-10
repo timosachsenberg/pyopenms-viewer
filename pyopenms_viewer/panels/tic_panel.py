@@ -54,6 +54,7 @@ class TICPanel(BasePanel):
         self.state.on_data_loaded(self._on_data_loaded)
         self.state.on_view_changed(self._on_view_changed)
         self.state.on_selection_changed(self._on_selection_changed)
+        self.state.on_display_options_changed(self._on_display_options_changed)
 
         return self.expansion
 
@@ -176,6 +177,11 @@ class TICPanel(BasePanel):
 
     def _on_selection_changed(self, selection_type: str, index: int | None) -> None:
         if selection_type == "spectrum":
+            self.update()
+
+    def _on_display_options_changed(self, option_name: str, value) -> None:
+        """Re-render when the RT unit changes so the TIC x-axis stays in sync."""
+        if option_name == "rt_in_minutes":
             self.update()
 
     def _on_click(self, e) -> None:

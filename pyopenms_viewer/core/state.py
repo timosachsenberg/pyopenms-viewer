@@ -258,10 +258,6 @@ class ViewerState:
         # ========== EVENT BUS ==========
         self._event_bus = EventBus()
 
-        # ========== UI UPDATE FLAGS ==========
-        self._updating_from_tic: bool = False
-        self._hover_update_pending: bool = False
-
         # ========== ALGORITHM LOG ==========
         self.log_messages: list[str] = []
 

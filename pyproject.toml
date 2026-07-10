@@ -59,6 +59,12 @@ dev = [
     "ruff>=0.1.0",
     "pyinstaller>=6.0.0",
 ]
+e2e = [
+    # Browser-driven end-to-end tests (tests/e2e). Requires a one-time
+    # `playwright install chromium` to fetch the browser binary.
+    "pytest>=7.0.0",
+    "playwright>=1.40.0",
+]
 
 [project.scripts]
 pyopenms-viewer = "pyopenms_viewer.cli:main"
@@ -75,8 +81,16 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["pyopenms_viewer"]
 
+[tool.pytest.ini_options]
+# Browser-driven e2e tests are opt-in (they launch the app + a headless browser).
+# Run them explicitly with: pytest tests/e2e -m e2e
+addopts = "-m 'not e2e'"
+markers = [
+    "e2e: browser-driven end-to-end tests (launch the app, drive it with Playwright)",
+]
+
 [tool.ruff]
- 
+
 [tool.pip]
 extra-index-url = ["https://pypi.openms.de/simple/"]
 line-length = 120

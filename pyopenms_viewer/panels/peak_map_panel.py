@@ -617,8 +617,7 @@ class PeakMapPanel(BasePanel):
         """Toggle RT unit between seconds and minutes."""
         self.state.rt_in_minutes = e.value == "min"
         if self._has_data():
-            self.update()
-            self.update_minimap()
+            self.update()  # also re-renders the minimap
             # Notify other panels
             self.state.emit_display_options_changed("rt_in_minutes", self.state.rt_in_minutes)
 
@@ -1392,6 +1391,11 @@ class PeakMapPanel(BasePanel):
             # Rename columns to match pyopenms-viz expectations
             plot_df = view_df.rename(columns={"rt": "RT", "mz": "mz", "intensity": "int"})
 
+            # Match the 2D peak map's RT unit (seconds vs minutes)
+            if self.state.rt_in_minutes:
+                plot_df["RT"] = plot_df["RT"] / 60.0
+            rt_axis_title = "RT (min)" if self.state.rt_in_minutes else "RT (s)"
+
             # Create 3D plot (no title - header shows info)
             plot = PLOTLYPeakMapPlot(plot_df, x="RT", y="mz", z="int", plot_3d=True, title="")
             plot.plot()
@@ -1424,7 +1428,7 @@ class PeakMapPanel(BasePanel):
                 plot_bgcolor="rgba(0,0,0,0)",
                 font={"color": NEUTRAL_GRAY_HEX},
                 scene={
-                    "xaxis": {"title": "RT (s)", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": NEUTRAL_GRAY_HEX},
+                    "xaxis": {"title": rt_axis_title, "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": NEUTRAL_GRAY_HEX},
                     "yaxis": {"title": "m/z", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": NEUTRAL_GRAY_HEX},
                     "zaxis": {"title": "Intensity", "backgroundcolor": "rgba(128,128,128,0.1)", "gridcolor": NEUTRAL_GRAY_HEX},
                     "bgcolor": "rgba(0,0,0,0)",
