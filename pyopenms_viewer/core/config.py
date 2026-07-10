@@ -142,6 +142,7 @@ class DEFAULTS:
 # Panel definitions
 PANEL_DEFINITIONS = {
     "tic": {"name": "TIC", "icon": "show_chart"},
+    "imaging": {"name": "Ion Image", "icon": "image"},
     "chromatograms": {"name": "Chromatograms", "icon": "timeline"},
     "peakmap": {"name": "2D Peak Map", "icon": "grid_on"},
     "im_peakmap": {"name": "Ion Mobility Frame", "icon": "blur_on"},
@@ -158,6 +159,7 @@ PANEL_DEFINITIONS = {
 # Default panel order
 DEFAULT_PANEL_ORDER = [
     "tic",
+    "imaging",
     "chromatograms",
     "peakmap",
     "im_peakmap",
@@ -175,6 +177,7 @@ DEFAULT_PANEL_ORDER = [
 # True = always show, False = always hide, "auto" = show only when data exists
 DEFAULT_PANEL_VISIBILITY = {
     "tic": True,
+    "imaging": "auto",
     "chromatograms": "auto",
     "peakmap": True,
     "im_peakmap": "auto",
