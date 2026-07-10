@@ -506,8 +506,8 @@ class ImagingPanel(BasePanel):
             return self._tic_cache
         mie = self.state.msi_experiment
         geom = mie.getGeometry()
-        H, W = geom.getHeight(), geom.getWidth()
-        img = np.full((H, W), np.nan, dtype=np.float64)
+        h, w = geom.getHeight(), geom.getWidth()
+        img = np.full((h, w), np.nan, dtype=np.float64)
         spectra = mie.getMSExperiment().getSpectra()
         px = geom.get_pixels_struct()
         ys = px["y"].astype(np.intp)
@@ -675,7 +675,7 @@ class ImagingPanel(BasePanel):
         # land accurately and drive the ion-image browse loop.
         stick_x: list[float | None] = []
         stick_y: list[float | None] = []
-        for m, y in zip(mz_list, int_list):
+        for m, y in zip(mz_list, int_list, strict=False):
             stick_x += [m, m, None]
             stick_y += [0.0, y, None]
 
@@ -684,7 +684,7 @@ class ImagingPanel(BasePanel):
             x=stick_x,
             y=stick_y,
             mode="lines",
-            line=dict(color="steelblue", width=1),
+            line={"color": "steelblue", "width": 1},
             hoverinfo="skip",
             showlegend=False,
         ))
@@ -692,7 +692,7 @@ class ImagingPanel(BasePanel):
             x=mz_list,
             y=int_list,
             mode="markers",
-            marker=dict(size=6, color="steelblue"),
+            marker={"size": 6, "color": "steelblue"},
             hovertemplate="m/z: %{x:.4f}<br>intensity: %{y:.3e}<extra></extra>",
             name=self._agg_mode,
         ))
@@ -700,7 +700,7 @@ class ImagingPanel(BasePanel):
         if self._current_mz is not None:
             fig.add_vline(
                 x=float(self._current_mz),
-                line=dict(color="crimson", width=1.5, dash="dot"),
+                line={"color": "crimson", "width": 1.5, "dash": "dot"},
             )
         title = (
             f"{_AGGREGATE_MODES[self._agg_mode]} spectrum "
@@ -714,14 +714,14 @@ class ImagingPanel(BasePanel):
             plot_bgcolor="rgba(0,0,0,0)",
             height=280,
             showlegend=False,
-            xaxis=dict(title="m/z", color=NEUTRAL_GRAY_HEX, gridcolor="rgba(128,128,128,0.15)"),
-            yaxis=dict(
-                title="intensity",
-                color=NEUTRAL_GRAY_HEX,
-                gridcolor="rgba(128,128,128,0.15)",
-                autorange=True,       # y rescales automatically when x is zoomed
-            ),
-            margin=dict(l=60, r=20, t=40, b=45),
+            xaxis={"title": "m/z", "color": NEUTRAL_GRAY_HEX, "gridcolor": "rgba(128,128,128,0.15)"},
+            yaxis={
+                "title": "intensity",
+                "color": NEUTRAL_GRAY_HEX,
+                "gridcolor": "rgba(128,128,128,0.15)",
+                "autorange": True,       # y rescales automatically when x is zoomed
+            },
+            margin={"l": 60, "r": 20, "t": 40, "b": 45},
             dragmode="zoom",
         )
         self._push_figure(self.spectrum_plot, fig)
@@ -754,7 +754,7 @@ class ImagingPanel(BasePanel):
         composite = self._compose_overlay_rgb()
         if composite is None:
             return
-        H, W = composite.shape[:2]
+        h, w = composite.shape[:2]
 
         fig = go.Figure(go.Image(z=composite))
         fig.update_layout(
@@ -766,9 +766,9 @@ class ImagingPanel(BasePanel):
             height=380,
             # Origin-lower to match the single-ion heatmaps above (the overlay
             # is composed from the same [y, x]-indexed ion images).
-            xaxis=dict(visible=False, range=[-0.5, W - 0.5]),
-            yaxis=dict(visible=False, range=[-0.5, H - 0.5], scaleanchor="x"),
-            margin=dict(l=20, r=20, t=40, b=20),
+            xaxis={"visible": False, "range": [-0.5, w - 0.5]},
+            yaxis={"visible": False, "range": [-0.5, h - 0.5], "scaleanchor": "x"},
+            margin={"l": 20, "r": 20, "t": 40, "b": 20},
         )
         self._push_figure(self.overlay_plot, fig)
 
@@ -782,12 +782,12 @@ class ImagingPanel(BasePanel):
         first = self._overlay_entries[0]["img"]
         if first is None or first.size == 0:
             return None
-        H, W = first.shape
-        rgb = np.zeros((H, W, 3), dtype=np.float64)
+        h, w = first.shape
+        rgb = np.zeros((h, w, 3), dtype=np.float64)
 
         for entry in self._overlay_entries:
             img = entry["img"]
-            if img.shape != (H, W):
+            if img.shape != (h, w):
                 # Skip stale images from a previous experiment.
                 continue
             arr = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
@@ -812,7 +812,7 @@ class ImagingPanel(BasePanel):
         self, img: np.ndarray, title: str, colorscale: str
     ) -> go.Figure:
         """Build a Plotly Heatmap from an (H, W) intensity array."""
-        H, W = img.shape
+        h, w = img.shape
 
         # 99th-percentile clip for contrast — matches the reference notebook.
         display_img = img
@@ -839,33 +839,33 @@ class ImagingPanel(BasePanel):
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 height=440,
-                xaxis=dict(title="pixel x", color=NEUTRAL_GRAY_HEX,
-                           showgrid=False, zeroline=False, range=[-0.5, W - 0.5]),
+                xaxis={"title": "pixel x", "color": NEUTRAL_GRAY_HEX,
+                           "showgrid": False, "zeroline": False, "range": [-0.5, w - 0.5]},
                 # Non-reversed y-axis => array row 0 (geometry y=0) at the
                 # bottom (origin="lower"), matching the Heatmap path and the
                 # reference notebook's imshow(..., origin="lower").
-                yaxis=dict(title="pixel y", color=NEUTRAL_GRAY_HEX,
-                           showgrid=False, zeroline=False,
-                           range=[-0.5, H - 0.5], scaleanchor="x"),
-                margin=dict(l=60, r=20, t=50, b=50),
+                yaxis={"title": "pixel y", "color": NEUTRAL_GRAY_HEX,
+                           "showgrid": False, "zeroline": False,
+                           "range": [-0.5, h - 0.5], "scaleanchor": "x"},
+                margin={"l": 60, "r": 20, "t": 50, "b": 50},
             )
             return fig
 
         fig = go.Figure(go.Heatmap(
             z=display_img,
-            x=list(range(W)),
-            y=list(range(H)),
+            x=list(range(w)),
+            y=list(range(h)),
             colorscale=colorscale,
             hoverongaps=False,
             hovertemplate=(
                 "x: %{x}<br>y: %{y}<br>intensity: %{z:.3e}<extra></extra>"
             ),
-            colorbar=dict(
-                title=dict(text="Intensity", font=dict(color=NEUTRAL_GRAY_HEX, size=11)),
-                tickfont=dict(color=NEUTRAL_GRAY_HEX, size=11),
-                thickness=12,
-                len=0.85,
-            ),
+            colorbar={
+                "title": {"text": "Intensity", "font": {"color": NEUTRAL_GRAY_HEX, "size": 11}},
+                "tickfont": {"color": NEUTRAL_GRAY_HEX, "size": 11},
+                "thickness": 12,
+                "len": 0.85,
+            },
         ))
         fig.update_layout(
             title={"text": title, "font": {"color": NEUTRAL_GRAY_HEX, "size": 13},
@@ -873,12 +873,12 @@ class ImagingPanel(BasePanel):
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             height=440,
-            xaxis=dict(title="pixel x", color=NEUTRAL_GRAY_HEX,
-                       showgrid=False, zeroline=False),
-            yaxis=dict(title="pixel y", color=NEUTRAL_GRAY_HEX,
-                       showgrid=False, zeroline=False,
-                       scaleanchor="x"),
-            margin=dict(l=60, r=20, t=50, b=50),
+            xaxis={"title": "pixel x", "color": NEUTRAL_GRAY_HEX,
+                       "showgrid": False, "zeroline": False},
+            yaxis={"title": "pixel y", "color": NEUTRAL_GRAY_HEX,
+                       "showgrid": False, "zeroline": False,
+                       "scaleanchor": "x"},
+            margin={"l": 60, "r": 20, "t": 50, "b": 50},
         )
         return fig
 
@@ -904,9 +904,9 @@ class ImagingPanel(BasePanel):
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             height=140,
-            xaxis=dict(color=NEUTRAL_GRAY_HEX),
-            yaxis=dict(color=NEUTRAL_GRAY_HEX),
-            margin=dict(l=60, r=20, t=40, b=30),
+            xaxis={"color": NEUTRAL_GRAY_HEX},
+            yaxis={"color": NEUTRAL_GRAY_HEX},
+            margin={"l": 60, "r": 20, "t": 40, "b": 30},
         )
         return fig
 
@@ -921,8 +921,8 @@ class ImagingPanel(BasePanel):
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             height=140,
-            xaxis=dict(visible=False),
-            yaxis=dict(visible=False),
-            margin=dict(l=20, r=20, t=40, b=20),
+            xaxis={"visible": False},
+            yaxis={"visible": False},
+            margin={"l": 20, "r": 20, "t": 40, "b": 20},
         )
         return fig

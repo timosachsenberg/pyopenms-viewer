@@ -21,7 +21,6 @@ import pandas as pd
 
 from pyopenms_viewer.core.state import ViewerState
 
-
 # ---------------------------------------------------------------------------
 # Module-level helpers (follow reference imzml_import.py exactly)
 # ---------------------------------------------------------------------------
