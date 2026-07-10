@@ -8,6 +8,8 @@ from pyopenms_viewer.core.state import ViewerState
 def extract_spectrum_data(
     state: ViewerState,
     spectrum_stats: list[dict[str, Any]] | None = None,
+    *,
+    exp=None,
 ) -> list[dict[str, Any]]:
     """Extract spectrum metadata for the unified spectrum table.
 
@@ -15,14 +17,18 @@ def extract_spectrum_data(
     when IDs are loaded via link_ids_to_spectra().
 
     Args:
-        state: ViewerState with exp (MSExperiment) already loaded
+        state: ViewerState (used for ID linkage fields).
         spectrum_stats: Optional pre-computed stats from mzml_loader (tic, bpi, mz_min, mz_max, cv).
                        If provided, avoids redundant get_peaks() calls.
+        exp: Optional MSExperiment to iterate instead of ``state.exp``. Lets a
+             loader extract metadata from a freshly-built experiment without
+             mutating shared state before its atomic commit.
 
     Returns:
         List of spectrum metadata dictionaries
     """
-    if state.exp is None:
+    exp = exp if exp is not None else state.exp
+    if exp is None:
         return []
 
     # Import here to avoid circular dependency (only needed if stats not provided)
@@ -32,8 +38,8 @@ def extract_spectrum_data(
         from pyopenms_viewer.loaders.mzml_loader import get_cv_from_spectrum
 
     data = []
-    for idx in range(len(state.exp)):
-        spec = state.exp[idx]
+    for idx in range(len(exp)):
+        spec = exp[idx]
         rt = spec.getRT()
         ms_level = spec.getMSLevel()
         n_peaks = len(spec)

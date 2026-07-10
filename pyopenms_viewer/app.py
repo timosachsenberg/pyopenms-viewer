@@ -371,6 +371,41 @@ async def create_ui():
                     safe_notify(f"File already loaded: {name}", type="info")
                     return
 
+                # Atomically check/create an Event so only one coroutine performs
+                # the actual parse; others wait and reuse the result (mirrors
+                # load_mzml — prevents re-entrant/concurrent duplicate loads).
+                async with _LOAD_EVENTS_LOCK:
+                    existing_event = _LOAD_EVENTS.get(new_fp)
+                    if existing_event is None:
+                        event = asyncio.Event()
+                        _LOAD_EVENTS[new_fp] = event
+                        is_loader = True
+                    else:
+                        event = existing_event
+                        is_loader = False
+
+                if not is_loader:
+                    await event.wait()
+                    if state.current_file:
+                        cur_fp = _resolve_or_str(state.current_file)
+                    if (
+                        state.current_file
+                        and cur_fp == new_fp
+                        and state.has_imzml
+                        and state.msi_experiment is not None
+                    ):
+                        _relink_ids_and_update_label()
+                        state.emit_data_loaded("mzml")
+                        state.update_panel_visibility()
+                        _update_info_label(name)
+                        safe_notify(f"File already loaded: {name}", type="info")
+                        return
+
+                try:
+                    state._loading_files.add(new_fp)
+                except Exception:
+                    pass
+
                 def _progress_cb(message: str, progress: float) -> None:
                     try:
                         state.load_progress[filepath] = (message, float(progress))
@@ -381,6 +416,13 @@ async def create_ui():
                 try:
                     success = await run.io_bound(loader.load_sync, filepath, _progress_cb)
                 finally:
+                    ev = _LOAD_EVENTS.pop(new_fp, None)
+                    if ev is not None:
+                        ev.set()
+                    try:
+                        state._loading_files.discard(new_fp)
+                    except Exception:
+                        pass
                     try:
                         state.load_progress.pop(filepath, None)
                     except Exception:

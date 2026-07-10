@@ -178,6 +178,103 @@ class TestImzMLLoading:
         assert img.shape[0] > 0 and img.shape[1] > 0
         assert np.nansum(img) > 0
 
+    def test_load_imzml_bumps_load_token(self):
+        """Each successful imzML load must advance state.msi_load_token."""
+        state = ViewerState()
+        loader = ImzMLLoader(state)
+        before = state.msi_load_token
+        assert loader.load_sync(str(EXAMPLE_IMZML)) is True
+        assert state.msi_load_token == before + 1
+
+    def test_mzml_load_clears_stale_msi_state(self):
+        """Loading a plain mzML after an imzML must clear has_imzml/msi_experiment.
+
+        Otherwise the Ion Image panel keeps rendering the previous MSI
+        experiment beside the new mzML data.
+        """
+        state = ViewerState()
+        assert ImzMLLoader(state).load_sync(str(EXAMPLE_IMZML)) is True
+        assert state.has_imzml is True and state.msi_experiment is not None
+
+        assert MzMLLoader(state).load_sync(str(BSA_MZML)) is True
+        assert state.has_imzml is False
+        assert state.msi_experiment is None
+
+
+class TestSelectPositiveIntensityPeaks:
+    """The zero-intensity drop must keep per-peak arrays (e.g. IM) aligned."""
+
+    def test_filters_peaks_and_float_data_arrays_together(self):
+        import pyopenms as oms
+
+        from pyopenms_viewer.loaders.imzml_loader import (
+            _select_positive_intensity_peaks,
+        )
+
+        spec = oms.MSSpectrum()
+        spec.set_peaks((
+            np.array([100.0, 200.0, 300.0]),
+            np.array([0.0, 5.0, 0.0], dtype=np.float32),
+        ))
+        fda = oms.FloatDataArray()
+        fda.setName("inverse reduced ion mobility")
+        fda.set_data(np.array([1.1, 2.2, 3.3], dtype=np.float32))
+        spec.setFloatDataArrays([fda])
+
+        _select_positive_intensity_peaks(spec)
+
+        mzs, ints = spec.get_peaks()
+        im = np.asarray(spec.getFloatDataArrays()[0].get_data())
+        # set_peaks would have left im at length 3 (misaligned); select() keeps
+        # peaks and the IM array aligned to the surviving peak.
+        assert list(mzs) == [200.0]
+        assert list(ints) == [5.0]
+        assert len(im) == len(mzs)
+        assert im[0] == np.float32(2.2)
+
+    def test_all_zero_spectrum_becomes_empty(self):
+        import pyopenms as oms
+
+        from pyopenms_viewer.loaders.imzml_loader import (
+            _select_positive_intensity_peaks,
+        )
+
+        spec = oms.MSSpectrum()
+        spec.set_peaks((np.array([100.0, 200.0]), np.array([0.0, 0.0], dtype=np.float32)))
+        _select_positive_intensity_peaks(spec)
+        mzs, _ = spec.get_peaks()
+        assert len(mzs) == 0
+
+    def test_untouched_when_all_positive(self):
+        import pyopenms as oms
+
+        from pyopenms_viewer.loaders.imzml_loader import (
+            _select_positive_intensity_peaks,
+        )
+
+        spec = oms.MSSpectrum()
+        spec.set_peaks((np.array([100.0, 200.0]), np.array([3.0, 5.0], dtype=np.float32)))
+        _select_positive_intensity_peaks(spec)
+        mzs, ints = spec.get_peaks()
+        assert list(mzs) == [100.0, 200.0]
+        assert list(ints) == [3.0, 5.0]
+
+
+class TestExtractSpectrumDataExpOverride:
+    """extract_spectrum_data must honour an explicit `exp=` without touching state."""
+
+    def test_exp_override_used_and_state_untouched(self):
+        from pyopenms_viewer.loaders import extract_spectrum_data
+
+        state = ViewerState()
+        assert MzMLLoader(state).load_sync(str(BSA_MZML)) is True
+        exp = state.exp
+
+        fresh = ViewerState()  # state.exp is None here
+        data = extract_spectrum_data(fresh, exp=exp)
+        assert len(data) == len(exp)
+        assert fresh.exp is None  # override must not mutate the passed state
+
 
 class TestChromatogramExtraction:
     """Tests for chromatogram extraction."""

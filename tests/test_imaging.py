@@ -312,3 +312,42 @@ def test_has_data_false_when_no_msi_experiment():
     state.msi_experiment = None  # simulate missing experiment
     panel = ImagingPanel(state)
     assert panel._has_data() is False
+
+
+# -------------------------------------------------------------------------
+# ImagingPanel aggregate idempotency (rehydration dedupe)
+# -------------------------------------------------------------------------
+
+class TestEnsureAggregateIdempotent:
+    def test_ensure_aggregate_computes_once(self):
+        state = _loaded_state(EXAMPLE_IMZML_CONTINUOUS)
+        panel = ImagingPanel(state)
+
+        calls = {"n": 0}
+        real = panel._recompute_aggregate
+
+        def counting():
+            calls["n"] += 1
+            real()
+
+        panel._recompute_aggregate = counting
+        panel._ensure_aggregate()
+        panel._ensure_aggregate()
+        panel._ensure_aggregate()
+        assert calls["n"] == 1  # recomputed once despite repeated calls
+        assert panel._agg_computed is True
+
+    def test_reset_view_and_caches_reallows_compute(self):
+        state = _loaded_state(EXAMPLE_IMZML_CONTINUOUS)
+        panel = ImagingPanel(state)
+        panel._ensure_aggregate()
+        assert panel._agg_computed is True
+        # Populate caches, then reset (as a new load would).
+        panel._tic_cache = np.zeros((2, 2))
+        panel._overlay_entries.append({"mz": 1.0, "ppm": 1.0, "hue": (0, 0, 0), "img": None})
+        panel._reset_view_and_caches()
+        assert panel._agg_computed is False
+        assert panel._tic_cache is None
+        assert panel._overlay_entries == []
+        assert panel._mode == "tic"
+        assert panel._current_mz is None

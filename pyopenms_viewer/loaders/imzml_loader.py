@@ -42,6 +42,24 @@ def _apply_pseudo_rt(mie) -> None:
             spec.setMSLevel(1)
 
 
+def _select_positive_intensity_peaks(spec) -> None:
+    """Keep only intensity>0 peaks in ``spec``, in place.
+
+    Uses ``MSSpectrum.select`` (not ``set_peaks``) so that peaks AND all
+    associated FloatDataArrays — e.g. per-peak ion mobility — are filtered
+    together and stay index-aligned. ``set_peaks`` shortens only the m/z /
+    intensity arrays, leaving the ion-mobility array at its original length,
+    which silently breaks IM detection downstream.
+    """
+    _, ints = spec.get_peaks()
+    if len(ints) == 0:
+        return
+    keep = ints > 0
+    if keep.all():
+        return
+    spec.select(np.flatnonzero(keep).tolist())
+
+
 def _drop_zero_intensity_peaks(mie) -> None:
     """Drop intensity==0 peaks from every spectrum in the MSImagingExperiment, in place.
 
@@ -49,16 +67,7 @@ def _drop_zero_intensity_peaks(mie) -> None:
     these inflate peak counts and poison aggregate spectra.
     """
     for spec in mie.getMSExperiment().getSpectra():
-        mzs, ints = spec.get_peaks()
-        if len(ints) == 0:
-            continue
-        keep = ints > 0
-        if keep.all():
-            continue
-        spec.set_peaks((
-            np.array(mzs[keep], dtype=np.float64, copy=True),
-            np.array(ints[keep], dtype=np.float32, copy=True),
-        ))
+        _select_positive_intensity_peaks(spec)
 
 
 class ImzMLLoader:
@@ -237,10 +246,13 @@ class ImzMLLoader:
 
             _prog("Extracting spectrum metadata…", 0.80)
 
-            # Temporarily assign msexp so extract_spectrum_data can iterate it
-            self.state.exp = msexp
+            # Extract against the local msexp WITHOUT mutating shared state, so a
+            # failure here leaves the previous experiment fully intact and the UI
+            # never sees new spectra combined with old geometry/df.
             from pyopenms_viewer.loaders.spectrum_extractor import extract_spectrum_data
-            spectrum_data = extract_spectrum_data(self.state, spectrum_stats=spectrum_stats)
+            spectrum_data = extract_spectrum_data(
+                self.state, spectrum_stats=spectrum_stats, exp=msexp
+            )
 
             _prog("Updating viewer state…", 0.92)
 
@@ -290,18 +302,30 @@ class ImzMLLoader:
 
             # If per-peak ion mobility was detected, populate IM state so the
             # IMPeakMapPanel auto-activates. Reuses MzMLLoader's proven pipeline.
+            # Best-effort: the core imaging load above is already committed and
+            # useful, so an IM-processing failure disables IM rather than
+            # discarding the whole (valid) load.
             if detected_im_name is not None and im_mz_list:
-                from pyopenms_viewer.loaders.mzml_loader import MzMLLoader
-                _im_loader = MzMLLoader(self.state)
-                _im_loader._process_ion_mobility_data(
-                    im_mz_list=im_mz_list,
-                    im_im_list=im_im_list,
-                    im_int_list=im_int_list,
-                    detected_im_name=detected_im_name,
-                    filepath=str(path),
-                    im_frame_indices=im_frame_indices,
-                    im_frame_ms_levels=[1] * len(im_frame_indices),
-                )
+                try:
+                    from pyopenms_viewer.loaders.mzml_loader import MzMLLoader
+                    _im_loader = MzMLLoader(self.state)
+                    _im_loader._process_ion_mobility_data(
+                        im_mz_list=im_mz_list,
+                        im_im_list=im_im_list,
+                        im_int_list=im_int_list,
+                        detected_im_name=detected_im_name,
+                        filepath=str(path),
+                        im_frame_indices=im_frame_indices,
+                        im_frame_ms_levels=[1] * len(im_frame_indices),
+                    )
+                except Exception as im_ex:
+                    self.state.has_ion_mobility = False
+                    self.state.im_df = None
+                    print(f"[ImzMLLoader] ion-mobility processing failed, disabled: {im_ex}")
+
+            # Signal a new imaging dataset. Bumped LAST so panels that key off
+            # this token only react once the full commit above is in place.
+            self.state.msi_load_token += 1
 
             print(
                 f"Loaded {n_spectra} pixels; geometry "
