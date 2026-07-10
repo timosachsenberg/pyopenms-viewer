@@ -487,6 +487,13 @@ class MzMLLoader:
 
             self.state.current_file = filepath
 
+            # Clear any stale MSI state from a previously-loaded imzML so the
+            # Ion Image panel does not keep rendering the old experiment beside
+            # this plain-mzML data (MzMLLoader does not go through
+            # clear_mzml_data). msi_load_token is intentionally left untouched.
+            self.state.has_imzml = False
+            self.state.msi_experiment = None
+
             # Invalidate minimap cache when new file is loaded
             self.state.invalidate_minimap_cache()
 

@@ -91,6 +91,10 @@ class ViewerState:
         # In out-of-core mode, df and im_df may be None after registration
         self.exp = None  # MSExperiment - pyOpenMS C++ object (~500MB)
         self.msi_experiment = None  # MSImagingExperiment — set when imzML is loaded
+        # Monotonic counter bumped once per successful imzML load. Panels use it
+        # to dedupe repeated data_loaded emits (page reload / CLI fast-path).
+        # Deliberately NOT reset by clear_mzml_data — only new loads advance it.
+        self.msi_load_token: int = 0
         self.df: pd.DataFrame | None = None  # All peaks: rt, mz, intensity, log_intensity (~2GB)
         self.im_df: pd.DataFrame | None = None  # Ion mobility peaks: mz, im, intensity, log_intensity
         self.faims_data: dict[float, pd.DataFrame] = {}  # CV -> DataFrame (views into self.df)

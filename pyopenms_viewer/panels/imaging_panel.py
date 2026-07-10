@@ -103,6 +103,20 @@ class ImagingPanel(BasePanel):
         self._agg_centers: np.ndarray | None = None
         self._agg_mean: np.ndarray | None = None
         self._agg_skyline: np.ndarray | None = None
+        # True once the aggregate has been computed for the current dataset,
+        # even if the result was empty. Distinguishes "not computed yet" from
+        # "computed, legitimately empty" so an empty dataset is not recomputed
+        # on every emit / after-show. Reset by _reset_view_and_caches().
+        self._agg_computed: bool = False
+
+        # Rehydration dedupe (see _on_data_loaded). data_loaded("mzml") can be
+        # emitted several times for one load (normal load, page-reload
+        # rehydration, CLI already-loaded fast-path); recompute at most once per
+        # msi_load_token. _pending_token guards emits that arrive before the
+        # deferred render timer fires.
+        self._handled_token: int | None = None
+        self._pending_token: int | None = None
+        self._render_timer = None
 
         # Overlay: list of {"mz", "ppm", "hue", "img"} dicts. Rendered
         # additively into an RGB composite.
@@ -183,11 +197,11 @@ class ImagingPanel(BasePanel):
             return
         # Ensure aggregate cache exists even if after-show raced ahead of
         # ``_on_data_loaded`` (or the panel was opened manually before load).
-        if self._agg_centers is None:
-            try:
-                self._recompute_aggregate()
-            except Exception as exc:
-                print(f"[ImagingPanel] aggregate error (after-show): {exc}")
+        # Routed through _ensure_aggregate so it computes at most once per load.
+        try:
+            self._ensure_aggregate()
+        except Exception as exc:
+            print(f"[ImagingPanel] aggregate error (after-show): {exc}")
         self.update()   # refresh stored figure state
         # Force re-render via JS for scatter-based plots (heatmaps are fine).
         import json as _json
@@ -335,50 +349,146 @@ class ImagingPanel(BasePanel):
     # ------------------------------------------------------------------
 
     def _on_data_loaded(self, data_type: str) -> None:
-        """Rebuild the aggregate cache and render TIC when a new imzML loads."""
+        """React to a data_loaded('mzml') emit; recompute at most once per load.
+
+        The same emit can arrive several times for one dataset (normal load,
+        page-reload rehydration, CLI already-loaded fast-path). We key on
+        ``state.msi_load_token`` so the heavy aggregate runs once, and defer it
+        off the synchronous page-build path so first paint is not blocked.
+        """
         if data_type != "mzml":
             return
-        # Update visibility first so update_figure calls reach a visible element.
-        self.update_visibility()
         if not self._has_data():
+            # Switched to non-imzML data (or state cleared): free imaging memory
+            # and blank the figures. Done BEFORE any early return so large image
+            # arrays are not retained until the next imzML load.
+            self._cancel_render_timer()
+            self._reset_view_and_caches()
+            self._clear_all_figures()
+            self._handled_token = None
+            self._pending_token = None
+            self.update_visibility()
             if self.expansion:
                 self.expansion.value = False
             return
-        self._mode = "tic"
-        self._current_mz = None
-        self._overlay_entries.clear()
+
+        token = self.state.msi_load_token
+        if token == self._handled_token:
+            # Already rendered this dataset — cheap re-render from cache,
+            # preserving the user's current ion / overlay across a no-op emit.
+            self.update_visibility()
+            self.update()
+            return
+        if token == self._pending_token:
+            # Render already scheduled for this dataset; let the timer do it.
+            self.update_visibility()
+            return
+
+        self._reset_view_and_caches()
+        self.update_visibility()
+        self._schedule_initial_render(token)
+
+    # ------------------------------------------------------------------
+    # Rehydration helpers (dedupe + deferred, race-safe first render)
+    # ------------------------------------------------------------------
+
+    def _reset_caches(self) -> None:
+        """Drop cached images and the overlay (free memory)."""
         self._tic_cache = None
         self._ion_cache_key = None
         self._ion_cache_img = None
+        self._overlay_entries.clear()
+
+    def _reset_view_and_caches(self) -> None:
+        """Reset to the default TIC view and drop all per-dataset caches."""
+        self._mode = "tic"
+        self._current_mz = None
+        self._reset_caches()
         self._agg_centers = None
         self._agg_mean = None
         self._agg_skyline = None
+        self._agg_computed = False
         if self._mode_select is not None:
             self._mode_select.set_value("tic")
-        # Rebuild the aggregate BEFORE opening the expansion. Opening first
-        # races Quasar ``after-show`` against an empty cache, which leaves the
-        # aggregate spectrum stuck on its placeholder after a page refresh.
+
+    def _clear_all_figures(self) -> None:
+        """Swap every figure to its empty placeholder so Plotly releases data."""
+        if self.plot is not None:
+            self.plot.update_figure(self._figure_with_config(self._empty_figure()))
+        if self.spectrum_plot is not None:
+            self.spectrum_plot.update_figure(
+                self._figure_with_config(self._empty_spectrum_figure())
+            )
+        if self.overlay_plot is not None:
+            self.overlay_plot.update_figure(
+                self._figure_with_config(self._empty_overlay_figure())
+            )
+
+    def _ensure_aggregate(self) -> None:
+        """Compute the aggregate spectrum once per dataset (idempotent).
+
+        Guards on ``_agg_computed`` (not on ``_agg_centers is None``) so a
+        legitimately-empty dataset is not recomputed on every emit / after-show.
+        """
+        if self._agg_computed:
+            return
+        self._recompute_aggregate()
+        self._agg_computed = True
+
+    def _cancel_render_timer(self) -> None:
+        if self._render_timer is not None:
+            try:
+                self._render_timer.cancel()
+            except Exception:
+                pass
+            self._render_timer = None
+
+    def _schedule_initial_render(self, token: int) -> None:
+        """Defer the first heavy render so page construction / first paint is not blocked."""
+        self._pending_token = token
+        self._cancel_render_timer()
+        if self.expansion is None:
+            # No element context to attach a timer to — render inline as fallback.
+            self._initial_render(token)
+            return
+        # Attach under the expansion's slot so a valid context exists even when
+        # this runs from a raw asyncio task (CLI load), where the slot stack is
+        # otherwise empty and ui.timer() would raise "current slot ...".
+        with self.expansion:
+            self._render_timer = ui.timer(
+                0.05, lambda: self._initial_render(token), once=True
+            )
+
+    def _initial_render(self, token: int) -> None:
+        """Compute + render for a scheduled load, re-validating against newer loads."""
+        self._render_timer = None
+        # A newer load may have superseded this one while the timer waited.
+        if token != self.state.msi_load_token or not self._has_data():
+            return
         try:
-            self._recompute_aggregate()
+            self._ensure_aggregate()
         except Exception as exc:
             print(f"[ImagingPanel] aggregate error: {exc}")
+        # Re-check after the (potentially slow) compute before publishing.
+        if token != self.state.msi_load_token or not self._has_data():
+            return
         try:
-            self._render_tic()
-        except Exception as exc:
-            print(f"[ImagingPanel] TIC render error: {exc}")
-        try:
-            self._render_aggregate_spectrum()
-        except Exception as exc:
-            print(f"[ImagingPanel] spectrum render error: {exc}")
-        try:
-            self._render_overlay()
-        except Exception as exc:
-            print(f"[ImagingPanel] overlay render error: {exc}")
-        # Open last so ``after-show`` re-pushes figures with the cache already
-        # populated (handles mid-animation / zero-size Plotly layout quirks).
-        if self.expansion:
-            self.expansion.value = True
-
+            for render in (
+                self._render_tic,
+                self._render_aggregate_spectrum,
+                self._render_overlay,
+            ):
+                try:
+                    render()
+                except Exception as exc:
+                    print(f"[ImagingPanel] render error: {exc}")
+        finally:
+            self._handled_token = token
+            self._pending_token = None
+            # Open last so ``after-show`` re-pushes figures with the cache
+            # populated (handles mid-animation / zero-size Plotly quirks).
+            if self.expansion:
+                self.expansion.value = True
 
     def _on_mode_change(self, mode: str) -> None:
         self._mode = mode
