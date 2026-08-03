@@ -4,6 +4,20 @@ All notable changes to pyopenms-viewer are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-03
+
+### Added
+- **Ion Image Panel**: Interactive MSI (Mass Spectrometry Imaging) panel for imzML data
+  - TIC heatmap displayed by default; click any peak to render the corresponding ion image (m/z ± ppm tolerance)
+  - Aggregate spectrum viewer (mean/skyline) for peak browsing within the imaging dataset
+  - Pixel click → spectrum selection linked to the Spectrum Panel
+  - Multi-ion IHC-style overlay with configurable colour channels and additive blending
+  - Uses `oms.MSImagingExperiment.extractIonImage()` — no pyimzml dependency
+  - Panel is auto-visible only when an imzML file is loaded (`has_imzml == True`)
+- **imzML loader enhancements**: store full `MSImagingExperiment` on `state.msi_experiment`; expose pixel size from `imzml:pixel_size_x/y` MetaValues; detect per-peak ion mobility and activate `IMPeakMapPanel` when present
+- **End-to-end tests** for the Imaging Panel (`tests/e2e/test_imaging_panel.py`)
+- **Unit tests** for MSI state, aggregate computation, TIC image shape/cache, pixel→spectrum lookup, and ion image extraction (`tests/test_imaging.py`)
+
 ## [0.2.0] - 2025-12-30
 
 ### Added
