@@ -3084,33 +3084,33 @@ wheels = [
 
 [[package]]
 name = "pyopenms"
-version = "3.6.0.dev20260625"
+version = "3.6.0.dev20260815"
 source = { registry = "https://pypi.openms.de/simple/" }
 dependencies = [
     { name = "matplotlib" },
     { name = "numpy" },
 ]
 wheels = [
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp310-cp310-macosx_15_0_arm64.whl", hash = "sha256:cc350ac663827979f92158350a00e8ce11517ab4a36181daa2841c8a0ea88e74" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp310-cp310-manylinux_2_34_aarch64.whl", hash = "sha256:493ff6a3ba477d0994fb108d9cdb4f2df78e83ff09349b8ec1c377ae7fabff65" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp310-cp310-manylinux_2_34_x86_64.whl", hash = "sha256:4332c0bffbc18fe69cc1979a3ac48cc64277e5558669216869cecdda5616c80b" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp310-cp310-win_amd64.whl", hash = "sha256:73e6cfb58c8af854a9553e8ca6f59352647877533c8fdc16d664c9d512d7031e" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp311-cp311-macosx_15_0_arm64.whl", hash = "sha256:63bb9af4e9d9bb80cb995f4a10cfc685c00dab1085cb78dcff26624917a4c685" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp311-cp311-manylinux_2_34_aarch64.whl", hash = "sha256:14c5497241a6c9a900ff2963da919a6d8515e58c186369354b44110a1685ce40" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp311-cp311-manylinux_2_34_x86_64.whl", hash = "sha256:637f0cb37dc6ae57f4452b851b0b0523c0138377a4c68fa7ee00d11055c33b1b" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp311-cp311-win_amd64.whl", hash = "sha256:b315013ad94f6c11dbfc91b1063853af11c4d8fab06efc86048d3724f974ce6e" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp312-cp312-macosx_15_0_arm64.whl", hash = "sha256:bbae80de2aadc108c01cf30d8a7877654a52feb4f4115012736d88bd3f276d49" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp312-cp312-manylinux_2_34_aarch64.whl", hash = "sha256:3e1474a870d800ff4b13580e02a1fb939ab5ceee7f71c8503805d61c9f2ea3a8" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:476cff8be438246b5eca356e13250f2efac96fdfece692071c462a8bd5b1f77b" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp312-cp312-win_amd64.whl", hash = "sha256:27a414955951b6058907e24b8680d6581fb2b1c52570d445df4c6ad112d0b089" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp313-cp313-macosx_15_0_arm64.whl", hash = "sha256:3f965e3025dc3cb0d37e9f823421672731da3c7fc4512c1bb46570bb53e3c1fb" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp313-cp313-manylinux_2_34_aarch64.whl", hash = "sha256:3f2ecd3b5e54da6bf86a1ccc04c33ee580a727a875c2da537e0b9c1401b051a0" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp313-cp313-manylinux_2_34_x86_64.whl", hash = "sha256:d75aa866b9ef7d88ff06aa78da2ea6432b4bbe1c66ee27ccb5beb8f52184f85e" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp313-cp313-win_amd64.whl", hash = "sha256:66b3bbf0db180a19f97ac78ce83d2a672efa2dc2e434dd8a7c0a32690f3ad831" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp314-cp314-macosx_15_0_arm64.whl", hash = "sha256:d146478644418ca681e09f129f40b4317468316469a2e492b300ee1166e9e8bf" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp314-cp314-manylinux_2_34_aarch64.whl", hash = "sha256:ef2de6a63f63c103e57e8ec13c4c7573f9e0671867b64247dd8b29315e0c610d" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp314-cp314-manylinux_2_34_x86_64.whl", hash = "sha256:f49338739d6716de7a94e3ac293a0e4acfb93dbd5fdcbfc3cbc07c71215795b1" },
-    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260625-cp314-cp314-win_amd64.whl", hash = "sha256:e916c2fa239509b9d88c6850c5567aedd6a57616086dc1ee6654f9f22596cdc4" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp310-cp310-macosx_15_0_arm64.whl", hash = "sha256:29e4b39d18d2d444e1643976a6604459a4a7396642c2663252daa82cdb72006f" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp310-cp310-manylinux_2_34_aarch64.whl", hash = "sha256:2b9668390574babbe6d68672a2df784ac33a23c7b13ae8a063e91fc72ea473b7" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp310-cp310-manylinux_2_34_x86_64.whl", hash = "sha256:ae56cc1f2ed30e4468598bd69fe06d5761d6010ac69c8975c2d7792e6b30c27c" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp310-cp310-win_amd64.whl", hash = "sha256:731e75a2200d0fdafd0af1c8917a44453215318c524a3fccd892190a0596d96d" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp311-cp311-macosx_15_0_arm64.whl", hash = "sha256:c47efd7400fe3563931dadc5aecfefc6e87ac742f671a7cb464630fb2178e45d" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp311-cp311-manylinux_2_34_aarch64.whl", hash = "sha256:1cc05fa38d32e66e6c8dca9c2dd9af11d3375357a2dbd395c4746ed081b056d4" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp311-cp311-manylinux_2_34_x86_64.whl", hash = "sha256:02e4e4c6a730abc1d0741fd05a99dd19af1d936652a80939276f040b51860f23" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp311-cp311-win_amd64.whl", hash = "sha256:b7000f6486bc574f80eaada652ddb174c0385cb31f82ae64cd976e694fe84a54" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp312-cp312-macosx_15_0_arm64.whl", hash = "sha256:d62626e4ccdc3935db0650186e40d14bbd13c203833ad0dbdfa5fbd5ca7a1a7d" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp312-cp312-manylinux_2_34_aarch64.whl", hash = "sha256:16650af99567da554440ade64cab243034edf2cf6e37a39501d99a1224357705" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:793cb6d4d93ded40f2b420d4ada9bd0f20e73c40b2786ead04fe13e3103950bc" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp312-cp312-win_amd64.whl", hash = "sha256:e61b473b1346d173fe0c8009e6ba65508bf59a60405225c9351cac11f068d135" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp313-cp313-macosx_15_0_arm64.whl", hash = "sha256:f834e430de7804837d5f0190d6e3e79652236d5e2d7f045d35b0ff38b6540a6f" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp313-cp313-manylinux_2_34_aarch64.whl", hash = "sha256:6bcf7dabb396ffe046e345a2a173933ea2b2418dd0cb7deb062996bc074ca8dc" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp313-cp313-manylinux_2_34_x86_64.whl", hash = "sha256:489ba9774602d226c87130fcd21aa015039add2759b286c3b1f0cdc6f16acc6b" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp313-cp313-win_amd64.whl", hash = "sha256:21fff91c4083c498a62f23a695e87f587719ed2e1b58304c85156d2417d3a272" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp314-cp314-macosx_15_0_arm64.whl", hash = "sha256:699a023d4acc70e00f0b12b87b0d388a8471c0127d853de5839ce716e6b30375" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp314-cp314-manylinux_2_34_aarch64.whl", hash = "sha256:53a62a08c6b4c1a23fa2be2730263e3dde0404e93458f3c4fe2feb7c8ffa6ea8" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp314-cp314-manylinux_2_34_x86_64.whl", hash = "sha256:971c712d1a0f2779dedf04399d391bb4d8c2e505b1344a256b262ce0b82bc813" },
+    { url = "https://pypi.openms.de/packages/pyopenms-3.6.0.dev20260815-cp314-cp314-win_amd64.whl", hash = "sha256:992a9f1b11ac55dfa273a9b0b2c0ecab38125b7f70ed7fed6e19434f07367a69" },
 ]
 
 [[package]]
@@ -3172,7 +3172,7 @@ requires-dist = [
     { name = "plotly", specifier = ">=5.0.0" },
     { name = "pyarrow", specifier = ">=15.0.0" },
     { name = "pyinstaller", marker = "extra == 'dev'", specifier = ">=6.0.0" },
-    { name = "pyopenms", specifier = "==3.6.0.dev20260625", index = "https://pypi.openms.de/simple/" },
+    { name = "pyopenms", specifier = "==3.6.0.dev20260815", index = "https://pypi.openms.de/simple/" },
     { name = "pyopenms-viz", specifier = ">=0.1.0" },
     { name = "pyqt6", marker = "extra == 'native'", specifier = ">=6.0.0" },
     { name = "pyqt6-webengine", marker = "extra == 'native'", specifier = ">=6.0.0" },

@@ -209,3 +209,9 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 CLAUDE.md
+
+# Optional local staging dir (not required once nightly ≥ 3.6.0.dev20260815)
+.local_pyopenms_im/
+
+# Local TIMS→imzML demo data (large; keep locally, do not commit)
+tmp_timsconvert_data/

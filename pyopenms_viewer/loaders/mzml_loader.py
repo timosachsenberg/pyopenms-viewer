@@ -518,9 +518,28 @@ class MzMLLoader:
         im_frame_precursor_mz: list | None = None,
         im_frame_precursor_lower: list | None = None,
         im_frame_precursor_upper: list | None = None,
+        *,
+        im_mz_min: float | None = None,
+        im_mz_max: float | None = None,
+        im_min: float | None = None,
+        im_max: float | None = None,
     ) -> None:
-        """Process pre-extracted ion mobility data and populate state."""
-        if not im_mz_list or detected_im_name is None:
+        """Process pre-extracted ion mobility data and populate state.
+
+        Callers may either pass peak arrays (``im_mz_list`` / ``im_im_list``) or
+        precomputed bounds (``im_mz_min`` … ``im_max``) with ``im_frame_indices``.
+        The bounds-only path avoids concatenating every peak (important for IM
+        imzML with thousands of pixels).
+        """
+        has_arrays = bool(im_mz_list)
+        has_frames = bool(im_frame_indices)
+        has_bounds = (
+            im_mz_min is not None
+            and im_mz_max is not None
+            and im_min is not None
+            and im_max is not None
+        )
+        if detected_im_name is None or (not has_arrays and not (has_frames and has_bounds)):
             self.state.has_ion_mobility = False
             self.state.im_df = None
             return
@@ -536,13 +555,18 @@ class MzMLLoader:
             self.state.im_type = "ion_mobility"
             self.state.im_unit = ""
 
-        mz_concat = np.concatenate(im_mz_list)
-        im_concat = np.concatenate(im_im_list)
-
-        im_mz_min = float(mz_concat.min())
-        im_mz_max = float(mz_concat.max())
-        im_min_val = float(im_concat.min())
-        im_max_val = float(im_concat.max())
+        if has_arrays:
+            mz_concat = np.concatenate(im_mz_list)
+            im_concat = np.concatenate(im_im_list)
+            im_mz_min = float(mz_concat.min())
+            im_mz_max = float(mz_concat.max())
+            im_min_val = float(im_concat.min())
+            im_max_val = float(im_concat.max())
+        else:
+            im_mz_min = float(im_mz_min)
+            im_mz_max = float(im_mz_max)
+            im_min_val = float(im_min)
+            im_max_val = float(im_max)
 
         if im_frame_indices:
             n_frames = len(im_frame_indices)

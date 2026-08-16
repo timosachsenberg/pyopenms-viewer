@@ -208,8 +208,14 @@ class PeakMapRenderer:
                 # Fallback: use traditional DataFrame filtering if get2DPeakDataLong fails
                 view_df = self._get_fallback_view_df(state, view_rt_min, view_rt_max, view_mz_min, view_mz_max)
 
-            # Manual Python fallback when C++ extraction returns empty
-            if (view_df is None or len(view_df) == 0) and extract_exp is not None:
+            # Manual Python fallback when C++ extraction returns empty.
+            # Skip for MSI: empty deep-zoom windows are common with pseudo-RT,
+            # and re-scanning ~10k peaks/pixel freezes the UI.
+            if (
+                (view_df is None or len(view_df) == 0)
+                and extract_exp is not None
+                and not state.has_imzml
+            ):
                 view_df = self._extract_peaks_manual(
                     extract_exp, view_rt_min, view_rt_max, view_mz_min, view_mz_max
                 )

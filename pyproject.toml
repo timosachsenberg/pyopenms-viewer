@@ -30,7 +30,8 @@ dependencies = [
     "numpy>=1.24.0",
     "colorcet>=3.0.0",
     "pillow>=10.0.0",
-    "pyopenms==3.6.0.dev20260625",
+    # Nightly after OpenMS PR #9908 (imzML per-peak IM aux arrays).
+    "pyopenms==3.6.0.dev20260815",
     "pyopenms-viz>=0.1.0",
     "click>=8.0.0",
     "plotly>=5.0.0",
@@ -82,6 +83,8 @@ build-backend = "hatchling.build"
 packages = ["pyopenms_viewer"]
 
 [tool.pytest.ini_options]
+# Keep collection in tests/ — root-level scripts named test_* are not the suite.
+testpaths = ["tests"]
 # Browser-driven e2e tests are opt-in (they launch the app + a headless browser).
 # Run them explicitly with: pytest tests/e2e -m e2e
 addopts = "-m 'not e2e'"
