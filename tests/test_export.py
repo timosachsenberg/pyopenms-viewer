@@ -209,3 +209,39 @@ def test_build_tsv_empty_and_missing_field():
     columns = [{"field": "x", "label": "X"}]
     assert build_tsv([], columns) == "X"
     assert build_tsv([{}], columns) == "X\n"
+
+
+class TestApplyFilterMSIGuard:
+    """Apply filter must not reload imzML via mzML (drops Ion Image state)."""
+
+    def test_apply_blocked_when_has_imzml(self, monkeypatch):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
+
+        from pyopenms_viewer.core.state import ViewerState
+        from pyopenms_viewer.panels import export_panel as export_mod
+        from pyopenms_viewer.panels.export_panel import ExportPanel
+
+        state = ViewerState()
+        state.has_imzml = True
+        state.exp = _make_test_experiment()
+        state._load_mzml = AsyncMock()
+
+        notifies: list[str] = []
+        monkeypatch.setattr(
+            export_mod.ui, "notify", lambda msg, **kwargs: notifies.append(msg)
+        )
+
+        panel = ExportPanel(state)
+        panel._apply_btn = MagicMock()
+        panel._rt_min_input = MagicMock(value=0)
+        panel._rt_max_input = MagicMock(value=999)
+        panel._mz_min_input = MagicMock(value=0)
+        panel._mz_max_input = MagicMock(value=999)
+        panel._level_checkboxes = {1: MagicMock(value=True)}
+
+        asyncio.run(panel._do_apply())
+
+        state._load_mzml.assert_not_called()
+        assert any("imzML" in msg or "imaging" in msg.lower() for msg in notifies)
+        panel._apply_btn.props.assert_not_called()

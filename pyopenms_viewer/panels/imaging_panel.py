@@ -10,8 +10,8 @@ Implements the interactive browsing loop from the reference notebook
   log-spaced ppm grid (following ``compute_aggregate`` in the reference).
   **Click a peak → instant ion image** at that m/z ± ppm (fast browse loop).
 - **Pixel click** on the heatmap selects that pixel's spectrum in
-  SpectrumPanel; if the imzML carries per-peak ion mobility, IMPeakMapPanel
-  auto-activates via the loader.
+  SpectrumPanel; if the imzML carries per-peak ion mobility (OpenMS PR #9908),
+  IMPeakMapPanel auto-activates via the loader.
 - **Multi-ion overlay** — *Add to overlay* accumulates each extracted ion
   image into an IHC-style RGB composite, each ion in its own hue.
 
@@ -54,6 +54,8 @@ _OVERLAY_HUES: list[tuple[int, int, int]] = [
 # figure is serialised to JSON on every update, and centroid imzML
 # files can have >100k non-zero bins. Same cap as the reference.
 _TOP_N_PEAKS = 400
+_MAX_AGG_BINS = 50_000
+_MAX_AGG_PIXELS = 512
 
 # For large MSI grids, server-side color mapping + go.Image avoids expensive
 # Heatmap serialization and improves interaction latency.
@@ -488,7 +490,13 @@ class ImagingPanel(BasePanel):
             # Open last so ``after-show`` re-pushes figures with the cache
             # populated (handles mid-animation / zero-size Plotly quirks).
             if self.expansion:
-                self.expansion.value = True
+                try:
+                    self.expansion.value = True
+                except RuntimeError as exc:
+                    if "parent slot" not in str(
+                        exc
+                    ) and "Client has been deleted" not in str(exc):
+                        raise
 
     def _on_mode_change(self, mode: str) -> None:
         self._mode = mode
@@ -662,11 +670,14 @@ class ImagingPanel(BasePanel):
     # ------------------------------------------------------------------
 
     def _recompute_aggregate(self) -> None:
-        """Single pass over every pixel → mean & skyline on a ppm-spaced grid.
+        """Single pass over pixels → mean & skyline on a ppm-spaced grid.
 
-        Mirrors the reference notebook's ``compute_aggregate`` cell verbatim:
+        Mirrors the reference notebook's ``compute_aggregate`` cell:
         log-spaced m/z edges spaced by ``bin_ppm`` ppm, ``np.searchsorted`` +
         ``np.add.at`` / ``np.maximum.at`` for the sum / max accumulators.
+
+        For large MSI datasets the pass is capped (bin count + pixel sample)
+        so the aggregate stays interactive while still representing the image.
         """
         mie = self.state.msi_experiment
         if mie is None:
@@ -685,18 +696,30 @@ class ImagingPanel(BasePanel):
 
         bin_ppm = float(self._agg_bin_ppm)
         step = float(np.log1p(bin_ppm * 1e-6))
-        n_edges = int(np.ceil((np.log(max_mz) - np.log(min_mz)) / step)) + 1
+        log_span = float(np.log(max_mz) - np.log(min_mz))
+        n_edges = int(np.ceil(log_span / step)) + 1
+        # Cap bins so searchsorted stays responsive on wide m/z ranges.
+        if n_edges - 1 > _MAX_AGG_BINS:
+            step = log_span / _MAX_AGG_BINS
+            n_edges = _MAX_AGG_BINS + 1
         edges = min_mz * np.exp(np.arange(n_edges) * step)
         centers = 0.5 * (edges[:-1] + edges[1:])
         n_bins = centers.size
 
         sum_ = np.zeros(n_bins, dtype=np.float64)
         max_ = np.zeros(n_bins, dtype=np.float64)
-        count = np.zeros(n_bins, dtype=np.int64)
+        # Peaks (or pixel hits) per bin — mean = sum / count, not sum / n_pixels.
+        # Dividing by all sampled pixels dilutes rare ions into near-zero bins.
+        count_ = np.zeros(n_bins, dtype=np.float64)
 
         geom = mie.getGeometry()
         spectra = msexp.getSpectra()
-        for px in geom.get_pixels_struct():
+        pixels = geom.get_pixels_struct()
+        n_pixels = len(pixels)
+        # Deterministic spatial subsample for large images (~14k peaks/pixel).
+        stride = max(1, (n_pixels + _MAX_AGG_PIXELS - 1) // _MAX_AGG_PIXELS)
+        n_seen = 0
+        for px in pixels[::stride]:
             mzs, ints = spectra[int(px["spectrum_index"])].get_peaks()
             if mzs.size == 0:
                 continue
@@ -704,9 +727,12 @@ class ImagingPanel(BasePanel):
             np.clip(idx, 0, n_bins - 1, out=idx)
             np.add.at(sum_, idx, ints)
             np.maximum.at(max_, idx, ints)
-            count[np.unique(idx)] += 1
+            np.add.at(count_, idx, 1.0)
+            n_seen += 1
 
-        mean = np.divide(sum_, count, out=np.zeros_like(sum_), where=count > 0)
+        mean = np.zeros_like(sum_)
+        if n_seen > 0:
+            np.divide(sum_, count_, out=mean, where=count_ > 0)
 
         self._agg_centers = centers
         self._agg_mean = mean
@@ -739,7 +765,13 @@ class ImagingPanel(BasePanel):
         container has its final dimensions, so figures that land here while
         the panel is mid-animation will be re-applied correctly on open.
         """
-        plot_el.update_figure(self._figure_with_config(fig))
+        try:
+            plot_el.update_figure(self._figure_with_config(fig))
+        except RuntimeError as exc:
+            # Page refresh / disconnected client — rehydrate will re-render.
+            if "parent slot" in str(exc) or "Client has been deleted" in str(exc):
+                return
+            raise
 
     def _render_tic(self) -> None:
         if not self._has_data() or self.plot is None:

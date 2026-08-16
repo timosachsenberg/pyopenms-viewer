@@ -13,12 +13,14 @@ from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.panels.base_panel import BasePanel
 
 
-def _export_filtered_mzml(exp, output_path, rt_min, rt_max, mz_min, mz_max, selected_levels):
+def _export_filtered_mzml(
+    exp, output_path, rt_min, rt_max, mz_min, mz_max, selected_levels
+):
     """Export a filtered subset of an MSExperiment to a new mzML file.
 
     Iterates spectra, filters by MS level and RT range, trims peaks by m/z range,
-    and writes to a new file. The original experiment is not modified since
-    getSpectrum() returns a copy.
+    and writes to a new file. Spectra that need trimming are copied first, since
+    getSpectrum() returns a reference into the loaded experiment.
 
     Args:
         exp: pyOpenMS MSExperiment to filter
@@ -33,7 +35,7 @@ def _export_filtered_mzml(exp, output_path, rt_min, rt_max, mz_min, mz_max, sele
         Number of spectra written to the output file
     """
     import numpy as np
-    from pyopenms import MSExperiment, MzMLFile
+    from pyopenms import MSExperiment, MSSpectrum, MzMLFile
 
     output_exp = MSExperiment()
     count = 0
@@ -50,11 +52,23 @@ def _export_filtered_mzml(exp, output_path, rt_min, rt_max, mz_min, mz_max, sele
         if rt < rt_min or rt > rt_max:
             continue
 
-        # Trim peaks by m/z range
+        # Trim peaks by m/z range. Copy before mutating — getSpectrum() is a
+        # live reference. Non-IM keeps the historical set_peaks trim; IM uses
+        # select() so per-peak mobility arrays stay length-aligned.
         mzs, intensities = spec.get_peaks()
         if len(mzs) > 0:
             mask = (mzs >= mz_min) & (mzs <= mz_max)
-            spec.set_peaks((mzs[mask].astype(np.float64), intensities[mask].astype(np.float64)))
+            if not mask.all():
+                spec = MSSpectrum(spec)
+                if hasattr(spec, "containsIMData") and spec.containsIMData():
+                    spec.select([int(i) for i in np.flatnonzero(mask)])
+                else:
+                    spec.set_peaks(
+                        (
+                            mzs[mask].astype(np.float64),
+                            intensities[mask].astype(np.float64),
+                        )
+                    )
 
         output_exp.addSpectrum(spec)
         count += 1
@@ -92,36 +106,56 @@ class ExportPanel(BasePanel):
                 with ui.row().classes("w-full items-end gap-2 flex-wrap"):
                     ui.label("RT range (s):").classes("text-xs text-gray-400")
                     self._rt_min_input = (
-                        ui.number(label="RT min", format="%.1f", on_change=self._update_preview)
+                        ui.number(
+                            label="RT min",
+                            format="%.1f",
+                            on_change=self._update_preview,
+                        )
                         .props("dense outlined")
                         .classes("w-28")
                     )
                     self._rt_max_input = (
-                        ui.number(label="RT max", format="%.1f", on_change=self._update_preview)
+                        ui.number(
+                            label="RT max",
+                            format="%.1f",
+                            on_change=self._update_preview,
+                        )
                         .props("dense outlined")
                         .classes("w-28")
                     )
 
                     ui.label("m/z range:").classes("text-xs text-gray-400 ml-4")
                     self._mz_min_input = (
-                        ui.number(label="m/z min", format="%.2f", on_change=self._update_preview)
+                        ui.number(
+                            label="m/z min",
+                            format="%.2f",
+                            on_change=self._update_preview,
+                        )
                         .props("dense outlined")
                         .classes("w-28")
                     )
                     self._mz_max_input = (
-                        ui.number(label="m/z max", format="%.2f", on_change=self._update_preview)
+                        ui.number(
+                            label="m/z max",
+                            format="%.2f",
+                            on_change=self._update_preview,
+                        )
                         .props("dense outlined")
                         .classes("w-28")
                     )
 
                 # Buttons row
                 with ui.row().classes("w-full items-center gap-2 mt-1"):
-                    ui.button("Use current view", icon="crop_free", on_click=self._use_current_view).props(
-                        "flat dense size=sm"
-                    )
-                    ui.button("Reset to full", icon="zoom_out_map", on_click=self._reset_to_full).props(
-                        "flat dense size=sm"
-                    )
+                    ui.button(
+                        "Use current view",
+                        icon="crop_free",
+                        on_click=self._use_current_view,
+                    ).props("flat dense size=sm")
+                    ui.button(
+                        "Reset to full",
+                        icon="zoom_out_map",
+                        on_click=self._reset_to_full,
+                    ).props("flat dense size=sm")
 
                 # MS level checkboxes
                 with ui.row().classes("w-full items-center gap-2 mt-1"):
@@ -138,13 +172,19 @@ class ExportPanel(BasePanel):
 
                 # Preview + buttons
                 with ui.row().classes("w-full items-center gap-2 mt-1"):
-                    self._preview_label = ui.label("").classes("text-xs text-gray-400 flex-grow")
-                    self._apply_btn = ui.button(
-                        "Apply filter", icon="filter_alt", on_click=self._do_apply
-                    ).props("flat").tooltip("Replace current data with filtered subset")
-                    self._export_btn = ui.button("Download", icon="file_download", on_click=self._do_export).props(
-                        "color=primary"
+                    self._preview_label = ui.label("").classes(
+                        "text-xs text-gray-400 flex-grow"
                     )
+                    self._apply_btn = (
+                        ui.button(
+                            "Apply filter", icon="filter_alt", on_click=self._do_apply
+                        )
+                        .props("flat")
+                        .tooltip("Replace current data with filtered subset")
+                    )
+                    self._export_btn = ui.button(
+                        "Download", icon="file_download", on_click=self._do_export
+                    ).props("color=primary")
 
         # Subscribe to events
         self.state.on_data_loaded(self._on_data_loaded)
@@ -162,6 +202,19 @@ class ExportPanel(BasePanel):
             self._populate_from_state()
             self.update_visibility()
 
+    def _sync_apply_button(self) -> None:
+        """Apply reloads via mzML and would drop MSI/Ion Image state — disable for imzML."""
+        if self._apply_btn is None:
+            return
+        if self.state.has_imzml:
+            self._apply_btn.disable()
+            self._apply_btn.tooltip(
+                "Apply filter is not available for imzML — use Download to export as mzML"
+            )
+        else:
+            self._apply_btn.enable()
+            self._apply_btn.tooltip("Replace current data with filtered subset")
+
     def _populate_from_state(self) -> None:
         if self.state.exp is None:
             return
@@ -173,7 +226,9 @@ class ExportPanel(BasePanel):
         self._mz_max_input.value = self.state.mz_max
 
         # Discover MS levels from spectrum_data
-        levels = sorted({s["ms_level"] for s in self.state.spectrum_data if "ms_level" in s})
+        levels = sorted(
+            {s["ms_level"] for s in self.state.spectrum_data if "ms_level" in s}
+        )
         if not levels:
             levels = [1]
 
@@ -182,7 +237,9 @@ class ExportPanel(BasePanel):
         self._level_checkboxes = {}
         with self._levels_container:
             for lvl in levels:
-                cb = ui.checkbox(f"MS{lvl}", value=True, on_change=self._update_preview).props("dense")
+                cb = ui.checkbox(
+                    f"MS{lvl}", value=True, on_change=self._update_preview
+                ).props("dense")
                 self._level_checkboxes[lvl] = cb
 
         # Default output path
@@ -190,13 +247,30 @@ class ExportPanel(BasePanel):
             stem = Path(self.state.current_file).stem
             self._output_input.value = f"{stem}_filtered.mzML"
 
+        self._sync_apply_button()
         self._update_preview()
 
     def _use_current_view(self) -> None:
-        vrt_min = self.state.view_rt_min if self.state.view_rt_min is not None else self.state.rt_min
-        vrt_max = self.state.view_rt_max if self.state.view_rt_max is not None else self.state.rt_max
-        vmz_min = self.state.view_mz_min if self.state.view_mz_min is not None else self.state.mz_min
-        vmz_max = self.state.view_mz_max if self.state.view_mz_max is not None else self.state.mz_max
+        vrt_min = (
+            self.state.view_rt_min
+            if self.state.view_rt_min is not None
+            else self.state.rt_min
+        )
+        vrt_max = (
+            self.state.view_rt_max
+            if self.state.view_rt_max is not None
+            else self.state.rt_max
+        )
+        vmz_min = (
+            self.state.view_mz_min
+            if self.state.view_mz_min is not None
+            else self.state.mz_min
+        )
+        vmz_max = (
+            self.state.view_mz_max
+            if self.state.view_mz_max is not None
+            else self.state.mz_max
+        )
         self._rt_min_input.value = round(vrt_min, 1)
         self._rt_max_input.value = round(vrt_max, 1)
         self._mz_min_input.value = round(vmz_min, 2)
@@ -225,7 +299,8 @@ class ExportPanel(BasePanel):
         count = sum(
             1
             for s in self.state.spectrum_data
-            if s.get("ms_level") in selected_levels and rt_min <= s.get("rt", 0) <= rt_max
+            if s.get("ms_level") in selected_levels
+            and rt_min <= s.get("rt", 0) <= rt_max
         )
         self._preview_label.set_text(f"~{count} spectra match filters")
 
@@ -277,7 +352,18 @@ class ExportPanel(BasePanel):
             self._export_btn.props(remove="loading")
 
     async def _do_apply(self) -> None:
-        """Export filtered data to a temp file, then reload it as the current file."""
+        """Export filtered data to a temp file, then reload it as the current file.
+
+        Not supported for imzML: reloading the filtered mzML drops ``has_imzml`` /
+        ``msi_experiment`` and disables the Ion Image panel. Use Download instead.
+        """
+        if self.state.has_imzml:
+            ui.notify(
+                "Apply filter is not available for imaging (imzML) data — use Download",
+                type="warning",
+            )
+            return
+
         params = self._get_filter_params()
         if params is None:
             return

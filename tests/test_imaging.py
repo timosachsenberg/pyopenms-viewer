@@ -9,10 +9,16 @@ NiceGUI client and are not tested here.
 from pathlib import Path
 
 import numpy as np
+import pyopenms as oms
 import pytest
 
 from pyopenms_viewer.core.state import ViewerState
 from pyopenms_viewer.loaders import ImzMLLoader
+from pyopenms_viewer.loaders.imzml_loader import (
+    _drop_zero_intensity_peaks,
+    _extract_im_data,
+    _im_state_from_unit,
+)
 from pyopenms_viewer.panels.imaging_panel import ImagingPanel
 
 # -------------------------------------------------------------------------
@@ -81,6 +87,11 @@ class TestImzMLLoaderMSIState:
         assert state.msi_experiment is not None
         assert state.msi_experiment.getNumberOfPixels() > 0
 
+    def test_df_is_none_no_peak_dataframe(self):
+        """imzML loads stream peaks via MSExperiment — no peak DataFrame."""
+        state = _loaded_state(EXAMPLE_IMZML_CONTINUOUS)
+        assert state.df is None
+
 
 # -------------------------------------------------------------------------
 # ImagingPanel._recompute_aggregate
@@ -111,6 +122,18 @@ class TestRecomputeAggregate:
 
     def test_mean_nonnegative(self, panel):
         assert np.all(panel._agg_mean >= 0)
+
+    def test_mean_uses_per_bin_counts_not_all_pixels(self, panel):
+        """Sparse bins must not be diluted by pixels that never hit them.
+
+        mean[i] == sum_of_peak_intensities_in_bin / n_peaks_in_bin, so occupied
+        bin means stay on the same scale as skyline (not ~1/n_pixels).
+        """
+        nz = panel._agg_mean > 0
+        assert nz.any()
+        assert np.all(panel._agg_skyline[nz] >= panel._agg_mean[nz] - 1e-12)
+        ratio = panel._agg_mean[nz] / np.maximum(panel._agg_skyline[nz], 1e-30)
+        assert float(np.median(ratio)) > 0.05
 
     def test_centers_within_data_mz_range(self, panel):
         state = panel.state
@@ -351,3 +374,193 @@ class TestEnsureAggregateIdempotent:
         assert panel._overlay_entries == []
         assert panel._mode == "tic"
         assert panel._current_mz is None
+
+
+# -------------------------------------------------------------------------
+# Ion mobility handling (OpenMS spectrum contract)
+# -------------------------------------------------------------------------
+
+
+def _im_spectrum(
+    mzs, intensities, im_values, name="mean inverse reduced ion mobility array"
+):
+    """Build an MSSpectrum carrying an ion mobility FloatDataArray."""
+    spec = oms.MSSpectrum()
+    spec.set_peaks(
+        (np.asarray(mzs, dtype=np.float64), np.asarray(intensities, dtype=np.float32))
+    )
+    fda = oms.FloatDataArray()
+    fda.set_data(np.asarray(im_values, dtype=np.float32))
+    fda.setName(name)
+    spec.setFloatDataArrays([fda])
+    return spec
+
+
+def _imaging_experiment(spectra):
+    """Wrap spectra in an MSImagingExperiment, as the loader helpers expect."""
+    exp = oms.MSExperiment()
+    for spec in spectra:
+        exp.addSpectrum(spec)
+    mie = oms.MSImagingExperiment()
+    mie.setMSExperiment(exp)
+    return mie
+
+
+class TestDropZeroIntensityPeaks:
+    """Zero-intensity pruning must keep per-peak arrays aligned with the peaks."""
+
+    def test_ion_mobility_array_stays_aligned(self):
+        mie = _imaging_experiment(
+            [
+                _im_spectrum([100.0, 200.0, 300.0], [1.0, 0.0, 3.0], [0.8, 0.9, 1.0]),
+            ]
+        )
+        _drop_zero_intensity_peaks(mie)
+
+        spec = mie.getMSExperiment()[0]
+        mzs, intensities = spec.get_peaks()
+        im_values = spec.getFloatDataArrays()[0].get_data()
+        assert list(mzs) == [100.0, 300.0]
+        assert list(intensities) == [1.0, 3.0]
+        assert list(im_values) == pytest.approx([0.8, 1.0])
+        # OpenMS contract still sees IM after select()-based pruning.
+        assert spec.containsIMData()
+        extracted = _extract_im_data(spec)
+        assert extracted is not None
+        assert list(extracted[1]) == pytest.approx([0.8, 1.0])
+
+    def test_spectrum_without_zero_peaks_untouched(self):
+        mie = _imaging_experiment(
+            [
+                _im_spectrum([100.0, 200.0], [1.0, 2.0], [0.8, 0.9]),
+            ]
+        )
+        _drop_zero_intensity_peaks(mie)
+
+        spec = mie.getMSExperiment()[0]
+        assert spec.size() == 2
+        assert len(spec.getFloatDataArrays()[0].get_data()) == 2
+
+    def test_empty_spectrum_is_skipped(self):
+        mie = _imaging_experiment([oms.MSSpectrum()])
+        _drop_zero_intensity_peaks(mie)  # must not raise
+        assert mie.getMSExperiment()[0].size() == 0
+
+
+class TestExtractIMData:
+    """The loader reads IM only through containsIMData()/getIMData()."""
+
+    def test_returns_none_without_im_array(self):
+        spec = oms.MSSpectrum()
+        spec.set_peaks(
+            (np.array([100.0, 200.0]), np.array([1.0, 2.0], dtype=np.float32))
+        )
+        assert _extract_im_data(spec) is None
+
+    def test_returns_name_values_and_unit(self):
+        spec = _im_spectrum([100.0, 200.0], [1.0, 2.0], [0.85, 1.15])
+        result = _extract_im_data(spec)
+        assert result is not None
+        name, values, unit = result
+        assert name == "mean inverse reduced ion mobility array"
+        assert list(values) == pytest.approx([0.85, 1.15])
+        assert unit == spec.getIMData()[1]
+
+    def test_returns_none_on_length_mismatch(self):
+        """A desynced IM array cannot be plotted, so it must be rejected."""
+        spec = _im_spectrum([100.0, 200.0, 300.0], [1.0, 2.0, 3.0], [0.85, 1.15])
+        assert _extract_im_data(spec) is None
+
+
+class TestIMStateFromUnit:
+    """DriftTimeUnit drives the axis labelling, not FloatDataArray name guesses."""
+
+    def test_vssc_maps_to_inverse_k0(self):
+        assert _im_state_from_unit(oms.DriftTimeUnit.VSSC) == (
+            "inverse_k0",
+            "Vs/cm²",
+        )
+
+    def test_millisecond_maps_to_drift_time(self):
+        assert _im_state_from_unit(oms.DriftTimeUnit.MILLISECOND) == (
+            "drift_time",
+            "ms",
+        )
+
+    def test_unlabelled_unit_returns_none(self):
+        assert _im_state_from_unit(oms.DriftTimeUnit.NONE) is None
+
+
+def test_no_ion_mobility_state_for_plain_imzml():
+    """The example files carry no IM, so the IM panel must stay inactive."""
+    state = _loaded_state(EXAMPLE_IMZML_CONTINUOUS)
+    assert state.has_ion_mobility is False
+    assert not state.ms1_im_frame_indices
+
+
+class TestBoundsOnlyIonMobilityProcess:
+    """imzML IM path streams min/max only — no per-peak array concat."""
+
+    def test_bounds_only_activates_im_without_peak_arrays(self):
+        from pyopenms_viewer.loaders.mzml_loader import MzMLLoader
+
+        state = ViewerState()
+        exp = oms.MSExperiment()
+        for i, rt in enumerate([0.0, 1.0, 2.0]):
+            spec = oms.MSSpectrum()
+            spec.setRT(rt)
+            spec.setMSLevel(1)
+            spec.set_peaks(
+                (
+                    np.array([100.0 + i, 200.0], dtype=np.float64),
+                    np.array([10.0, 20.0], dtype=np.float32),
+                )
+            )
+            exp.addSpectrum(spec)
+        state.exp = exp
+        state.mz_min = 50.0
+        state.mz_max = 250.0
+
+        loader = MzMLLoader(state)
+        loader._process_ion_mobility_data(
+            im_mz_list=[],
+            im_im_list=[],
+            im_int_list=[],
+            detected_im_name="mean inverse reduced ion mobility array",
+            filepath="synthetic.imzML",
+            im_frame_indices=[0, 1, 2],
+            im_frame_ms_levels=[1, 1, 1],
+            im_mz_min=100.0,
+            im_mz_max=200.0,
+            im_min=0.7,
+            im_max=1.3,
+        )
+
+        assert state.has_ion_mobility is True
+        assert state.im_df is None
+        assert state.im_frame_indices == [0, 1, 2]
+        assert state.ms1_im_frame_indices == [0, 1, 2]
+        assert state.im_min == pytest.approx(0.7)
+        assert state.im_max == pytest.approx(1.3)
+        assert state.im_type == "inverse_k0"
+        assert state.selected_im_frame_idx == 0
+
+    def test_bounds_only_without_frames_does_not_activate(self):
+        from pyopenms_viewer.loaders.mzml_loader import MzMLLoader
+
+        state = ViewerState()
+        state.exp = oms.MSExperiment()
+        loader = MzMLLoader(state)
+        loader._process_ion_mobility_data(
+            im_mz_list=[],
+            im_im_list=[],
+            im_int_list=[],
+            detected_im_name="mean inverse reduced ion mobility array",
+            filepath="synthetic.imzML",
+            im_frame_indices=[],
+            im_mz_min=100.0,
+            im_mz_max=200.0,
+            im_min=0.7,
+            im_max=1.3,
+        )
+        assert state.has_ion_mobility is False

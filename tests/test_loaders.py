@@ -140,8 +140,8 @@ class TestImzMLLoading:
         assert state.has_imzml is True
         assert state.msi_experiment is not None
         assert state.exp is not None
-        assert state.df is not None
-        assert len(state.df) > 0
+        assert state.df is None  # peak map uses rasterizeRTMZ, same as mzML
+        assert state.total_peaks > 0
 
     def test_load_imzml_promotes_ms_level_to_one(self):
         """MSI spectra must be MS1 so peak-map/TIC renderers do not return empty."""
@@ -170,8 +170,12 @@ class TestImzMLLoading:
 
         assert loader.load_sync(str(EXAMPLE_IMZML)) is True
 
-        top_row = state.df.sort_values("intensity", ascending=False).iloc[0]
-        mz = float(top_row["mz"])
+        # Strongest peak via OpenMS (no peak DataFrame on MSI loads)
+        rt, mz_arr, intensity = state.exp.get2DPeakDataLong(
+            state.rt_min, state.rt_max, state.mz_min, state.mz_max, ms_level=1
+        )
+        assert len(intensity) > 0
+        mz = float(mz_arr[int(np.argmax(intensity))])
         img = state.msi_experiment.extractIonImage(mz, 20.0).get_data()
 
         assert img.ndim == 2

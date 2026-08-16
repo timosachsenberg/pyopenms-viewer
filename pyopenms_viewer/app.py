@@ -92,6 +92,10 @@ def _handle_native_resized(e) -> None:
 
 def _global_exception_handler(exc: Exception) -> None:
     """Route unhandled async-handler exceptions to the active page's LogPanel."""
+    # NiceGUI timers raise this during page refresh/teardown — not app logic.
+    msg = str(exc)
+    if "parent slot" in msg or "Client has been deleted" in msg:
+        return
     state = _GLOBAL_VIEWER_STATE
     if state is None:
         return
@@ -154,11 +158,16 @@ async def create_ui():
     # new page's panels can register fresh handlers without interference from
     # dead UI elements.
     state._event_bus.clear()
+    state.panel_elements = {}
+    state.log_messages.clear()
     state.selected_spectrum_idx = None
     state.selected_feature_idx = None
     state.selected_id_idx = None
     state.hover_feature_idx = None
     state.hover_id_idx = None
+
+    # This page's NiceGUI client (used to stop UI timers on teardown).
+    page_client = ui.context.client
 
     # Initialize or reconfigure data manager with CLI options (safe to call repeatedly)
     cache_dir = Path(cli_options["cache_dir"]) if cli_options["cache_dir"] else None
@@ -942,7 +951,16 @@ async def create_ui():
                 except Exception:
                     pass
 
-            ui.timer(0.5, _poll_progress)
+            progress_timer = ui.timer(0.5, _poll_progress)
+
+            def _stop_progress_timer() -> None:
+                try:
+                    progress_timer.active = False
+                except Exception:
+                    pass
+
+            page_client.on_disconnect(_stop_progress_timer)
+            page_client.on_delete(_stop_progress_timer)
 
             # Store labels in state for updates
             state.info_label = info_label
